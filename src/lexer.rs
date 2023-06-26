@@ -6,10 +6,17 @@ pub struct Lexer<'a> {
     peeked: Token,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum Token {
     EOF,
+    Ampersand,
+    Arrow,
+    Assign,
+    Case,
     CloseParenthesis,
+    Comma,
+    Dot,
+    Equal,
     End,
     Extends,
     For,
@@ -21,9 +28,11 @@ pub enum Token {
     Number(i32),
     OpenParenthesis,
     Package,
+    Pipe,
     Project,
     Semicolon,
     String(String),   //  Doesn't include the quotes themselves, but preserves "" for instance.
+    Tick,
     Use,
     When,
     With,
@@ -99,8 +108,8 @@ impl<'a> Lexer<'a> {
     }
 
     /// Peek at the next item, without consuming it
-    pub fn peek(&self) -> Result<Token> {
-        Ok(self.peeked.clone())
+    pub fn peek(&self) -> &Token {
+        &self.peeked
     }
 
     /// Consume the next token in the stream
@@ -112,6 +121,26 @@ impl<'a> Lexer<'a> {
                 Some('(') => { self.take('('); Token::OpenParenthesis },
                 Some(')') => { self.take(')'); Token::CloseParenthesis },
                 Some(';') => { self.take(';'); Token::Semicolon },
+                Some(',') => { self.take(','); Token::Comma },
+                Some('.') => { self.take('.'); Token::Dot },
+                Some('|') => { self.take('|'); Token::Pipe },
+                Some('&') => { self.take('&'); Token::Ampersand },
+                Some(':') => {
+                    self.take(':');
+                    match self.buffer[self.current..].chars().next() {
+                        Some('=') => {self.take('='); Token::Assign },
+                        Some(c)   => {self.take(c);   Token::InvalidChar(c) },
+                        None      => Token::EOF,
+                    }
+                }
+                Some('=') => {
+                    self.take('=');
+                    match self.buffer[self.current..].chars().next() {
+                        Some('>') => { self.take('>'); Token::Arrow },
+                        _         => Token::Equal,
+                    }
+                },
+                Some('\'') => { self.take('\''); Token::Tick },
                 Some('"') => {
                     self.take('"');  // discard opening quote
                     let s = self.take_until(|c| c == '"');
@@ -136,6 +165,7 @@ impl<'a> Lexer<'a> {
                 Some(c) if c.is_alphanumeric() => {
                     match self.take_while(|c| c == '_' || c.is_alphanumeric()) {
                         // ??? Should check case insensitive
+                        "case"    => Token::Case,
                         "end"     => Token::End,
                         "extends" => Token::Extends,
                         "for"     => Token::For,
