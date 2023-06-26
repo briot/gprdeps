@@ -1,82 +1,38 @@
-use std::str::Chars;
+use crate::lexer::{Lexer, Token};
 
-pub struct Scanner<'a> {
-    buffer: &'a str,
-    chars: Chars<'a>,
-    peeked: Option<char>,
+type Result<R> = std::result::Result<R, String>;
+type ParserResult = Result<()>;
+
+
+pub struct Scanner {
 }
 
-#[derive(Debug)]
-pub enum Token<'a> {
-    Semicolon,
-    Identifier(&'a str),
-    With,
-}
+impl Scanner {
 
-fn is_wordsep(c: Option<char>) -> bool {
-    match c {
-       None => true,
-       Some(' ') => true,
-       _         => false,
-    }
-}
-
-impl<'a> Scanner<'a> {
-    pub fn new(buffer: &'a str) -> Self {
-        let mut chars = buffer.chars();
-        let peeked = chars.next();
+    pub fn new() -> Self {
         Self {
-            buffer,
-            chars,
-            peeked,
         }
     }
 
-    /// Consumes bytes while a predicate evaluates to true.
-    /// Returns the substring read, and the next index after that substring
-    fn take_while<F>(data: &str, mut predicate: F) -> Result<(&str, usize)>
-        where F: FnMut(char) -> bool
-    {
-        let mut current_index = 0;
-        for c in data.chars() {
-            if !predicate(c) {
-                break;
-            }
-            current_index += c.len_utf8();
-        }
-        if current_index == 0 {
-            Err("No Matches".into())
-        } else {
-            Ok((&data[..current_index], current_index))
-        }
+    pub fn parse(&mut self, lex: &mut Lexer) -> ParserResult {
+        self.parse_file(lex)
     }
 
-
-    fn next_word(&mut self) -> &'a str {
-
+    /// Parse a whole file
+    fn parse_file(&mut self, lex: &mut Lexer) -> ParserResult {
+        self.parse_with_clause(lex)
     }
 
-//    pub fn next_token(&mut self) -> Option<Token> {
-//        match self.peeked {
-//            None => None,
-//            Some('w') => {
-//                self.peeked = self.chars.next();
-//                if let Some('i') = self.peeker {
-//                    self.peeked = self.chars.next();
-//                    if let Some('t') = self.peeker {
-//                        self.peeked = self.chars.next();
-//                        if let Some('h') = self.peeker {
-//                            self.peeked = self.chars.next();
-//                            if is_wordsep(self.peeked) {
-//                                Some(Token::With)
-//                            }
-//                } else {
-//                    None
-//                }
-//            },
-//            Some(';') => Some(Token::Semicolon),
-//            _   => None,
-//        }
-//    }
-
+    /// Expect a with_clause
+    fn parse_with_clause(&mut self, lex: &mut Lexer) -> ParserResult {
+        match lex.next_token()? {
+            Token::With => {},
+            t => Err(format!("Expected WITH, got {:?}", t).to_string())?,
+        };
+        match lex.next_token()? {
+            Token::String(_) => {},
+            t => Err(format!("Expected STRING, got {:?}", t).to_string())?,
+        };
+        Ok(())
+    }
 }

@@ -1,17 +1,27 @@
 use std::path::Path;
 
+pub mod lexer;
 pub mod scanner;
 
-pub fn parse_gpr_file(path: &Path) -> std::io::Result<()> {
-    let buffer = std::fs::read_to_string(path)?;
-    let mut scan = scanner::Scanner::new(&buffer);
+pub fn parse_gpr_file(path: &Path) {
+    let buffer = std::fs::read_to_string(path);
+    match buffer {
+        Err(e) => {
+            println!("ERROR: {}", e);
+            return;
+        },
+        Ok(b) => {
+            let mut lex = lexer::Lexer::new(&b);
+            let mut scan = scanner::Scanner::new();
 
-    while let Some(token) = scan.next_token() {
-        println!("Token = {:?}", token);
-    }
-    Ok(())
+            match scan.parse(&mut lex) {
+                Err(e) => println!("ERROR: {}", e),
+                Ok(_)  => println!("SUCCESS"),
+            }
+        }
+    };
 }
 
-fn main() -> std::io::Result<()> {
-    parse_gpr_file(Path::new("data_server.gpr"))
+fn main() {
+    parse_gpr_file(Path::new("data_server.gpr"));
 }

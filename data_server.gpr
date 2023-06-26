@@ -1,4 +1,5 @@
-with "../../Atomic_Operations/atomic_operations.gpr";
+--  Comments
+with "../../Atomic_Operations/atomic_operations.gpr"; --  Dummy
 with "../../External/GNATCOLL/gnatcoll.gpr";
 with "../../External/GNATCOLL/gnatcoll_postgres.gpr";
 with "../../General/general.gpr";
