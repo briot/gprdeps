@@ -3,9 +3,10 @@ type Result<R> = std::result::Result<R, String>;
 pub struct Lexer<'a> {
     current: usize,
     buffer: &'a str,
+    peeked: Token,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Token {
     EOF,
     CloseParenthesis,
@@ -13,6 +14,7 @@ pub enum Token {
     Extends,
     For,
     Identifier(String),   // ??? Would be nice to reference the internal buffer
+    InvalidChar(char),
     Is,
     Minus,
     Null,
@@ -29,10 +31,13 @@ pub enum Token {
 
 impl<'a> Lexer<'a> {
     pub fn new(buffer: &'a str) -> Self {
-        Self {
+        let mut s = Self {
             current: 0,
             buffer,
-        }
+            peeked: Token::EOF,
+        };
+        _ = s.next_token();
+        s
     }
 
     /// Consumes one character
@@ -93,17 +98,24 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    /// Peek at the next item, without consuming it
+    pub fn peek(&self) -> Result<Token> {
+        Ok(self.peeked.clone())
+    }
+
+    /// Consume the next token in the stream
     pub fn next_token(&mut self) -> Result<Token> {
+        // Now load the next one
         loop {
-            let tk = match self.buffer[self.current..].chars().next() {
-                None      => Ok(Token::EOF),
-                Some('(') => { self.take('('); Ok(Token::OpenParenthesis) },
-                Some(')') => { self.take(')'); Ok(Token::CloseParenthesis) },
-                Some(';') => { self.take(';'); Ok(Token::Semicolon) },
+            let mut peeked = match self.buffer[self.current..].chars().next() {
+                None      => Token::EOF,
+                Some('(') => { self.take('('); Token::OpenParenthesis },
+                Some(')') => { self.take(')'); Token::CloseParenthesis },
+                Some(';') => { self.take(';'); Token::Semicolon },
                 Some('"') => {
                     self.take('"');  // discard opening quote
                     let s = self.take_until(|c| c == '"');
-                    Ok(Token::String(s.to_string()))
+                    Token::String(s.to_string())
                 },
                 Some('-') => {
                     if self.buffer[self.current..].starts_with("--") {
@@ -111,7 +123,7 @@ impl<'a> Lexer<'a> {
                         continue;
                     }
                     // ??? Could also be negative number
-                    Ok(Token::Minus)
+                    Token::Minus
                 },
                 Some(c) if c.is_whitespace() => {
                     let _ = self.take_while(|ch| ch.is_whitespace());
@@ -119,33 +131,35 @@ impl<'a> Lexer<'a> {
                 },
                 Some(c) if c.is_ascii_digit() => {
                     let s = self.take_while(|c| c.is_ascii_digit());
-                    Ok(Token::Number(s.parse::<i32>().unwrap()))
+                    Token::Number(s.parse::<i32>().unwrap())
                 },
                 Some(c) if c.is_alphanumeric() => {
                     match self.take_while(|c| c == '_' || c.is_alphanumeric()) {
                         // ??? Should check case insensitive
-                        "end"     => Ok(Token::End),
-                        "extends" => Ok(Token::Extends),
-                        "for"     => Ok(Token::For),
-                        "is"      => Ok(Token::Is),
-                        "package" => Ok(Token::Package),
-                        "project" => Ok(Token::Project),
-                        "null"    => Ok(Token::Null),
-                        "use"     => Ok(Token::Use),
-                        "with"    => Ok(Token::With),
-                        "when"    => Ok(Token::When),
-                        t         => Ok(Token::Identifier(t.to_string())),
+                        "end"     => Token::End,
+                        "extends" => Token::Extends,
+                        "for"     => Token::For,
+                        "is"      => Token::Is,
+                        "package" => Token::Package,
+                        "project" => Token::Project,
+                        "null"    => Token::Null,
+                        "use"     => Token::Use,
+                        "with"    => Token::With,
+                        "when"    => Token::When,
+                        t         => Token::Identifier(t.to_string()),
                     }
                 },
-                Some(c) => Err(format!("Invalid character {}", c)),
+                Some(c) => Token::InvalidChar(c),
             };
 
-            match &tk {
-                Err(e) => println!("ERROR: {}", e),
-                Ok(t)  => println!("{:?}", t),
+            std::mem::swap(&mut self.peeked, &mut peeked);
+
+            match &peeked {
+                Token::InvalidChar(c) => println!("ERROR: invalid character {}", c),
+                t => println!("{:?}", t),
             }
-            return tk;
-        };
+            return Ok(peeked);
+        }
     }
 
 }

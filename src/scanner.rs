@@ -49,7 +49,7 @@ impl Scanner {
     /// Parse a whole file
     fn parse_file(&mut self, lex: &mut Lexer) -> ParserResult {
         loop {
-            match lex.next_token()? {
+            match lex.peek()? {
                 Token::EOF     => return Ok(()),
                 Token::Project => self.parse_project_declaration(lex)?,
                 Token::With    => self.parse_with_clause(lex)?,
@@ -60,12 +60,14 @@ impl Scanner {
 
     /// Expect a with_clause
     fn parse_with_clause(&mut self, lex: &mut Lexer) -> ParserResult {
+        self.expect(lex, Token::With)?;
         let _path = self.expect_str(lex)?;
         self.expect(lex, Token::Semicolon)?;
         Ok(())
     }
 
     fn parse_project_declaration(&mut self, lex: &mut Lexer) -> ParserResult {
+        self.expect(lex, Token::Project)?;
         let name = self.expect_identifier(lex)?;
         self.parse_project_extension(lex)?;
         self.expect(lex, Token::Is)?;
