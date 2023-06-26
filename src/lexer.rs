@@ -3,11 +3,11 @@ type Result<R> = std::result::Result<R, String>;
 pub struct Lexer<'a> {
     current: usize,
     buffer: &'a str,
-    peeked: Token,
+    peeked: Token<'a>,
 }
 
 #[derive(Debug, PartialEq)]
-pub enum Token {
+pub enum Token<'a> {
     EOF,
     Ampersand,
     Arrow,
@@ -20,7 +20,7 @@ pub enum Token {
     End,
     Extends,
     For,
-    Identifier(String),   // ??? Would be nice to reference the internal buffer
+    Identifier(&'a str),
     InvalidChar(char),
     Is,
     Minus,
@@ -31,7 +31,7 @@ pub enum Token {
     Pipe,
     Project,
     Semicolon,
-    String(String),   //  Doesn't include the quotes themselves, but preserves "" for instance.
+    String(&'a str),   //  Doesn't include the quotes themselves, but preserves "" for instance.
     Tick,
     Use,
     When,
@@ -57,7 +57,7 @@ impl<'a> Lexer<'a> {
     /// Consumes chars while a predicate evaluates to true.  The first
     /// character is always accepted, so should have been tested by the caller
     /// first.
-    fn take_while<F>(&mut self, mut predicate: F) -> &str
+    fn take_while<F>(&mut self, mut predicate: F) -> &'a str
         where F: FnMut(char) -> bool
     {
         let start = self.current;
@@ -77,7 +77,7 @@ impl<'a> Lexer<'a> {
     /// Consume chars until the predicate evaluates to true.  The current
     /// character is always skipped, and the last character when the predicates
     /// is True is also consumed, but not included in the result.
-    fn take_until<F>(&mut self, mut predicate: F) -> &str
+    fn take_until<F>(&mut self, mut predicate: F) -> &'a str
         where F: FnMut(char) -> bool
     {
         let start = self.current;
@@ -108,12 +108,12 @@ impl<'a> Lexer<'a> {
     }
 
     /// Peek at the next item, without consuming it
-    pub fn peek(&self) -> &Token {
+    pub fn peek(&self) -> &Token<'a> {
         &self.peeked
     }
 
     /// Consume the next token in the stream
-    pub fn next_token(&mut self) -> Result<Token> {
+    pub fn next_token(&mut self) -> Result<Token<'a>> {
         // Now load the next one
         loop {
             let mut peeked = match self.buffer[self.current..].chars().next() {
@@ -132,7 +132,7 @@ impl<'a> Lexer<'a> {
                         Some(c)   => {self.take(c);   Token::InvalidChar(c) },
                         None      => Token::EOF,
                     }
-                }
+                },
                 Some('=') => {
                     self.take('=');
                     match self.buffer[self.current..].chars().next() {
@@ -144,7 +144,7 @@ impl<'a> Lexer<'a> {
                 Some('"') => {
                     self.take('"');  // discard opening quote
                     let s = self.take_until(|c| c == '"');
-                    Token::String(s.to_string())
+                    Token::String(s)
                 },
                 Some('-') => {
                     if self.buffer[self.current..].starts_with("--") {
@@ -176,7 +176,7 @@ impl<'a> Lexer<'a> {
                         "use"     => Token::Use,
                         "with"    => Token::With,
                         "when"    => Token::When,
-                        t         => Token::Identifier(t.to_string()),
+                        t         => Token::Identifier(t),
                     }
                 },
                 Some(c) => Token::InvalidChar(c),

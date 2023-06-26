@@ -26,7 +26,7 @@ impl Scanner {
 
     /// Consumes the next token from the lexer, and expects it to be a string,
     /// which is returned.
-    fn expect_str (&mut self, lex: &mut Lexer) -> Result<String> {
+    fn expect_str<'a> (&mut self, lex: &mut Lexer<'a>) -> Result<&'a str> {
         match lex.next_token()? {
             Token::String(s) => Ok(s),
             t => Err(format!("Expected STRING, got {:?}", t))?,
@@ -35,14 +35,14 @@ impl Scanner {
 
     /// Consumes the next token from the lexer, and expects it to be an identifier
     /// which is returned.
-    fn expect_identifier (&mut self, lex: &mut Lexer) -> Result<String> {
+    fn expect_identifier<'a> (&mut self, lex: &mut Lexer<'a>) -> Result<&'a str> {
         match lex.next_token()? {
             Token::Identifier(s) => Ok(s),
             t => Err(format!("Expected IDENTIFIER, got {:?}", t))?,
         }
     }
 
-    fn expect_variable_reference(&mut self, lex: &mut Lexer) -> Result<String> {
+    fn expect_variable_reference<'a>(&mut self, lex: &mut Lexer<'a>) -> Result<&'a str> {
         let mut varname = String::new();
         loop {
             match lex.next_token()? {
@@ -57,7 +57,7 @@ impl Scanner {
                 _          => break,
             }
         }
-        Ok(varname)
+        Ok("")
     }
 
     fn expect_attribute_reference(&mut self, lex: &mut Lexer) -> Result<String> {
