@@ -19,7 +19,7 @@ impl Scanner {
     fn expect(&mut self, lex: &mut Lexer, token: Token) -> ParserResult {
         let tk = lex.next_token()?;
         if tk != token {
-            return Err(format!("Expected {:?}, got {:?}", token, tk));
+            return Err(format!("Expected {}, got {}", token, tk));
         }
         Ok(())
     }
@@ -29,7 +29,7 @@ impl Scanner {
     fn expect_str<'a> (&mut self, lex: &mut Lexer<'a>) -> Result<&'a [u8]> {
         match lex.next_token()? {
             Token::String(s) => Ok(s),
-            t => Err(format!("Expected STRING, got {:?}", t))?,
+            t => Err(format!("Expected STRING, got {}", t))?,
         }
     }
 
@@ -38,7 +38,7 @@ impl Scanner {
     fn expect_identifier<'a> (&mut self, lex: &mut Lexer<'a>) -> Result<&'a [u8]> {
         match lex.next_token()? {
             Token::Identifier(s) => Ok(s),
-            t => Err(format!("Expected IDENTIFIER, got {:?}", t))?,
+            t => Err(format!("Expected IDENTIFIER, got {}", t))?,
         }
     }
 
@@ -47,7 +47,7 @@ impl Scanner {
         loop {
             match lex.next_token()? {
                 Token::Identifier(s) => varname.push_str(std::str::from_utf8(s).unwrap()),
-                tok  => Err(format!("Unexpected token {:?}", tok))?,
+                tok  => Err(format!("Unexpected token {}", tok))?,
             }
             match lex.peek() {
                 Token::Dot => { 
@@ -64,7 +64,7 @@ impl Scanner {
         let mut varname = String::new();
         match lex.next_token()? {
             Token::Identifier(s) => varname.push_str(std::str::from_utf8(s).unwrap()),
-            tok  => Err(format!("Unexpected token {:?}", tok))?,
+            tok  => Err(format!("Unexpected token {}", tok))?,
         }
         if *lex.peek() == Token::Dot {
             let _ = lex.next_token();
@@ -110,7 +110,7 @@ impl Scanner {
                 Token::EOF     => return Ok(()),
                 Token::Project => self.parse_project_declaration(lex)?,
                 Token::With    => self.parse_with_clause(lex)?,
-                t              => Err(format!("Unexpected {:?}", t).to_string())?,
+                t              => Err(format!("Unexpected {}", t).to_string())?,
             }
         }
     }
@@ -140,7 +140,7 @@ impl Scanner {
                 Token::Null => {},
                 Token::Case => self.parse_case_statement(lex)?,
                 Token::Package => self.parse_package_declaration(lex)?,
-                tok  => Err(format!("Unexpected token {:?}", tok))?,
+                tok  => Err(format!("Unexpected token {}", tok))?,
             }
         }
 
@@ -176,7 +176,7 @@ impl Scanner {
                 Token::For => self.parse_attribute_declaration(lex)?,
                 Token::Null => {},
                 Token::Case => self.parse_case_statement(lex)?,
-                tok  => Err(format!("Unexpected token {:?}", tok))?,
+                tok  => Err(format!("Unexpected token {}", tok))?,
             }
         }
 
@@ -206,7 +206,7 @@ impl Scanner {
                     loop {
                         match lex.next_token()? {
                             Token::String(_s) => {},
-                            tok  => Err(format!("Unexpected token {:?}", tok))?,
+                            tok  => Err(format!("Unexpected token {}", tok))?,
                         }
                         match lex.peek() {
                             Token::Pipe => {},
@@ -214,7 +214,7 @@ impl Scanner {
                                 let _ = lex.next_token();
                                 break;
                             }
-                            tok  => Err(format!("Unexpected token {:?}", tok))?,
+                            tok  => Err(format!("Unexpected token {}", tok))?,
                         }
                     }
 
@@ -227,7 +227,7 @@ impl Scanner {
                                 self.expect(lex, Token::Semicolon)?;
                             },
                             Token::Case => self.parse_case_statement(lex)?,
-                            tok  => Err(format!("Unexpected token {:?}", tok))?,
+                            tok  => Err(format!("Unexpected token {}", tok))?,
                         }
                     }
                 },
@@ -265,12 +265,12 @@ impl Scanner {
                         loop {
                             match lex.next_token()? {
                                 Token::String(_s) => {},
-                                tok  => Err(format!("Unexpected token {:?}", tok))?,
+                                tok  => Err(format!("Unexpected token {}", tok))?,
                            }
                             match lex.next_token()? {
                                 Token::CloseParenthesis => break,
                                 Token::Comma => {},
-                                tok  => Err(format!("Unexpected token {:?}", tok))?,
+                                tok  => Err(format!("Unexpected token {}", tok))?,
                            }
                         }
                     }
@@ -278,7 +278,7 @@ impl Scanner {
                 Token::Identifier(_prj_or_pkg_or_att) => {
                     let _att = self.expect_attribute_reference(lex)?;
                 },
-                tok  => Err(format!("Unexpected token {:?}", tok))?,
+                tok  => Err(format!("Unexpected token {}", tok))?,
             }
 
             if *lex.peek() != Token::Ampersand {
