@@ -1,6 +1,8 @@
 use std::path::{Path, PathBuf};
 use std::ffi::OsStr;
 
+pub mod errors;
+pub mod files;
 pub mod lexer;
 pub mod scanner;
 pub mod tokens;
@@ -24,8 +26,8 @@ pub fn find_gpr_files(path: &Path, list_of_files: &mut Vec<PathBuf>) {
 }
 
 pub fn parse_gpr_file(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    let buffer = std::fs::read_to_string(path)?;
-    let mut lex = lexer::Lexer::new(&buffer);
+    let file = files::File::new(path)?;
+    let mut lex = lexer::Lexer::new(&file);
     let mut scan = scanner::Scanner::new(&mut lex);
     scan.parse()?;
     Ok(())

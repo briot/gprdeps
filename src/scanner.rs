@@ -1,7 +1,7 @@
+use crate::errors::Result;
 use crate::lexer::Lexer;
 use crate::tokens::Token;
 
-type Result<R> = std::result::Result<R, String>;
 type ParserResult = Result<()>;
 
 
@@ -20,9 +20,9 @@ impl<'a> Scanner<'a> {
     /// Consumes the next token from the lexer, and expect it to be a specific
     /// token.  Raises an error otherwise.
     fn expect(&mut self, token: Token) -> ParserResult {
-        let tk = self.lex.next_token()?;
+        let tk = self.lex.next_token();
         if tk != token {
-            return Err(format!("Expected {}, got {}", token, tk));
+            return Err(self.lex.error(format!("Expected {}, got {}", token, tk)));
         }
         Ok(())
     }
@@ -30,27 +30,27 @@ impl<'a> Scanner<'a> {
     /// Consumes the next token from the lexer, and expects it to be a string,
     /// which is returned.
     fn expect_str(&mut self) -> Result<&'a [u8]> {
-        match self.lex.next_token()? {
+        match self.lex.next_token() {
             Token::String(s) => Ok(s),
-            t => Err(format!("Expected STRING, got {}", t))?,
+            t                => Err(self.lex.error(format!("Expected STRING, got {}", t))),
         }
     }
 
     /// Consumes the next token from the lexer, and expects it to be an identifier
     /// which is returned.
     fn expect_identifier(&mut self) -> Result<&'a [u8]> {
-        match self.lex.next_token()? {
+        match self.lex.next_token() {
             Token::Identifier(s) => Ok(s),
-            t => Err(format!("Expected IDENTIFIER, got {}", t))?,
+            t                    => Err(self.lex.error(format!("Expected IDENTIFIER, got {}", t))),
         }
     }
 
     fn expect_variable_reference(&mut self) -> Result<&'a [u8]> {
         let mut varname = String::new();
         loop {
-            match self.lex.next_token()? {
+            match self.lex.next_token() {
                 Token::Identifier(s) => varname.push_str(std::str::from_utf8(s).unwrap()),
-                tok  => Err(format!("Unexpected token {}", tok))?,
+                tok  => Err(self.lex.error(format!("Unexpected token {}", tok)))?,
             }
             match self.lex.peek() {
                 Token::Dot => { 
@@ -65,9 +65,9 @@ impl<'a> Scanner<'a> {
 
     fn expect_attribute_reference(&mut self) -> Result<String> {
         let mut varname = String::new();
-        match self.lex.next_token()? {
+        match self.lex.next_token() {
             Token::Identifier(s) => varname.push_str(std::str::from_utf8(s).unwrap()),
-            tok  => Err(format!("Unexpected token {}", tok))?,
+            tok  => Err(self.lex.error(format!("Unexpected token {}", tok)))?,
         }
         if *self.lex.peek() == Token::Dot {
             let _ = self.lex.next_token();
@@ -113,7 +113,7 @@ impl<'a> Scanner<'a> {
                 Token::EOF     => return Ok(()),
                 Token::Project => self.parse_project_declaration()?,
                 Token::With    => self.parse_with_clause()?,
-                t              => Err(format!("Unexpected {}", t).to_string())?,
+                t              => Err(self.lex.error(format!("Unexpected {}", t).to_string()))?,
             }
         }
     }
@@ -143,14 +143,14 @@ impl<'a> Scanner<'a> {
                 Token::Null => {},
                 Token::Case => self.parse_case_statement()?,
                 Token::Package => self.parse_package_declaration()?,
-                tok  => Err(format!("Unexpected token {}", tok))?,
+                tok  => Err(self.lex.error(format!("Unexpected token {}", tok)))?,
             }
         }
 
         self.expect(Token::End)?;
         let endname = self.expect_identifier()?;
         if name != endname {
-            return Err(format!("Expected endname {:?}, got {:?}", name, endname));
+            return Err(self.lex.error(format!("Expected endname {:?}, got {:?}", name, endname)));
         }
         self.expect(Token::Semicolon)?;
         Ok(())
@@ -179,14 +179,14 @@ impl<'a> Scanner<'a> {
                 Token::For => self.parse_attribute_declaration()?,
                 Token::Null => {},
                 Token::Case => self.parse_case_statement()?,
-                tok  => Err(format!("Unexpected token {}", tok))?,
+                tok  => Err(self.lex.error(format!("Unexpected token {}", tok)))?,
             }
         }
 
         self.expect(Token::End)?;
         let endname = self.expect_identifier()?;
         if name != endname {
-            return Err(format!("Expected endname {:?}, got {:?}", name, endname));
+            return Err(self.lex.error(format!("Expected endname {:?}, got {:?}", name, endname)));
         }
         self.expect(Token::Semicolon)?;
 
@@ -199,7 +199,7 @@ impl<'a> Scanner<'a> {
         self.expect(Token::Is)?;
 
         loop {
-            match self.lex.next_token()? {
+            match self.lex.next_token() {
                 Token::End => {
                     self.expect(Token::Case)?;
                     self.expect(Token::Semicolon)?;
@@ -207,9 +207,9 @@ impl<'a> Scanner<'a> {
                 },
                 Token::When => {
                     loop {
-                        match self.lex.next_token()? {
+                        match self.lex.next_token() {
                             Token::String(_s) => {},
-                            tok  => Err(format!("Unexpected token {}", tok))?,
+                            tok  => Err(self.lex.error(format!("Unexpected token {}", tok)))?,
                         }
                         match self.lex.peek() {
                             Token::Pipe => {},
@@ -217,7 +217,7 @@ impl<'a> Scanner<'a> {
                                 let _ = self.lex.next_token();
                                 break;
                             }
-                            tok  => Err(format!("Unexpected token {}", tok))?,
+                            tok  => Err(self.lex.error(format!("Unexpected token {}", tok)))?,
                         }
                     }
 
@@ -230,11 +230,11 @@ impl<'a> Scanner<'a> {
                                 self.expect(Token::Semicolon)?;
                             },
                             Token::Case => self.parse_case_statement()?,
-                            tok  => Err(format!("Unexpected token {}", tok))?,
+                            tok  => Err(self.lex.error(format!("Unexpected token {}", tok)))?,
                         }
                     }
                 },
-                tok  => Err(format!("Unexpected token {:?}", tok))?,
+                tok  => Err(self.lex.error(format!("Unexpected token {:?}", tok)))?,
             }
         }
 
@@ -260,20 +260,20 @@ impl<'a> Scanner<'a> {
                     let _strval = self.expect_str();
                 },
                 Token::OpenParenthesis => {
-                    let _ = self.lex.next_token()?;
+                    let _ = self.lex.next_token();
                     if *self.lex.peek() == Token::CloseParenthesis {
-                        let _ = self.lex.next_token()?;
+                        let _ = self.lex.next_token();
                         // Empty list
                     } else {
                         loop {
-                            match self.lex.next_token()? {
+                            match self.lex.next_token() {
                                 Token::String(_s) => {},
-                                tok  => Err(format!("Unexpected token {}", tok))?,
+                                tok  => Err(self.lex.error(format!("Unexpected token {}", tok)))?,
                            }
-                            match self.lex.next_token()? {
+                            match self.lex.next_token() {
                                 Token::CloseParenthesis => break,
                                 Token::Comma => {},
-                                tok  => Err(format!("Unexpected token {}", tok))?,
+                                tok  => Err(self.lex.error(format!("Unexpected token {}", tok)))?,
                            }
                         }
                     }
@@ -281,13 +281,13 @@ impl<'a> Scanner<'a> {
                 Token::Identifier(_prj_or_pkg_or_att) => {
                     let _att = self.expect_attribute_reference()?;
                 },
-                tok  => Err(format!("Unexpected token {}", tok))?,
+                tok  => Err(self.lex.error(format!("Unexpected token {}", tok)))?,
             }
 
             if *self.lex.peek() != Token::Ampersand {
                 break;
             }
-            let _ = self.lex.next_token()?;   // consume "&"
+            let _ = self.lex.next_token();   // consume "&"
         }
 
         self.expect(Token::Semicolon)?;

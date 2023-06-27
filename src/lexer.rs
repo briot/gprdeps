@@ -1,10 +1,6 @@
+use crate::errors::Error;
+use crate::files::File;
 use crate::tokens::Token;
-
-type Result<R> = std::result::Result<R, String>;
-
-fn is_whitespace(c: u8) -> bool {
-    matches!(c, b' ' | b'\t' | b'\n')
-}
 
 fn is_alphanumeric(c: u8) -> bool {
     matches!(c, b'0' ..= b'9' | b'A' ..= b'Z' | b'a' ..= b'z')
@@ -12,19 +8,27 @@ fn is_alphanumeric(c: u8) -> bool {
 
 pub struct Lexer<'a> {
     current: usize,
+    line: i32,
+    file: &'a File,
     buffer: &'a [u8],   // The file, as bytes.  All keywords are ASCII
     peeked: Token<'a>,
 }
 
 impl<'a> Lexer<'a> {
-    pub fn new(buffer: &'a str) -> Self {
+    pub fn new(file: &'a File) -> Self {
         let mut s = Self {
             current: 0,
-            buffer: buffer.as_bytes(),
+            line: 1,
+            file,
+            buffer: file.as_bytes(),
             peeked: Token::EOF,
         };
         _ = s.next_token();
         s
+    }
+
+    pub fn error(&self, msg: String) -> Error {
+        Error::new(self.file, self.line, msg)
     }
 
     /// Consumes one character
@@ -87,7 +91,7 @@ impl<'a> Lexer<'a> {
     }
 
     /// Consume the next token in the stream
-    pub fn next_token(&mut self) -> Result<Token<'a>> {
+    pub fn next_token(&mut self) -> Token<'a> {
         // Now load the next one
         loop {
             let mut peeked = match self.buffer.get(self.current) {
@@ -132,8 +136,13 @@ impl<'a> Lexer<'a> {
                         _ => Token::Minus,
                     }
                 },
-                Some(&c) if is_whitespace(c) => {
-                    let _ = self.take_while(is_whitespace);
+                Some(b'\n') => {
+                    self.take();
+                    self.line += 1;
+                    continue;
+                }
+                Some(b' ') | Some(b'\t') => {
+                    self.take();
                     continue;
                 },
                 Some(&c) if is_alphanumeric(c) => {
@@ -162,7 +171,7 @@ impl<'a> Lexer<'a> {
                 Token::InvalidChar(c) => println!("ERROR: invalid character {}", c),
                 t => println!("{}", t),
             }
-            return Ok(peeked);
+            return peeked;
         }
     }
 
