@@ -23,7 +23,7 @@ impl<'a> Lexer<'a> {
             buffer: file.as_bytes(),
             peeked: Token::new(TokenKind::EOF, 0),
         };
-        _ = s.next_token();
+        _ = s.next();
         s
     }
 
@@ -32,6 +32,7 @@ impl<'a> Lexer<'a> {
     }
 
     /// Consumes one character
+    #[inline]
     fn take(&mut self) {
         self.current += 1;
     }
@@ -89,14 +90,17 @@ impl<'a> Lexer<'a> {
     pub fn peek(&self) -> &TokenKind<'a> {
         &self.peeked.kind
     }
+}
+
+impl<'a> Iterator for Lexer<'a> {
+    type Item = Token<'a>;
 
     /// Consume the next token in the stream
-    pub fn next_token(&mut self) -> Token<'a> {
-        // Now load the next one
+    fn next(&mut self) -> Option<Self::Item> {
         loop {
             let start_line = self.line;
             let peeked = match self.buffer.get(self.current) {
-                None => TokenKind::EOF,
+                None       => TokenKind::EOF,
                 Some(b'(') => { self.take(); TokenKind::OpenParenthesis },
                 Some(b')') => { self.take(); TokenKind::CloseParenthesis },
                 Some(b';') => { self.take(); TokenKind::Semicolon },
@@ -108,7 +112,7 @@ impl<'a> Lexer<'a> {
                     self.take();
                     match self.buffer.get(self.current) {
                         Some(b'=') => {self.take(); TokenKind::Assign },
-                        None       => TokenKind::EOF,
+                        None       => return None,
                         _          => {self.take(); TokenKind::Colon },
                     }
                 },
@@ -173,14 +177,17 @@ impl<'a> Lexer<'a> {
             };
 
             let mut p = Token::new(peeked, start_line);
-
             std::mem::swap(&mut self.peeked, &mut p);
 
 //            match p.kind {
 //                TokenKind::InvalidChar(c) => println!("ERROR: invalid character {}", c),
 //                _ => println!("{}", p),
 //            }
-            return p;
+
+            return match p.kind {
+                TokenKind::EOF => None,
+                _              => Some(p),
+            };
         }
     }
 

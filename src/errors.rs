@@ -22,6 +22,16 @@ impl Error {
 impl std::error::Error for Error {
 }
 
+// impl<T> From<Option<T>> for Error {
+//     fn from(err: Option<T>) -> Self {
+//         Self {
+//             msg: "Unexpected end of file".to_owned(),
+//             line: 0,
+//             path: 0,
+//         }
+//     }
+// }
+
 impl std::fmt::Debug for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "Error({}:{} {})", self.path.display(), self.line, self.msg)
