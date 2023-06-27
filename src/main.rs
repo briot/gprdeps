@@ -35,7 +35,6 @@ pub fn parse_gpr_file(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
 
 pub fn parse_all(list_of_gpr: &Vec<PathBuf>) -> Result<(), Box<dyn std::error::Error>> {
     for gpr in list_of_gpr {
-        println!("Parsing {:?}", gpr);
         parse_gpr_file(gpr)?;
     }
     Ok(())

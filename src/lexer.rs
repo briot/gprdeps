@@ -1,6 +1,6 @@
 use crate::errors::Error;
 use crate::files::File;
-use crate::tokens::Token;
+use crate::tokens::{Token, TokenKind};
 
 fn is_alphanumeric(c: u8) -> bool {
     matches!(c, b'0' ..= b'9' | b'A' ..= b'Z' | b'a' ..= b'z')
@@ -21,7 +21,7 @@ impl<'a> Lexer<'a> {
             line: 1,
             file,
             buffer: file.as_bytes(),
-            peeked: Token::EOF,
+            peeked: Token::new(TokenKind::EOF, 0),
         };
         _ = s.next_token();
         s
@@ -62,7 +62,6 @@ impl<'a> Lexer<'a> {
         where F: FnMut(u8) -> bool
     {
         let start = self.current;
-        self.current += 1;  //  consume first character, always
 
         for c in self.current .. self.buffer.len() {
             if predicate(self.buffer[c]) {
@@ -79,6 +78,7 @@ impl<'a> Lexer<'a> {
         for c in self.current .. self.buffer.len() {
             if self.buffer[c] == b'\n' {
                 self.current = c + 1;
+                self.line += 1;
                 return;
             }
         }
@@ -86,43 +86,44 @@ impl<'a> Lexer<'a> {
     }
 
     /// Peek at the next item, without consuming it
-    pub fn peek(&self) -> &Token<'a> {
-        &self.peeked
+    pub fn peek(&self) -> &TokenKind<'a> {
+        &self.peeked.kind
     }
 
     /// Consume the next token in the stream
     pub fn next_token(&mut self) -> Token<'a> {
         // Now load the next one
         loop {
-            let mut peeked = match self.buffer.get(self.current) {
-                None => Token::EOF,
-                Some(b'(') => { self.take(); Token::OpenParenthesis },
-                Some(b')') => { self.take(); Token::CloseParenthesis },
-                Some(b';') => { self.take(); Token::Semicolon },
-                Some(b',') => { self.take(); Token::Comma },
-                Some(b'.') => { self.take(); Token::Dot },
-                Some(b'|') => { self.take(); Token::Pipe },
-                Some(b'&') => { self.take(); Token::Ampersand },
+            let start_line = self.line;
+            let peeked = match self.buffer.get(self.current) {
+                None => TokenKind::EOF,
+                Some(b'(') => { self.take(); TokenKind::OpenParenthesis },
+                Some(b')') => { self.take(); TokenKind::CloseParenthesis },
+                Some(b';') => { self.take(); TokenKind::Semicolon },
+                Some(b',') => { self.take(); TokenKind::Comma },
+                Some(b'.') => { self.take(); TokenKind::Dot },
+                Some(b'|') => { self.take(); TokenKind::Pipe },
+                Some(b'&') => { self.take(); TokenKind::Ampersand },
                 Some(b':') => {
                     self.take();
                     match self.buffer.get(self.current) {
-                        Some(b'=') => {self.take(); Token::Assign },
-                        Some(c)    => {self.take(); Token::InvalidChar(*c) },
-                        None       => Token::EOF,
+                        Some(b'=') => {self.take(); TokenKind::Assign },
+                        Some(c)    => {self.take(); TokenKind::InvalidChar(*c) },
+                        None       => TokenKind::EOF,
                     }
                 },
                 Some(b'=') => {
                     self.take();
                     match self.buffer.get(self.current) {
-                        Some(b'>') => { self.take(); Token::Arrow },
-                        _          => Token::Equal,
+                        Some(b'>') => { self.take(); TokenKind::Arrow },
+                        _          => TokenKind::Equal,
                     }
                 },
-                Some(b'\'') => { self.take(); Token::Tick },
+                Some(b'\'') => { self.take(); TokenKind::Tick },
                 Some(b'"') => {
                     self.take();  // discard opening quote
                     let s = self.take_until(|c| c == b'"');
-                    Token::String(s)
+                    TokenKind::String(s)
                 },
                 Some(b'-') => {
                     self.take();
@@ -133,7 +134,7 @@ impl<'a> Lexer<'a> {
                             continue;
                         },
                         // ??? Could also be negative number
-                        _ => Token::Minus,
+                        _ => TokenKind::Minus,
                     }
                 },
                 Some(b'\n') => {
@@ -148,30 +149,35 @@ impl<'a> Lexer<'a> {
                 Some(&c) if is_alphanumeric(c) => {
                     match self.take_while(|c| c == b'_' || is_alphanumeric(c)) {
                         // ??? Should check case insensitive
-                        b"case"    => Token::Case,
-                        b"end"     => Token::End,
-                        b"extends" => Token::Extends,
-                        b"for"     => Token::For,
-                        b"is"      => Token::Is,
-                        b"package" => Token::Package,
-                        b"project" => Token::Project,
-                        b"null"    => Token::Null,
-                        b"use"     => Token::Use,
-                        b"with"    => Token::With,
-                        b"when"    => Token::When,
-                        t          => Token::Identifier(t),
+                        b"aggregate" => TokenKind::Aggregate,
+                        b"case"      => TokenKind::Case,
+                        b"end"       => TokenKind::End,
+                        b"extends"   => TokenKind::Extends,
+                        b"for"       => TokenKind::For,
+                        b"is"        => TokenKind::Is,
+                        b"library"   => TokenKind::Library,
+                        b"package"   => TokenKind::Package,
+                        b"project"   => TokenKind::Project,
+                        b"renames"   => TokenKind::Renames,
+                        b"null"      => TokenKind::Null,
+                        b"use"       => TokenKind::Use,
+                        b"with"      => TokenKind::With,
+                        b"when"      => TokenKind::When,
+                        t            => TokenKind::Identifier(t),
                     }
                 },
-                Some(c) => Token::InvalidChar(*c),
+                Some(c) => TokenKind::InvalidChar(*c),
             };
 
-            std::mem::swap(&mut self.peeked, &mut peeked);
+            let mut p = Token::new(peeked, start_line);
 
-            match &peeked {
-                Token::InvalidChar(c) => println!("ERROR: invalid character {}", c),
-                t => println!("{}", t),
+            std::mem::swap(&mut self.peeked, &mut p);
+
+            match p.kind {
+                TokenKind::InvalidChar(c) => println!("ERROR: invalid character {}", c),
+                _ => println!("{}", p),
             }
-            return peeked;
+            return p;
         }
     }
 
