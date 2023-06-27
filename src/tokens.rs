@@ -70,3 +70,9 @@ impl<'a> std::fmt::Display for Token<'a> {
         write!(f, "{}:{}", self.kind, self.line)
     }
 }
+
+impl<'a> std::fmt::Debug for Token<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self)
+    }
+}

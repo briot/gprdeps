@@ -11,7 +11,7 @@ pub struct Lexer<'a> {
     line: i32,
     file: &'a File,
     buffer: &'a [u8],   // The file, as bytes.  All keywords are ASCII
-    peeked: Token<'a>,
+    peeked: Option<Token<'a>>,
 }
 
 impl<'a> Lexer<'a> {
@@ -21,7 +21,7 @@ impl<'a> Lexer<'a> {
             line: 1,
             file,
             buffer: file.as_bytes(),
-            peeked: Token::new(TokenKind::EOF, 0),
+            peeked: None,
         };
         _ = s.next();
         s
@@ -87,8 +87,8 @@ impl<'a> Lexer<'a> {
     }
 
     /// Peek at the next item, without consuming it
-    pub fn peek(&self) -> &TokenKind<'a> {
-        &self.peeked.kind
+    pub fn peek(&self) -> &Option<Token<'a>> {
+        &self.peeked
     }
 }
 
@@ -176,18 +176,13 @@ impl<'a> Iterator for Lexer<'a> {
                 Some(c) => TokenKind::InvalidChar(*c),
             };
 
-            let mut p = Token::new(peeked, start_line);
-            std::mem::swap(&mut self.peeked, &mut p);
-
-//            match p.kind {
-//                TokenKind::InvalidChar(c) => println!("ERROR: invalid character {}", c),
-//                _ => println!("{}", p),
-//            }
-
-            return match p.kind {
+            let mut p = match peeked {
                 TokenKind::EOF => None,
-                _              => Some(p),
+                _              => Some(Token::new(peeked, start_line)),
             };
+            std::mem::swap(&mut self.peeked, &mut p);
+            // println!("{:?}", p);
+            return p;
         }
     }
 
