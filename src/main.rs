@@ -3,22 +3,21 @@ use std::ffi::OsStr;
 
 pub mod lexer;
 pub mod scanner;
+pub mod tokens;
 
 pub fn find_gpr_files(path: &Path, list_of_files: &mut Vec<PathBuf>) {
     if let Ok(iter) = std::fs::read_dir(path) {
-        for entry in iter {
-            if let Ok(e) = entry {
-                let path = e.path();
-                match path.extension().and_then(OsStr::to_str) {
-                    Some("gpr") => list_of_files.push(path),
-                    _           => {
-                        if let Ok(meta) = std::fs::metadata(&path) {
-                            if meta.is_dir() {
-                                find_gpr_files(&path, list_of_files);
-                            }
+        for e in iter.flatten() {
+            let path = e.path();
+            match path.extension().and_then(OsStr::to_str) {
+                Some("gpr") => list_of_files.push(path),
+                _           => {
+                    if let Ok(meta) = std::fs::metadata(&path) {
+                        if meta.is_dir() {
+                            find_gpr_files(&path, list_of_files);
                         }
-                    },
-                }
+                    }
+                },
             }
         }
     }
@@ -27,15 +26,15 @@ pub fn find_gpr_files(path: &Path, list_of_files: &mut Vec<PathBuf>) {
 pub fn parse_gpr_file(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let buffer = std::fs::read_to_string(path)?;
     let mut lex = lexer::Lexer::new(&buffer);
-    let mut scan = scanner::Scanner::new();
-    scan.parse(&mut lex)?;
+    let mut scan = scanner::Scanner::new(&mut lex);
+    scan.parse()?;
     Ok(())
 }
 
 pub fn parse_all(list_of_gpr: &Vec<PathBuf>) -> Result<(), Box<dyn std::error::Error>> {
     for gpr in list_of_gpr {
         println!("Parsing {:?}", gpr);
-        parse_gpr_file(&gpr)?;
+        parse_gpr_file(gpr)?;
     }
     Ok(())
 }
@@ -43,8 +42,7 @@ pub fn parse_all(list_of_gpr: &Vec<PathBuf>) -> Result<(), Box<dyn std::error::E
 fn main() {
     let mut list_of_gpr: Vec<PathBuf> = vec![];
     find_gpr_files(Path::new("/home/briot/dbc/deepblue"), &mut list_of_gpr);
-    match parse_all(&list_of_gpr) {
-        Err(e) => println!("ERROR: {}", e),
-        _      => {}
+    if let Err(e) = parse_all(&list_of_gpr) {
+        println!("ERROR: {}", e);
     }
 }

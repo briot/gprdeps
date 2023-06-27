@@ -1,54 +1,6 @@
+use crate::tokens::Token;
+
 type Result<R> = std::result::Result<R, String>;
-
-pub struct Lexer<'a> {
-    current: usize,
-    buffer: &'a [u8],   // The file, as bytes.  All keywords are ASCII
-    peeked: Token<'a>,
-}
-
-#[derive(Debug, PartialEq)]
-pub enum Token<'a> {
-    EOF,
-    Ampersand,
-    Arrow,
-    Assign,
-    Case,
-    CloseParenthesis,
-    Comma,
-    Dot,
-    Equal,
-    End,
-    Extends,
-    For,
-    Identifier(&'a [u8]),
-    InvalidChar(u8),
-    Is,
-    Minus,
-    Null,
-    OpenParenthesis,
-    Package,
-    Pipe,
-    Project,
-    Semicolon,
-    String(&'a [u8]),   //  Doesn't include the quotes themselves, but preserves "" for instance.
-    Tick,
-    Use,
-    When,
-    With,
-}
-
-impl<'a> std::fmt::Display for Token<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Token::String(s) | Token::Identifier(s) =>
-                match std::str::from_utf8(s) {
-                    Err(_)  => write!(f, "String(invalid-utf8, {:?})", s),
-                    Ok(s)   => write!(f, "String({})", s),
-                },
-            _                => write!(f, "{:?}", self),
-        }
-    }
-}
 
 fn is_whitespace(c: u8) -> bool {
     matches!(c, b' ' | b'\t' | b'\n')
@@ -56,6 +8,12 @@ fn is_whitespace(c: u8) -> bool {
 
 fn is_alphanumeric(c: u8) -> bool {
     matches!(c, b'0' ..= b'9' | b'A' ..= b'Z' | b'a' ..= b'z')
+}
+
+pub struct Lexer<'a> {
+    current: usize,
+    buffer: &'a [u8],   // The file, as bytes.  All keywords are ASCII
+    peeked: Token<'a>,
 }
 
 impl<'a> Lexer<'a> {
