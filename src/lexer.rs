@@ -108,8 +108,8 @@ impl<'a> Lexer<'a> {
                     self.take();
                     match self.buffer.get(self.current) {
                         Some(b'=') => {self.take(); TokenKind::Assign },
-                        Some(c)    => {self.take(); TokenKind::InvalidChar(*c) },
                         None       => TokenKind::EOF,
+                        _          => {self.take(); TokenKind::Colon },
                     }
                 },
                 Some(b'=') => {
@@ -142,13 +142,14 @@ impl<'a> Lexer<'a> {
                     self.line += 1;
                     continue;
                 }
-                Some(b' ') | Some(b'\t') => {
+                Some(b' ') | Some(b'\t') | Some(b'\r') => {
                     self.take();
                     continue;
                 },
                 Some(&c) if is_alphanumeric(c) => {
                     match self.take_while(|c| c == b'_' || is_alphanumeric(c)) {
                         // ??? Should check case insensitive
+                        b"abstract"  => TokenKind::Abstract,
                         b"aggregate" => TokenKind::Aggregate,
                         b"case"      => TokenKind::Case,
                         b"end"       => TokenKind::End,
@@ -156,9 +157,11 @@ impl<'a> Lexer<'a> {
                         b"for"       => TokenKind::For,
                         b"is"        => TokenKind::Is,
                         b"library"   => TokenKind::Library,
+                        b"others"    => TokenKind::Others,
                         b"package"   => TokenKind::Package,
                         b"project"   => TokenKind::Project,
                         b"renames"   => TokenKind::Renames,
+                        b"type"      => TokenKind::Type,
                         b"null"      => TokenKind::Null,
                         b"use"       => TokenKind::Use,
                         b"with"      => TokenKind::With,
@@ -173,10 +176,10 @@ impl<'a> Lexer<'a> {
 
             std::mem::swap(&mut self.peeked, &mut p);
 
-            match p.kind {
-                TokenKind::InvalidChar(c) => println!("ERROR: invalid character {}", c),
-                _ => println!("{}", p),
-            }
+//            match p.kind {
+//                TokenKind::InvalidChar(c) => println!("ERROR: invalid character {}", c),
+//                _ => println!("{}", p),
+//            }
             return p;
         }
     }

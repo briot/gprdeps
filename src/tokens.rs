@@ -1,12 +1,14 @@
 #[derive(Debug, PartialEq)]
 pub enum TokenKind<'a> {
     EOF,
+    Abstract,
     Aggregate,
     Ampersand,
     Arrow,
     Assign,
     Case,
     CloseParenthesis,
+    Colon,
     Comma,
     Dot,
     Equal,
@@ -20,6 +22,7 @@ pub enum TokenKind<'a> {
     Minus,
     Null,
     OpenParenthesis,
+    Others,
     Package,
     Pipe,
     Project,
@@ -27,6 +30,7 @@ pub enum TokenKind<'a> {
     Semicolon,
     String(&'a [u8]),   //  Doesn't include the quotes themselves, but preserves "" for instance.
     Tick,
+    Type,
     Use,
     When,
     With,
@@ -35,10 +39,15 @@ pub enum TokenKind<'a> {
 impl<'a> std::fmt::Display for TokenKind<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            TokenKind::String(s) | TokenKind::Identifier(s) =>
+            TokenKind::String(s) =>
                 match std::str::from_utf8(s) {
                     Err(_)  => write!(f, "String(invalid-utf8, {:?})", s),
                     Ok(s)   => write!(f, "String({})", s),
+                },
+            TokenKind::Identifier(s) =>
+                match std::str::from_utf8(s) {
+                    Err(_)  => write!(f, "Identifier(invalid-utf8, {:?})", s),
+                    Ok(s)   => write!(f, "Identifier({})", s),
                 },
             _                => write!(f, "{:?}", self),
         }

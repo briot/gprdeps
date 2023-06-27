@@ -15,8 +15,18 @@ pub fn find_gpr_files(path: &Path, list_of_files: &mut Vec<PathBuf>) {
                 Some("gpr") => list_of_files.push(path),
                 _           => {
                     if let Ok(meta) = std::fs::metadata(&path) {
-                        if meta.is_dir() {
-                            find_gpr_files(&path, list_of_files);
+                        let name = path.as_os_str().to_str();
+                        if let Some(n) = name {
+                            if !n.ends_with("External/Ada_Web_Server/aws-dev")
+                               && !n.ends_with("External/GNATCOLL/gnatcoll-dev")
+                               && !n.ends_with("Packaging")
+                               && !n.ends_with("Compiler")
+                               && !n.ends_with(".dbc")
+                               && meta.is_dir()
+                               && !meta.is_symlink()
+                            {
+                                find_gpr_files(&path, list_of_files);
+                            }
                         }
                     }
                 },
