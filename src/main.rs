@@ -14,7 +14,7 @@ pub fn find_gpr_files(path: &Path, list_of_files: &mut Vec<PathBuf>) {
             match path.extension().and_then(OsStr::to_str) {
                 Some("gpr") => list_of_files.push(path),
                 _           => {
-                    if let Ok(meta) = std::fs::metadata(&path) {
+                    if let Ok(meta) = std::fs::symlink_metadata(&path) {
                         let name = path.as_os_str().to_str();
                         if let Some(n) = name {
                             if !n.ends_with("External/Ada_Web_Server/aws-dev")
@@ -47,6 +47,15 @@ pub fn parse_all(list_of_gpr: &Vec<PathBuf>) -> Result<(), Box<dyn std::error::E
     for gpr in list_of_gpr {
         parse_gpr_file(gpr)?;
     }
+
+//    let pool = threadpool::ThreadPool::new(1);
+//    for gpr in list_of_gpr {
+//        let gpr = gpr.clone();
+//        pool.execute(move || {
+//            let _ = parse_gpr_file(&gpr);
+//        });
+//    }
+//    pool.join();
     Ok(())
 }
 
