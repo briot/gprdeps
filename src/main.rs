@@ -3,16 +3,19 @@ use std::ffi::OsStr;
 
 pub mod errors;
 pub mod files;
+pub mod gpr;
 pub mod lexer;
 pub mod scanner;
 pub mod tokens;
+
+use crate::gpr::{Environment, GPR, GPRIndex};
 
 pub fn find_gpr_files(path: &Path, list_of_files: &mut Vec<PathBuf>) {
     if let Ok(iter) = std::fs::read_dir(path) {
         for e in iter.flatten() {
             let path = e.path();
             match path.extension().and_then(OsStr::to_str) {
-                Some("gpr") => list_of_files.push(path),
+                Some("gpr") => list_of_files.push(std::fs::canonicalize(path).unwrap()),
                 _           => {
                     if let Ok(meta) = std::fs::symlink_metadata(&path) {
                         let name = path.as_os_str().to_str();
@@ -35,17 +38,35 @@ pub fn find_gpr_files(path: &Path, list_of_files: &mut Vec<PathBuf>) {
     }
 }
 
-pub fn parse_gpr_file(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+pub fn parse_gpr_file(
+        path: &Path,
+        env: &Environment,
+        ) -> Result<GPR, Box<dyn std::error::Error>> {
     let file = files::File::new(path)?;
     let mut lex = lexer::Lexer::new(&file);
-    let mut scan = scanner::Scanner::new(&mut lex);
-    scan.parse()?;
-    Ok(())
+    let scan = scanner::Scanner::new(&mut lex);
+    let gpr = scan.parse(env)?;
+    println!("{}", gpr);
+    Ok(gpr)
 }
 
 pub fn parse_all(list_of_gpr: &Vec<PathBuf>) -> Result<(), Box<dyn std::error::Error>> {
+    let mut env = Environment::default();
+
+    // Prepare the indexes for the GPR files, so that we can later have the list of dependencies
+
     for gpr in list_of_gpr {
-        parse_gpr_file(gpr)?;
+        env.map.insert(
+            gpr.to_path_buf(),
+            env.gprs.len(),
+        );
+        env.gprs.push(None);
+    }
+
+    for gpr in list_of_gpr {
+        let g = parse_gpr_file(gpr, &env)?;
+        let idx: GPRIndex = env.map[g.path()];
+        env.gprs[idx] = Some(g);
     }
 
 //    let pool = threadpool::ThreadPool::new(1);

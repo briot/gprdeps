@@ -1,20 +1,28 @@
 use crate::errors::Result;
 use crate::lexer::Lexer;
 use crate::tokens::{Token, TokenKind};
+use crate::gpr::{Abstract, Aggregate, Environment, Library, GPR, RawGPR};
 
 type ParserResult = Result<()>;
 
-
 pub struct Scanner<'a> {
     lex: &'a mut Lexer<'a>,
+    gpr: RawGPR<'a>,
 }
 
 impl<'a> Scanner<'a> {
 
     pub fn new(lex: &'a mut Lexer<'a>) -> Self {
         Self {
+            gpr: RawGPR::default(),
             lex,
         }
+    }
+
+    pub fn parse(mut self, env: &Environment) -> Result<GPR> {
+        self.parse_file()?;
+        self.gpr.path = self.lex.path().to_path_buf();
+        Ok(GPR::new(env, self.gpr))
     }
 
     #[inline]
@@ -98,10 +106,6 @@ impl<'a> Scanner<'a> {
         Ok(varname)
     }
 
-    pub fn parse(&mut self) -> ParserResult {
-        self.parse_file()
-    }
-
     /// Parse a whole file
     fn parse_file(&mut self) -> ParserResult {
         loop {
@@ -116,7 +120,10 @@ impl<'a> Scanner<'a> {
     /// Expect a with_clause
     fn parse_with_clause(&mut self) -> ParserResult {
         self.expect(TokenKind::With)?;
-        let _path = self.expect_str()?;
+
+        let path = self.expect_str()?;
+        self.gpr.imported.push(path);
+
         self.expect(TokenKind::Semicolon)?;
         Ok(())
     }
@@ -124,19 +131,23 @@ impl<'a> Scanner<'a> {
     fn parse_project_declaration(&mut self) -> ParserResult {
         if let Some(Token {kind: TokenKind::Aggregate, .. }) = self.peek() {
             let _ = self.lex.next();  // consume "aggregate"
+            self.gpr.is_aggregate = Aggregate::IsAggregate;
         }
 
         if let Some(Token {kind: TokenKind::Library, .. }) = self.peek() {
             let _ = self.lex.next();  // consume "library"
+            self.gpr.is_library = Library::IsLibrary;
         }
 
         if let Some(Token {kind: TokenKind::Abstract, .. }) = self.peek() {
             let _ = self.lex.next();  // consume "abstract"
+            self.gpr.is_abstract = Abstract::IsAbstract;
         }
 
         self.expect(TokenKind::Project)?;
 
         let name = std::str::from_utf8(self.expect_identifier()?).unwrap();
+        self.gpr.name = name;
 
         if let Some(Token {kind: TokenKind::Extends, .. }) = self.peek() {
             self.parse_project_extension()?;

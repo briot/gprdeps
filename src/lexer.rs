@@ -31,6 +31,10 @@ impl<'a> Lexer<'a> {
         Error::new(self.file, self.line, msg)
     }
 
+    pub fn path(&self) -> &std::path::Path {
+        self.file.path()
+    }
+
     /// Consumes one character
     #[inline]
     fn take(&mut self) {
