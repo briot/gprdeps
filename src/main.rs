@@ -12,27 +12,34 @@ use crate::gpr::{Environment, GPR, GPRIndex};
 
 pub fn find_gpr_files(path: &Path, list_of_files: &mut Vec<PathBuf>) {
     if let Ok(iter) = std::fs::read_dir(path) {
-        for e in iter.flatten() {
-            let path = e.path();
-            match path.extension().and_then(OsStr::to_str) {
-                Some("gpr") => list_of_files.push(std::fs::canonicalize(path).unwrap()),
-                _           => {
-                    if let Ok(meta) = std::fs::symlink_metadata(&path) {
-                        let name = path.as_os_str().to_str();
-                        if let Some(n) = name {
-                            if !n.ends_with("External/Ada_Web_Server/aws-dev")
-                               && !n.ends_with("External/GNATCOLL/gnatcoll-dev")
-                               && !n.ends_with("Packaging")
-                               && !n.ends_with("Compiler")
-                               && !n.ends_with(".dbc")
-                               && meta.is_dir()
-                               && !meta.is_symlink()
-                            {
-                                find_gpr_files(&path, list_of_files);
+        for e in iter {
+            match e {
+                Ok(e) => {
+                    let path = e.path();
+                    match path.extension().and_then(OsStr::to_str) {
+                        Some("gpr") => list_of_files.push(std::fs::canonicalize(path).unwrap()),
+                        _ => {
+                            if let Ok(meta) = std::fs::symlink_metadata(&path) {
+                                let name = path.as_os_str().to_str();
+                                if let Some(n) = name {
+                                    if !n.ends_with("External/Ada_Web_Server/aws-dev")
+                                        && !n.ends_with("External/GNATCOLL/gnatcoll-dev")
+                                        && !n.ends_with("Packaging")
+                                        && !n.ends_with("Compiler")
+                                        && !n.ends_with(".dbc")
+                                        && meta.is_dir()
+                                        && !meta.is_symlink()
+                                    {
+                                        find_gpr_files(&path, list_of_files);
+                                    }
+                                }
                             }
                         }
                     }
                 },
+                Err(err) => {
+                   println!("Error {}", err);
+                }
             }
         }
     }
