@@ -14,18 +14,21 @@ impl Error {
             msg,
             line,
             path: file.path().to_owned(),
-
         }
     }
-
 }
 
-impl std::error::Error for Error {
-}
+impl std::error::Error for Error {}
 
 impl std::fmt::Debug for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Error({}:{} {})", self.path.display(), self.line, self.msg)
+        write!(
+            f,
+            "Error({}:{} {})",
+            self.path.display(),
+            self.line,
+            self.msg
+        )
     }
 }
 

@@ -1,14 +1,17 @@
-use std::path::{Path, PathBuf};
 use std::ffi::OsStr;
+use std::path::{Path, PathBuf};
 
+pub mod environment;
 pub mod errors;
+pub mod expressions;
 pub mod files;
 pub mod gpr;
 pub mod lexer;
 pub mod scanner;
 pub mod tokens;
 
-use crate::gpr::{Environment, GPR, GPRIndex};
+use crate::environment::{Environment, GPRIndex};
+use crate::gpr::GPR;
 
 pub fn find_gpr_files(path: &Path, list_of_files: &mut Vec<PathBuf>) {
     if let Ok(iter) = std::fs::read_dir(path) {
@@ -36,19 +39,16 @@ pub fn find_gpr_files(path: &Path, list_of_files: &mut Vec<PathBuf>) {
                             }
                         }
                     }
-                },
+                }
                 Err(err) => {
-                   println!("Error {}", err);
+                    println!("Error {}", err);
                 }
             }
         }
     }
 }
 
-pub fn parse_gpr_file(
-        path: &Path,
-        env: &Environment,
-        ) -> Result<GPR, Box<dyn std::error::Error>> {
+pub fn parse_gpr_file(path: &Path, env: &Environment) -> Result<GPR, Box<dyn std::error::Error>> {
     let file = files::File::new(path)?;
     let mut lex = lexer::Lexer::new(&file);
     let scan = scanner::Scanner::new(&mut lex);
@@ -63,10 +63,7 @@ pub fn parse_all(list_of_gpr: &Vec<PathBuf>) -> Result<(), Box<dyn std::error::E
     // Prepare the indexes for the GPR files, so that we can later have the list of dependencies
 
     for gpr in list_of_gpr {
-        env.map.insert(
-            gpr.to_path_buf(),
-            env.gprs.len(),
-        );
+        env.map.insert(gpr.to_path_buf(), env.gprs.len());
         env.gprs.push(None);
     }
 
@@ -76,14 +73,14 @@ pub fn parse_all(list_of_gpr: &Vec<PathBuf>) -> Result<(), Box<dyn std::error::E
         env.gprs[idx] = Some(g);
     }
 
-//    let pool = threadpool::ThreadPool::new(1);
-//    for gpr in list_of_gpr {
-//        let gpr = gpr.clone();
-//        pool.execute(move || {
-//            let _ = parse_gpr_file(&gpr);
-//        });
-//    }
-//    pool.join();
+    //    let pool = threadpool::ThreadPool::new(1);
+    //    for gpr in list_of_gpr {
+    //        let gpr = gpr.clone();
+    //        pool.execute(move || {
+    //            let _ = parse_gpr_file(&gpr);
+    //        });
+    //    }
+    //    pool.join();
     Ok(())
 }
 

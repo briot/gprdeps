@@ -1,9 +1,55 @@
+use crate::environment::Environment;
 use crate::errors::Result;
+use crate::gpr::GPR;
 use crate::lexer::Lexer;
 use crate::tokens::{Token, TokenKind};
-use crate::gpr::{Abstract, Aggregate, Environment, Library, GPR, RawGPR};
+
+// Could implement Deref to avoid the need for ".0" to access the bool
+#[derive(Default, Clone, Copy)]
+pub struct Abstract(bool);
+
+#[derive(Default, Clone, Copy)]
+pub struct Aggregate(bool);
+
+#[derive(Default, Clone, Copy)]
+pub struct Library(bool);
 
 type ParserResult = Result<()>;
+
+/// A GPR file that hasn't been processed yet.  All we store here is the info we extracted from the
+/// file itself, but we did not resolve paths, for instance.
+/// Such an object is only valid as long as the scanner that generates it, since it references
+/// memory from that scanner directly.
+pub struct RawGPR<'a> {
+    pub path: &'a std::path::Path,
+    pub name: &'a str,
+    pub is_abstract: Abstract,
+    pub is_aggregate: Aggregate,
+    pub is_library: Library,
+    pub imported: Vec<&'a [u8]>,
+}
+
+impl<'a> RawGPR<'a> {
+    /// Create a new, mostly unset, GPR file
+    pub fn new(path: &'a std::path::Path) -> Self {
+        Self {
+            path,
+            name: Default::default(),
+            is_abstract: Default::default(),
+            is_aggregate: Default::default(),
+            is_library: Default::default(),
+            imported: Default::default(),
+        }
+    }
+
+    /// Resolve relative paths
+    pub fn normalize_path(&self, path: &'a [u8]) -> std::path::PathBuf {
+        let relpath = std::str::from_utf8(path).unwrap();
+        let mut p = self.path.parent().unwrap().join(relpath);
+        p.set_extension("gpr");
+        std::fs::canonicalize(p).unwrap()
+    }
+}
 
 pub struct Scanner<'a> {
     lex: &'a mut Lexer<'a>,
@@ -11,17 +57,15 @@ pub struct Scanner<'a> {
 }
 
 impl<'a> Scanner<'a> {
-
     pub fn new(lex: &'a mut Lexer<'a>) -> Self {
         Self {
-            gpr: RawGPR::default(),
+            gpr: RawGPR::new(lex.path()),
             lex,
         }
     }
 
     pub fn parse(mut self, env: &Environment) -> Result<GPR> {
         self.parse_file()?;
-        self.gpr.path = self.lex.path().to_path_buf();
         Ok(GPR::new(env, self.gpr))
     }
 
@@ -41,7 +85,7 @@ impl<'a> Scanner<'a> {
         match self.lex.next() {
             Some(tk) if tk.kind == token => Ok(()),
             Some(tk) => self.error(format!("Expected {}, got {}", token, tk)),
-            None     => self.error("Unexpected end of file".into()),
+            None => self.error("Unexpected end of file".into()),
         }
     }
 
@@ -50,7 +94,10 @@ impl<'a> Scanner<'a> {
     fn expect_str(&mut self) -> Result<&'a [u8]> {
         match self.lex.next() {
             None => self.error("Unexpected end of file".into()),
-            Some(Token {kind: TokenKind::String(s), .. }) => Ok(s),
+            Some(Token {
+                kind: TokenKind::String(s),
+                ..
+            }) => Ok(s),
             Some(t) => self.error(format!("Expected String, got {}", t)),
         }
     }
@@ -60,7 +107,10 @@ impl<'a> Scanner<'a> {
     fn expect_identifier(&mut self) -> Result<&'a [u8]> {
         match self.lex.next() {
             None => self.error("Unexpected end of file".into()),
-            Some(Token {kind: TokenKind::Identifier(s), .. }) => Ok(s),
+            Some(Token {
+                kind: TokenKind::Identifier(s),
+                ..
+            }) => Ok(s),
             Some(t) => self.error(format!("Expected Identifier, got {}", t)),
         }
     }
@@ -70,20 +120,28 @@ impl<'a> Scanner<'a> {
         loop {
             match self.lex.next() {
                 None => self.error("Unexpected end of file".into())?,
-                Some(Token {kind: TokenKind::Project, .. }) => {
+                Some(Token {
+                    kind: TokenKind::Project,
+                    ..
+                }) => {
                     // e.g.  for source_dirs use project'source_dirs & ..
                     varname.push_str("project");
-                },
-                Some(Token {kind: TokenKind::Identifier(s), .. }) =>
-                    varname.push_str(std::str::from_utf8(s).unwrap()),
+                }
+                Some(Token {
+                    kind: TokenKind::Identifier(s),
+                    ..
+                }) => varname.push_str(std::str::from_utf8(s).unwrap()),
                 Some(t) => self.error(format!("Unexpected token {}", t))?,
             }
 
             match self.peek() {
-                Some(Token {kind: TokenKind::Dot, .. }) => { 
+                Some(Token {
+                    kind: TokenKind::Dot,
+                    ..
+                }) => {
                     let _ = self.lex.next();
                     varname.push('.');
-                },
+                }
                 _ => break,
             }
         }
@@ -93,13 +151,22 @@ impl<'a> Scanner<'a> {
     fn expect_attribute_reference(&mut self) -> Result<String> {
         let mut varname = self.expect_variable_reference()?;
 
-        if let Some(Token {kind: TokenKind::Tick, .. }) = self.peek() {   // attribute ref
+        if let Some(Token {
+            kind: TokenKind::Tick,
+            ..
+        }) = self.peek()
+        {
+            // attribute ref
             let _ = self.lex.next();
             let attname = self.expect_identifier()?;
             varname.push('\'');
             varname.push_str(std::str::from_utf8(attname).unwrap());
         }
-        if let Some(Token {kind: TokenKind::OpenParenthesis, .. }) = self.peek() {
+        if let Some(Token {
+            kind: TokenKind::OpenParenthesis,
+            ..
+        }) = self.peek()
+        {
             self.parse_arg_list()?;
         }
 
@@ -110,9 +177,12 @@ impl<'a> Scanner<'a> {
     fn parse_file(&mut self) -> ParserResult {
         loop {
             match self.peek() {
-                None                                     => return Ok(()),
-                Some(Token {kind: TokenKind::With, .. }) => self.parse_with_clause()?,
-                _                                        => self.parse_project_declaration()?,
+                None => return Ok(()),
+                Some(Token {
+                    kind: TokenKind::With,
+                    ..
+                }) => self.parse_with_clause()?,
+                _ => self.parse_project_declaration()?,
             }
         }
     }
@@ -129,19 +199,31 @@ impl<'a> Scanner<'a> {
     }
 
     fn parse_project_declaration(&mut self) -> ParserResult {
-        if let Some(Token {kind: TokenKind::Aggregate, .. }) = self.peek() {
-            let _ = self.lex.next();  // consume "aggregate"
-            self.gpr.is_aggregate = Aggregate::IsAggregate;
+        if let Some(Token {
+            kind: TokenKind::Aggregate,
+            ..
+        }) = self.peek()
+        {
+            let _ = self.lex.next(); // consume "aggregate"
+            self.gpr.is_aggregate = Aggregate(true);
         }
 
-        if let Some(Token {kind: TokenKind::Library, .. }) = self.peek() {
-            let _ = self.lex.next();  // consume "library"
-            self.gpr.is_library = Library::IsLibrary;
+        if let Some(Token {
+            kind: TokenKind::Library,
+            ..
+        }) = self.peek()
+        {
+            let _ = self.lex.next(); // consume "library"
+            self.gpr.is_library = Library(true);
         }
 
-        if let Some(Token {kind: TokenKind::Abstract, .. }) = self.peek() {
-            let _ = self.lex.next();  // consume "abstract"
-            self.gpr.is_abstract = Abstract::IsAbstract;
+        if let Some(Token {
+            kind: TokenKind::Abstract,
+            ..
+        }) = self.peek()
+        {
+            let _ = self.lex.next(); // consume "abstract"
+            self.gpr.is_abstract = Abstract(true);
         }
 
         self.expect(TokenKind::Project)?;
@@ -149,7 +231,11 @@ impl<'a> Scanner<'a> {
         let name = std::str::from_utf8(self.expect_identifier()?).unwrap();
         self.gpr.name = name;
 
-        if let Some(Token {kind: TokenKind::Extends, .. }) = self.peek() {
+        if let Some(Token {
+            kind: TokenKind::Extends,
+            ..
+        }) = self.peek()
+        {
             self.parse_project_extension()?;
         }
 
@@ -158,13 +244,34 @@ impl<'a> Scanner<'a> {
         loop {
             match self.peek() {
                 None => self.error("Unexpected end of file".into())?,
-                Some(Token {kind: TokenKind::End, ..}) => break,
-                Some(Token {kind: TokenKind::For, ..}) => self.parse_attribute_declaration()?,
-                Some(Token {kind: TokenKind::Null, ..}) => {},
-                Some(Token {kind: TokenKind::Case, ..}) => self.parse_case_statement()?,
-                Some(Token {kind: TokenKind::Package, ..}) => self.parse_package_declaration()?,
-                Some(Token {kind: TokenKind::Identifier(_), ..}) => self.parse_variable_definition()?,
-                Some(Token {kind: TokenKind::Type, ..}) => self.parse_type_definition()?,
+                Some(Token {
+                    kind: TokenKind::End,
+                    ..
+                }) => break,
+                Some(Token {
+                    kind: TokenKind::For,
+                    ..
+                }) => self.parse_attribute_declaration()?,
+                Some(Token {
+                    kind: TokenKind::Null,
+                    ..
+                }) => {}
+                Some(Token {
+                    kind: TokenKind::Case,
+                    ..
+                }) => self.parse_case_statement()?,
+                Some(Token {
+                    kind: TokenKind::Package,
+                    ..
+                }) => self.parse_package_declaration()?,
+                Some(Token {
+                    kind: TokenKind::Identifier(_),
+                    ..
+                }) => self.parse_variable_definition()?,
+                Some(Token {
+                    kind: TokenKind::Type,
+                    ..
+                }) => self.parse_type_definition()?,
                 Some(t) => self.error(format!("Unexpected token {}", t))?,
             }
         }
@@ -197,24 +304,45 @@ impl<'a> Scanner<'a> {
         self.expect(TokenKind::Package)?;
         let name = self.expect_identifier()?;
 
-        if let Some(Token {kind: TokenKind::Extends, .. }) = self.peek() {
+        if let Some(Token {
+            kind: TokenKind::Extends,
+            ..
+        }) = self.peek()
+        {
             self.expect(TokenKind::Extends)?;
             let _extended = self.expect_variable_reference()?;
         }
 
         match self.lex.next() {
             None => self.error("Unexpected end of file".into())?,
-            Some(Token {kind: TokenKind::Is, .. }) => {
+            Some(Token {
+                kind: TokenKind::Is,
+                ..
+            }) => {
                 loop {
                     match self.peek() {
                         None => self.error("Unexpected end of file".into())?,
-                        Some(Token {kind: TokenKind::End, ..}) => break,
-                        Some(Token {kind: TokenKind::For, ..}) => self.parse_attribute_declaration()?,
-                        Some(Token {kind: TokenKind::Null, ..}) => {},
-                        Some(Token {kind: TokenKind::Case, ..}) => self.parse_case_statement()?,
-                        Some(Token {kind: TokenKind::Identifier(_), ..}) =>
-                            self.parse_variable_definition()?,
-                        Some(t)  => self.error(format!("Unexpected token {}", t))?,
+                        Some(Token {
+                            kind: TokenKind::End,
+                            ..
+                        }) => break,
+                        Some(Token {
+                            kind: TokenKind::For,
+                            ..
+                        }) => self.parse_attribute_declaration()?,
+                        Some(Token {
+                            kind: TokenKind::Null,
+                            ..
+                        }) => {}
+                        Some(Token {
+                            kind: TokenKind::Case,
+                            ..
+                        }) => self.parse_case_statement()?,
+                        Some(Token {
+                            kind: TokenKind::Identifier(_),
+                            ..
+                        }) => self.parse_variable_definition()?,
+                        Some(t) => self.error(format!("Unexpected token {}", t))?,
                     }
                 }
 
@@ -223,10 +351,13 @@ impl<'a> Scanner<'a> {
                 if name != endname {
                     return self.error(format!("Expected endname {:?}, got {:?}", name, endname));
                 }
-            },
-            Some(Token {kind: TokenKind::Renames, .. }) => {
+            }
+            Some(Token {
+                kind: TokenKind::Renames,
+                ..
+            }) => {
                 let _orig = self.expect_variable_reference();
-            },
+            }
             Some(t) => self.error(format!("Unexpected {}", t))?,
         }
 
@@ -238,9 +369,13 @@ impl<'a> Scanner<'a> {
     fn parse_variable_definition(&mut self) -> ParserResult {
         let _name = self.expect_identifier()?;
 
-        if let Some(Token {kind: TokenKind::Colon, .. }) = self.peek() {
-            let _ = self.lex.next();  // consume ":"
-            let _type = self.expect_variable_reference()?;  // Could be qualified name
+        if let Some(Token {
+            kind: TokenKind::Colon,
+            ..
+        }) = self.peek()
+        {
+            let _ = self.lex.next(); // consume ":"
+            let _type = self.expect_variable_reference()?; // Could be qualified name
         }
 
         self.expect(TokenKind::Assign)?;
@@ -257,26 +392,44 @@ impl<'a> Scanner<'a> {
         loop {
             match self.lex.next() {
                 None => self.error("Unexpected end of file".into())?,
-                Some(Token {kind: TokenKind::End, .. }) => {
+                Some(Token {
+                    kind: TokenKind::End,
+                    ..
+                }) => {
                     self.expect(TokenKind::Case)?;
                     self.expect(TokenKind::Semicolon)?;
                     break;
-                },
-                Some(Token {kind: TokenKind::When, .. }) => {
+                }
+                Some(Token {
+                    kind: TokenKind::When,
+                    ..
+                }) => {
                     loop {
                         match self.lex.next() {
                             None => self.error("Unexpected end of file".into())?,
-                            Some(Token {kind: TokenKind::String(_s), .. }) => {},
-                            Some(Token {kind: TokenKind::Others, .. }) => {
+                            Some(Token {
+                                kind: TokenKind::String(_s),
+                                ..
+                            }) => {}
+                            Some(Token {
+                                kind: TokenKind::Others,
+                                ..
+                            }) => {
                                 self.expect(TokenKind::Arrow)?;
                                 break;
-                            },
+                            }
                             Some(t) => self.error(format!("Unexpected token {} in when", t))?,
                         }
                         match self.lex.next() {
                             None => self.error("Unexpected end of file".into())?,
-                            Some(Token {kind: TokenKind::Pipe, .. }) => {},
-                            Some(Token {kind: TokenKind::Arrow, .. }) => break,
+                            Some(Token {
+                                kind: TokenKind::Pipe,
+                                ..
+                            }) => {}
+                            Some(Token {
+                                kind: TokenKind::Arrow,
+                                ..
+                            }) => break,
                             Some(t) => self.error(format!("Unexpected token {}", t))?,
                         }
                     }
@@ -284,21 +437,33 @@ impl<'a> Scanner<'a> {
                     loop {
                         match self.peek() {
                             None => self.error("Unexpected end of file".into())?,
-                            Some(Token {kind: TokenKind::End | TokenKind::When, ..}) => break,
-                            Some(Token {kind: TokenKind::For, ..}) =>
-                                self.parse_attribute_declaration()?,
-                            Some(Token {kind: TokenKind::Null, ..}) => {
+                            Some(Token {
+                                kind: TokenKind::End | TokenKind::When,
+                                ..
+                            }) => break,
+                            Some(Token {
+                                kind: TokenKind::For,
+                                ..
+                            }) => self.parse_attribute_declaration()?,
+                            Some(Token {
+                                kind: TokenKind::Null,
+                                ..
+                            }) => {
                                 let _ = self.lex.next();
                                 self.expect(TokenKind::Semicolon)?;
-                            },
-                            Some(Token {kind: TokenKind::Case, ..}) =>
-                                self.parse_case_statement()?,
-                            Some(Token {kind: TokenKind::Identifier(_), ..}) =>
-                                self.parse_variable_definition()?,
-                            Some(t)  => self.error(format!("Unexpected token {}", t))?,
+                            }
+                            Some(Token {
+                                kind: TokenKind::Case,
+                                ..
+                            }) => self.parse_case_statement()?,
+                            Some(Token {
+                                kind: TokenKind::Identifier(_),
+                                ..
+                            }) => self.parse_variable_definition()?,
+                            Some(t) => self.error(format!("Unexpected token {}", t))?,
                         }
                     }
-                },
+                }
                 Some(t) => self.error(format!("Unexpected token {}", t))?,
             }
         }
@@ -309,26 +474,44 @@ impl<'a> Scanner<'a> {
     fn parse_arg_list(&mut self) -> ParserResult {
         self.expect(TokenKind::OpenParenthesis)?;
 
-        if let Some(Token {kind: TokenKind::Others, .. }) = self.peek() {
-            let _ = self.lex.next();  // consume "others"
+        if let Some(Token {
+            kind: TokenKind::Others,
+            ..
+        }) = self.peek()
+        {
+            let _ = self.lex.next(); // consume "others"
         } else {
             loop {
                 match self.peek() {
                     None => self.error("Unexpected end of file".into())?,
-                    Some(Token {kind: TokenKind::String(_), ..}) => {
+                    Some(Token {
+                        kind: TokenKind::String(_),
+                        ..
+                    }) => {
                         let _args = self.parse_string_expression();
-                    },
-                    Some(Token {kind: TokenKind::Identifier(_), ..}) => {
+                    }
+                    Some(Token {
+                        kind: TokenKind::Identifier(_),
+                        ..
+                    }) => {
                         let _id = self.expect_attribute_reference()?;
-                        if let Some(Token {kind: TokenKind::OpenParenthesis, .. }) = self.peek() {
+                        if let Some(Token {
+                            kind: TokenKind::OpenParenthesis,
+                            ..
+                        }) = self.peek()
+                        {
                             self.parse_arg_list()?;
                         }
-                    },
+                    }
                     Some(t) => self.error(format!("Unexpected token {}", t))?,
                 }
 
-                if let Some(Token {kind: TokenKind::Comma, .. }) = self.peek() {
-                    let _ = self.lex.next();  // consume ','
+                if let Some(Token {
+                    kind: TokenKind::Comma,
+                    ..
+                }) = self.peek()
+                {
+                    let _ = self.lex.next(); // consume ','
                 } else {
                     break;
                 }
@@ -342,18 +525,28 @@ impl<'a> Scanner<'a> {
         loop {
             match self.peek() {
                 None => self.error("Unexpected end of file".into())?,
-                Some(Token {kind: TokenKind::String(_), ..}) => {
-                    let _s = self.lex.next();  //  consume the string
-                },
-                Some(Token {kind: TokenKind::Identifier(_), ..}) => {
+                Some(Token {
+                    kind: TokenKind::String(_),
+                    ..
+                }) => {
+                    let _s = self.lex.next(); //  consume the string
+                }
+                Some(Token {
+                    kind: TokenKind::Identifier(_),
+                    ..
+                }) => {
                     // e.g.  for object_dir use "../" & shared'object_dir
                     let _s = self.expect_attribute_reference()?;
-                },
-                Some(t)    => self.error(format!("Unexpected token in string expression {}", t))?,
+                }
+                Some(t) => self.error(format!("Unexpected token in string expression {}", t))?,
             }
 
-            if let Some(Token {kind: TokenKind::Ampersand, .. }) = self.peek() {
-                let _ = self.lex.next();   // consume "&"
+            if let Some(Token {
+                kind: TokenKind::Ampersand,
+                ..
+            }) = self.peek()
+            {
+                let _ = self.lex.next(); // consume "&"
             } else {
                 break;
             }
@@ -365,34 +558,57 @@ impl<'a> Scanner<'a> {
         loop {
             match self.peek() {
                 None => self.error("Unexpected end of file".into())?,
-                Some(Token {kind: TokenKind::String(_), ..}) => {
+                Some(Token {
+                    kind: TokenKind::String(_),
+                    ..
+                }) => {
                     self.parse_string_expression()?;
-                },
-                Some(Token {kind: TokenKind::OpenParenthesis, ..}) => {
-                    let _ = self.lex.next();   // consume "("
-                    if let Some(Token {kind: TokenKind::CloseParenthesis, .. }) = self.peek() {
-                        let _ = self.lex.next();   //  consume ")"
-                        // Empty list
+                }
+                Some(Token {
+                    kind: TokenKind::OpenParenthesis,
+                    ..
+                }) => {
+                    let _ = self.lex.next(); // consume "("
+                    if let Some(Token {
+                        kind: TokenKind::CloseParenthesis,
+                        ..
+                    }) = self.peek()
+                    {
+                        let _ = self.lex.next(); //  consume ")"
+                                                 // Empty list
                     } else {
                         loop {
                             self.parse_string_expression()?;
                             match self.lex.next() {
                                 None => self.error("Unexpected end of file".into())?,
-                                Some(Token {kind: TokenKind::CloseParenthesis, .. }) => break,
-                                Some(Token {kind: TokenKind::Comma, .. }) => {},
+                                Some(Token {
+                                    kind: TokenKind::CloseParenthesis,
+                                    ..
+                                }) => break,
+                                Some(Token {
+                                    kind: TokenKind::Comma,
+                                    ..
+                                }) => {}
                                 Some(t) => self.error(format!("Unexpected token {}", t))?,
-                           }
+                            }
                         }
                     }
-                },
-                Some(Token {kind: TokenKind::Identifier(_) | TokenKind::Project, ..}) => {
+                }
+                Some(Token {
+                    kind: TokenKind::Identifier(_) | TokenKind::Project,
+                    ..
+                }) => {
                     let _att = self.expect_attribute_reference()?;
-                },
-                Some(t)  => self.error(format!("Unexpected token {}", t))?,
+                }
+                Some(t) => self.error(format!("Unexpected token {}", t))?,
             }
 
-            if let Some(Token {kind: TokenKind::Ampersand, .. }) = self.peek() {
-                let _ = self.lex.next();   // consume "&"
+            if let Some(Token {
+                kind: TokenKind::Ampersand,
+                ..
+            }) = self.peek()
+            {
+                let _ = self.lex.next(); // consume "&"
             } else {
                 break;
             }
@@ -404,7 +620,11 @@ impl<'a> Scanner<'a> {
         self.expect(TokenKind::For)?;
         let _attname = self.expect_str();
 
-        if let Some(Token {kind: TokenKind::OpenParenthesis, .. }) = self.peek() {
+        if let Some(Token {
+            kind: TokenKind::OpenParenthesis,
+            ..
+        }) = self.peek()
+        {
             self.expect(TokenKind::OpenParenthesis)?;
             let _index = self.expect_str();
             self.expect(TokenKind::CloseParenthesis)?;
