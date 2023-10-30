@@ -688,3 +688,68 @@ impl<'a> Scanner<'a> {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::environment::Environment;
+
+    fn do_check<F>(s: &str, check: F)
+       where F: FnOnce(crate::errors::Result<crate::scanner::RawGPR>)
+    {
+        let mut env = Environment::default();
+        let mut lex = crate::lexer::Lexer::new_from_string(s);
+        let scan = crate::scanner::Scanner::new(&mut lex);
+        check(scan.parse(&mut env.scenarios))
+    }
+
+    fn expect_error(s: &str, msg: &str) {
+        do_check(
+            s,
+            |g| {
+                match g {
+                    Err(e) => assert_eq!(e.msg, msg),
+                    Ok(_) => assert!(g.is_err(), "while parsing {}", s),
+                }
+            }
+        )
+    }
+
+    fn expect_success<F>(s: &str, check: F)
+       where F: FnOnce(&crate::scanner::RawGPR)
+    {
+        do_check(
+            s,
+            |g| {
+                match &g {
+                    Err(e) => assert!(
+                        g.is_ok(), "while parsing {}, got error {}", s, e.msg),
+                    Ok(g) => check(g),
+                }
+            }
+        )
+    }
+
+    #[test]
+    fn parse_errors() {
+        expect_error(
+            "project A is",
+            "Unexpected end of file",
+        );
+    }
+
+    #[test]
+    fn parse_external() {
+        expect_success(
+            "project A is
+                type Mode_Type is (\"debug\", \"optimize\", \"lto\");
+                Mode : Mode_Type := external (\"MODE\");
+            end A;",
+            |g| {
+                assert_eq!(
+                    g.types.keys().collect::<Vec<&&str>>(),
+                    vec![&"Mode_Type"]
+                );
+            },
+        );
+    }
+}
