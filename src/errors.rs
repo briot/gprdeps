@@ -1,19 +1,17 @@
-use crate::files::File;
-
 pub type Result<R> = std::result::Result<R, Error>;
 
 pub struct Error {
-    msg: String,
+    pub msg: String,
     path: std::path::PathBuf,
     line: i32,
 }
 
 impl Error {
-    pub fn new(file: &File, line: i32, msg: String) -> Self {
+    pub fn new(path: &std::path::Path, line: i32, msg: String) -> Self {
         Self {
             msg,
             line,
-            path: file.path().to_owned(),
+            path: path.to_owned(),
         }
     }
 }

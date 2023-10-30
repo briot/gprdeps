@@ -9,7 +9,7 @@ fn is_alphanumeric(c: u8) -> bool {
 pub struct Lexer<'a> {
     current: usize,
     line: i32,
-    file: &'a File,
+    path: &'a std::path::Path,
     buffer: &'a [u8], // The file, as bytes.  All keywords are ASCII
     peeked: Option<Token<'a>>,
 }
@@ -19,7 +19,7 @@ impl<'a> Lexer<'a> {
         let mut s = Self {
             current: 0,
             line: 1,
-            file,
+            path: file.path(),
             buffer: file.as_bytes(),
             peeked: None,
         };
@@ -27,12 +27,24 @@ impl<'a> Lexer<'a> {
         s
     }
 
+    pub fn new_from_string(str: &'a str) -> Self {
+        let mut s = Self {
+            current: 0,
+            line: 1,
+            path: std::path::Path::new("<memory>"),
+            buffer: str.as_bytes(),
+            peeked: None,
+        };
+        _ = s.next();
+        s
+    }
+
     pub fn error(&self, msg: String) -> Error {
-        Error::new(self.file, self.line, msg)
+        Error::new(self.path, self.line, msg)
     }
 
     pub fn path(&self) -> &'a std::path::Path {
-        self.file.path()
+        self.path
     }
 
     /// Consumes one character

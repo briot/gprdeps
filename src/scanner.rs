@@ -1,8 +1,8 @@
-use crate::environment::Environment;
 use crate::errors::Result;
-use crate::gpr::GPR;
 use crate::lexer::Lexer;
 use crate::tokens::{Token, TokenKind};
+use crate::rawexpr::RawExpr;
+use crate::scenarios::AllScenarios;
 
 // Could implement Deref to avoid the need for ".0" to access the bool
 #[derive(Default, Clone, Copy)]
@@ -16,10 +16,10 @@ pub struct Library(bool);
 
 type ParserResult = Result<()>;
 
-/// A GPR file that hasn't been processed yet.  All we store here is the info we extracted from the
-/// file itself, but we did not resolve paths, for instance.
-/// Such an object is only valid as long as the scanner that generates it, since it references
-/// memory from that scanner directly.
+/// A GPR file that hasn't been processed yet.  All we store here is the info we
+/// extracted from the file itself, but we did not resolve paths, for instance.
+/// Such an object is only valid as long as the scanner that generates it, since
+/// it references memory from that scanner directly.
 pub struct RawGPR<'a> {
     pub path: &'a std::path::Path,
     pub name: &'a str,
@@ -27,6 +27,7 @@ pub struct RawGPR<'a> {
     pub is_aggregate: Aggregate,
     pub is_library: Library,
     pub imported: Vec<&'a [u8]>,
+    pub types: std::collections::HashMap<&'a str, RawExpr>,
 }
 
 impl<'a> RawGPR<'a> {
@@ -39,6 +40,7 @@ impl<'a> RawGPR<'a> {
             is_aggregate: Default::default(),
             is_library: Default::default(),
             imported: Default::default(),
+            types: Default::default(),
         }
     }
 
@@ -64,9 +66,12 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    pub fn parse(mut self, env: &Environment) -> Result<GPR> {
-        self.parse_file()?;
-        Ok(GPR::new(env, self.gpr))
+    pub fn parse(
+        mut self,
+        scenarios: &mut AllScenarios,
+    ) -> Result<RawGPR<'a>> {
+        self.parse_file(scenarios)?;
+        Ok(self.gpr)
     }
 
     #[inline]
@@ -174,7 +179,7 @@ impl<'a> Scanner<'a> {
     }
 
     /// Parse a whole file
-    fn parse_file(&mut self) -> ParserResult {
+    fn parse_file(&mut self, scenarios: &mut AllScenarios) -> ParserResult {
         loop {
             match self.peek() {
                 None => return Ok(()),
@@ -182,7 +187,7 @@ impl<'a> Scanner<'a> {
                     kind: TokenKind::With,
                     ..
                 }) => self.parse_with_clause()?,
-                _ => self.parse_project_declaration()?,
+                _ => self.parse_project_declaration(scenarios)?,
             }
         }
     }
@@ -198,7 +203,10 @@ impl<'a> Scanner<'a> {
         Ok(())
     }
 
-    fn parse_project_declaration(&mut self) -> ParserResult {
+    fn parse_project_declaration(
+        &mut self,
+        scenarios: &mut AllScenarios,
+    ) -> ParserResult {
         if let Some(Token {
             kind: TokenKind::Aggregate,
             ..
@@ -271,7 +279,7 @@ impl<'a> Scanner<'a> {
                 Some(Token {
                     kind: TokenKind::Type,
                     ..
-                }) => self.parse_type_definition()?,
+                }) => self.parse_type_definition(scenarios)?,
                 Some(t) => self.error(format!("Unexpected token {}", t))?,
             }
         }
@@ -291,12 +299,28 @@ impl<'a> Scanner<'a> {
         Ok(())
     }
 
-    fn parse_type_definition(&mut self) -> ParserResult {
+    fn parse_type_definition(
+        &mut self,
+        scenarios: &mut AllScenarios,
+    ) -> ParserResult {
         self.expect(TokenKind::Type)?;
-        let _name = self.expect_identifier()?;
+        let name = self.expect_identifier()?;
         self.expect(TokenKind::Is)?;
-        self.parse_expression()?;
+        let expr = self.parse_expression()?;
         self.expect(TokenKind::Semicolon)?;
+
+        let n = std::str::from_utf8(name).unwrap();
+        println!("MANU type {} {:?}", n, expr);
+        self.gpr.types.insert(n, expr);
+
+//        let mut valid: Vec<String> = match expr {
+//            RawExpr::List(list) => {
+//            },
+//            _ => panic!("Expected a list of strings for {}", name),
+//        };
+//
+//        scenarios.try_add_variable(n, valid);
+
         Ok(())
     }
 
@@ -367,7 +391,8 @@ impl<'a> Scanner<'a> {
     }
 
     fn parse_variable_definition(&mut self) -> ParserResult {
-        let _name = self.expect_identifier()?;
+        let name = self.expect_identifier()?;
+        let mut typ: Option<String> = None;  //  qualified type name
 
         if let Some(Token {
             kind: TokenKind::Colon,
@@ -375,12 +400,20 @@ impl<'a> Scanner<'a> {
         }) = self.peek()
         {
             let _ = self.lex.next(); // consume ":"
-            let _type = self.expect_variable_reference()?; // Could be qualified name
+            typ = Some(self.expect_variable_reference()?);
         }
 
         self.expect(TokenKind::Assign)?;
-        self.parse_expression()?;
+        let e = self.parse_expression()?;
         self.expect(TokenKind::Semicolon)?;
+
+        match typ {
+            Some(t) => {
+                println!("MANU variable {} with type {} declared {:?}",
+                   std::str::from_utf8(name).unwrap(), t, e);
+            },
+            None => {},
+        }
         Ok(())
     }
 
@@ -521,24 +554,35 @@ impl<'a> Scanner<'a> {
         Ok(())
     }
 
-    fn parse_string_expression(&mut self) -> ParserResult {
+    /// Parse a string expression.  This could either be a static string,
+    ///     "value"
+    /// or an actual expression to build a string
+    ///     "value" & variable
+    fn parse_string_expression(&mut self) -> Result<RawExpr> {
+        let mut result = RawExpr::Empty;
         loop {
             match self.peek() {
                 None => self.error("Unexpected end of file".into())?,
                 Some(Token {
-                    kind: TokenKind::String(_),
+                    kind: TokenKind::String(s),
                     ..
                 }) => {
-                    let _s = self.lex.next(); //  consume the string
+                    result = result.ampersand(RawExpr::StaticString(
+                        std::str::from_utf8(s).unwrap().to_string())
+                    );
+                    let _ = self.lex.next();   //  consume the string
                 }
                 Some(Token {
                     kind: TokenKind::Identifier(_),
                     ..
                 }) => {
                     // e.g.  for object_dir use "../" & shared'object_dir
-                    let _s = self.expect_attribute_reference()?;
+                    let s = self.expect_attribute_reference()?;
+                    result = result.ampersand(RawExpr::Identifier(s));
                 }
-                Some(t) => self.error(format!("Unexpected token in string expression {}", t))?,
+                Some(t) =>
+                    self.error(format!(
+                        "Unexpected token in string expression {}", t))?,
             }
 
             if let Some(Token {
@@ -551,10 +595,11 @@ impl<'a> Scanner<'a> {
                 break;
             }
         }
-        Ok(())
+        Ok(result)
     }
 
-    fn parse_expression(&mut self) -> ParserResult {
+    fn parse_expression(&mut self) -> Result<RawExpr> {
+        let mut result = RawExpr::Empty;
         loop {
             match self.peek() {
                 None => self.error("Unexpected end of file".into())?,
@@ -562,12 +607,14 @@ impl<'a> Scanner<'a> {
                     kind: TokenKind::String(_),
                     ..
                 }) => {
-                    self.parse_string_expression()?;
+                    let r = self.parse_string_expression()?;
+                    result = result.ampersand(r);
                 }
                 Some(Token {
                     kind: TokenKind::OpenParenthesis,
                     ..
                 }) => {
+                    let mut list = RawExpr::List(vec![]);
                     let _ = self.lex.next(); // consume "("
                     if let Some(Token {
                         kind: TokenKind::CloseParenthesis,
@@ -578,7 +625,9 @@ impl<'a> Scanner<'a> {
                                                  // Empty list
                     } else {
                         loop {
-                            self.parse_string_expression()?;
+                            let s = self.parse_string_expression()?;
+                            list.append(s);
+
                             match self.lex.next() {
                                 None => self.error("Unexpected end of file".into())?,
                                 Some(Token {
@@ -593,12 +642,14 @@ impl<'a> Scanner<'a> {
                             }
                         }
                     }
+                    result = result.ampersand(list);
                 }
                 Some(Token {
                     kind: TokenKind::Identifier(_) | TokenKind::Project,
                     ..
                 }) => {
-                    let _att = self.expect_attribute_reference()?;
+                    let att = self.expect_attribute_reference()?;
+                    result = result.ampersand(RawExpr::Identifier(att));
                 }
                 Some(t) => self.error(format!("Unexpected token {}", t))?,
             }
@@ -613,7 +664,8 @@ impl<'a> Scanner<'a> {
                 break;
             }
         }
-        Ok(())
+
+        Ok(result)
     }
 
     fn parse_attribute_declaration(&mut self) -> ParserResult {
@@ -631,7 +683,7 @@ impl<'a> Scanner<'a> {
         }
 
         self.expect(TokenKind::Use)?;
-        self.parse_expression()?;
+        let _e = self.parse_expression()?;
         self.expect(TokenKind::Semicolon)?;
         Ok(())
     }

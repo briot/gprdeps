@@ -28,7 +28,7 @@ pub enum TokenKind<'a> {
     Project,
     Renames,
     Semicolon,
-    String(&'a [u8]), //  Doesn't include the quotes themselves, but preserves "" for instance.
+    String(&'a [u8]), //  Doesn't include surrounding quotes, but preserves ""
     Tick,
     Type,
     Use,
