@@ -7,6 +7,7 @@ pub mod files;
 pub mod findfile;
 pub mod gpr;
 pub mod lexer;
+pub mod rawgpr;
 pub mod rawexpr;
 pub mod scanner;
 pub mod scenarios;

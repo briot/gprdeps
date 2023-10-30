@@ -1,3 +1,5 @@
+use std::fmt::{Debug, Formatter, Error};
+
 /// An un-interpreted expression as read in the GPR file.
 pub enum RawExpr {
     Empty,
@@ -26,12 +28,9 @@ impl RawExpr {
     }
 }
 
-impl std::fmt::Debug for RawExpr {
+impl Debug for RawExpr {
 
-    fn fmt(
-        &self,
-        f: &mut std::fmt::Formatter<'_>,
-    ) -> std::result::Result<(), std::fmt::Error> {
+    fn fmt(&self, f: &mut Formatter<'_>,) -> Result<(), Error> {
         match self {
             RawExpr::Empty           => write!(f, "<empty>"),
             RawExpr::StaticString(s) => write!(f, "'{}'", s),

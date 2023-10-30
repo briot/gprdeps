@@ -2,56 +2,9 @@ use crate::errors::Result;
 use crate::lexer::Lexer;
 use crate::tokens::{Token, TokenKind};
 use crate::rawexpr::RawExpr;
-use crate::scenarios::AllScenarios;
-
-// Could implement Deref to avoid the need for ".0" to access the bool
-#[derive(Default, Clone, Copy)]
-pub struct Abstract(bool);
-
-#[derive(Default, Clone, Copy)]
-pub struct Aggregate(bool);
-
-#[derive(Default, Clone, Copy)]
-pub struct Library(bool);
+use crate::rawgpr::{RawGPR, ProjectDecl};
 
 type ParserResult = Result<()>;
-
-/// A GPR file that hasn't been processed yet.  All we store here is the info we
-/// extracted from the file itself, but we did not resolve paths, for instance.
-/// Such an object is only valid as long as the scanner that generates it, since
-/// it references memory from that scanner directly.
-pub struct RawGPR<'a> {
-    pub path: &'a std::path::Path,
-    pub name: &'a str,
-    pub is_abstract: Abstract,
-    pub is_aggregate: Aggregate,
-    pub is_library: Library,
-    pub imported: Vec<&'a [u8]>,
-    pub types: std::collections::HashMap<&'a str, RawExpr>,
-}
-
-impl<'a> RawGPR<'a> {
-    /// Create a new, mostly unset, GPR file
-    pub fn new(path: &'a std::path::Path) -> Self {
-        Self {
-            path,
-            name: Default::default(),
-            is_abstract: Default::default(),
-            is_aggregate: Default::default(),
-            is_library: Default::default(),
-            imported: Default::default(),
-            types: Default::default(),
-        }
-    }
-
-    /// Resolve relative paths
-    pub fn normalize_path(&self, path: &'a [u8]) -> std::path::PathBuf {
-        let relpath = std::str::from_utf8(path).unwrap();
-        let mut p = self.path.parent().unwrap().join(relpath);
-        p.set_extension("gpr");
-        std::fs::canonicalize(p).unwrap()
-    }
-}
 
 pub struct Scanner<'a> {
     lex: &'a mut Lexer<'a>,
@@ -66,11 +19,8 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    pub fn parse(
-        mut self,
-        scenarios: &mut AllScenarios,
-    ) -> Result<RawGPR<'a>> {
-        self.parse_file(scenarios)?;
+    pub fn parse(mut self) -> Result<RawGPR<'a>> {
+        self.parse_file()?;
         Ok(self.gpr)
     }
 
@@ -179,7 +129,7 @@ impl<'a> Scanner<'a> {
     }
 
     /// Parse a whole file
-    fn parse_file(&mut self, scenarios: &mut AllScenarios) -> ParserResult {
+    fn parse_file(&mut self) -> ParserResult {
         loop {
             match self.peek() {
                 None => return Ok(()),
@@ -187,7 +137,7 @@ impl<'a> Scanner<'a> {
                     kind: TokenKind::With,
                     ..
                 }) => self.parse_with_clause()?,
-                _ => self.parse_project_declaration(scenarios)?,
+                _ => self.parse_project_declaration()?,
             }
         }
     }
@@ -203,48 +153,39 @@ impl<'a> Scanner<'a> {
         Ok(())
     }
 
-    fn parse_project_declaration(
-        &mut self,
-        scenarios: &mut AllScenarios,
-    ) -> ParserResult {
-        if let Some(Token {
-            kind: TokenKind::Aggregate,
-            ..
-        }) = self.peek()
-        {
-            let _ = self.lex.next(); // consume "aggregate"
-            self.gpr.is_aggregate = Aggregate(true);
+    fn parse_project_declaration(&mut self) -> Result<ProjectDecl> {
+        let mut result: ProjectDecl = ProjectDecl::default();
+
+        loop {
+            match self.peek() {
+                None => self.error("Unexpected end of file".into())?,
+                Some(Token { kind: TokenKind::Aggregate, .. }) => {
+                    result.is_aggregate = true;
+                    let _ = self.lex.next(); // consume "aggregate"
+                },
+                Some(Token { kind: TokenKind::Library, .. }) => {
+                    result.is_library = true;
+                    let _ = self.lex.next(); // consume "library"
+                },
+                Some(Token { kind: TokenKind::Abstract, .. }) => {
+                    result.is_abstract = true;
+                    let _ = self.lex.next(); // consume "abstract"
+                },
+                Some(Token { kind: TokenKind::Project, .. }) => {
+                    break;
+                },
+                _ => { self.expect(TokenKind::Project)? },
+            }
         }
 
-        if let Some(Token {
-            kind: TokenKind::Library,
-            ..
-        }) = self.peek()
-        {
-            let _ = self.lex.next(); // consume "library"
-            self.gpr.is_library = Library(true);
-        }
-
-        if let Some(Token {
-            kind: TokenKind::Abstract,
-            ..
-        }) = self.peek()
-        {
-            let _ = self.lex.next(); // consume "abstract"
-            self.gpr.is_abstract = Abstract(true);
-        }
-
-        self.expect(TokenKind::Project)?;
-
-        let name = std::str::from_utf8(self.expect_identifier()?).unwrap();
-        self.gpr.name = name;
+        result.name = std::str::from_utf8(self.expect_identifier()?).unwrap();
 
         if let Some(Token {
             kind: TokenKind::Extends,
             ..
         }) = self.peek()
         {
-            self.parse_project_extension()?;
+            result.extends = Some(self.parse_project_extension()?);
         }
 
         self.expect(TokenKind::Is)?;
@@ -293,15 +234,14 @@ impl<'a> Scanner<'a> {
         Ok(())
     }
 
-    fn parse_project_extension(&mut self) -> ParserResult {
+    fn parse_project_extension(&mut self) -> Result<&str> {
         self.expect(TokenKind::Extends)?;
-        let _extended = self.expect_str()?;
-        Ok(())
+        Ok(std::str::from_utf8(self.expect_str()?).unwrap())
     }
 
     fn parse_type_definition(
         &mut self,
-        scenarios: &mut AllScenarios,
+        _scenarios: &mut AllScenarios,
     ) -> ParserResult {
         self.expect(TokenKind::Type)?;
         let name = self.expect_identifier()?;
@@ -310,17 +250,7 @@ impl<'a> Scanner<'a> {
         self.expect(TokenKind::Semicolon)?;
 
         let n = std::str::from_utf8(name).unwrap();
-        println!("MANU type {} {:?}", n, expr);
         self.gpr.types.insert(n, expr);
-
-//        let mut valid: Vec<String> = match expr {
-//            RawExpr::List(list) => {
-//            },
-//            _ => panic!("Expected a list of strings for {}", name),
-//        };
-//
-//        scenarios.try_add_variable(n, valid);
-
         Ok(())
     }
 

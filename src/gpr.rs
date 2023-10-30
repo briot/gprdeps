@@ -1,5 +1,5 @@
 use crate::environment::{Environment, GPRIndex};
-use crate::scanner::{Abstract, Aggregate, Library, RawGPR};
+use crate::rawgpr::{Abstract, Aggregate, Library, RawGPR};
 
 /// A specific GPR file
 /// Such an object is independent of the scanner that created it, though it needs an Environment
@@ -7,10 +7,11 @@ use crate::scanner::{Abstract, Aggregate, Library, RawGPR};
 pub struct GPR {
     path: std::path::PathBuf,
     name: String,
-    is_abstract: Abstract,
-    is_aggregate: Aggregate,
-    is_library: Library,
-    imported: Vec<GPRIndex>,
+    _is_abstract: Abstract,
+    _is_aggregate: Aggregate,
+    _is_library: Library,
+    _imported: Vec<GPRIndex>,
+    _types: std::collections::HashMap<String, Vec<String>>, // lower-cased name
 }
 
 impl GPR {
@@ -18,14 +19,15 @@ impl GPR {
         Self {
             path: raw.path.to_owned(),
             name: raw.name.to_string(),
-            is_abstract: raw.is_abstract,
-            is_aggregate: raw.is_aggregate,
-            is_library: raw.is_library,
-            imported: raw
+            _is_abstract: raw.is_abstract,
+            _is_aggregate: raw.is_aggregate,
+            _is_library: raw.is_library,
+            _imported: raw
                 .imported
                 .iter()
                 .map(|p| env.map[&raw.normalize_path(p)])
                 .collect(),
+            _types: Default::default(),
         }
     }
 
