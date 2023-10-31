@@ -2,7 +2,6 @@
 /// extracted from the file itself, but we did not resolve paths, for instance.
 /// Such an object is only valid as long as the scanner that generates it, since
 /// it references memory from that scanner directly.
-
 use crate::rawexpr::Statement;
 
 pub struct RawGPR<'a> {

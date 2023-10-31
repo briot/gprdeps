@@ -1,8 +1,9 @@
 use crate::errors::Result;
 use crate::lexer::Lexer;
 use crate::rawexpr::{
-    RawExpr, Statement, TypeDecl, PackageDecl, VariableDecl, CaseStmt,
-    WhenClause, VariableName, AttributeName, PROJECT, AttributeDecl};
+    AttributeDecl, AttributeName, CaseStmt, PackageDecl, RawExpr, Statement,
+    TypeDecl, VariableDecl, VariableName, WhenClause, PROJECT,
+};
 use crate::rawgpr::RawGPR;
 use crate::tokens::{Token, TokenKind};
 
@@ -87,7 +88,7 @@ impl<'a> Scanner<'a> {
                     ..
                 }) => {
                     result.name = std::str::from_utf8(s).unwrap().to_string();
-                },
+                }
                 Some(t) => self.error(format!("Unexpected token {}", t))?,
             }
 
@@ -201,7 +202,8 @@ impl<'a> Scanner<'a> {
             ..
         }) = self.peek()
         {
-            self.gpr.extends = Some(self.parse_project_extension()?.to_string());
+            self.gpr.extends =
+                Some(self.parse_project_extension()?.to_string());
         }
 
         self.expect(TokenKind::Is)?;
@@ -217,7 +219,8 @@ impl<'a> Scanner<'a> {
                     kind: TokenKind::For,
                     ..
                 }) => body.push(Statement::Attribute(
-                    self.parse_attribute_declaration()?)),
+                    self.parse_attribute_declaration()?,
+                )),
                 Some(Token {
                     kind: TokenKind::Null,
                     ..
@@ -246,7 +249,9 @@ impl<'a> Scanner<'a> {
         let endname = self.expect_identifier()?;
         if self.gpr.name.to_lowercase() != endname.to_lowercase() {
             return self.error(format!(
-                "Expected endname {}, got {:?}", self.gpr.name, endname));
+                "Expected endname {}, got {:?}",
+                self.gpr.name, endname
+            ));
         }
         self.expect(TokenKind::Semicolon)?;
 
@@ -303,9 +308,9 @@ impl<'a> Scanner<'a> {
                         Some(Token {
                             kind: TokenKind::For,
                             ..
-                        }) =>
-                            result.body.push(Statement::Attribute(
-                                self.parse_attribute_declaration()?)),
+                        }) => result.body.push(Statement::Attribute(
+                            self.parse_attribute_declaration()?,
+                        )),
                         Some(Token {
                             kind: TokenKind::Null,
                             ..
@@ -317,8 +322,12 @@ impl<'a> Scanner<'a> {
                         Some(Token {
                             kind: TokenKind::Identifier(_),
                             ..
-                        }) => result.body.push(self.parse_variable_definition()?),
-                        Some(t) => self.error(format!("Unexpected token {}", t))?,
+                        }) => {
+                            result.body.push(self.parse_variable_definition()?)
+                        }
+                        Some(t) => {
+                            self.error(format!("Unexpected token {}", t))?
+                        }
                     }
                 }
 
@@ -326,7 +335,9 @@ impl<'a> Scanner<'a> {
                 let endname = self.expect_identifier()?;
                 if result.name != endname {
                     return self.error(format!(
-                        "Expected endname {:?}, got {:?}", result.name, endname));
+                        "Expected endname {:?}, got {:?}",
+                        result.name, endname
+                    ));
                 }
             }
             Some(Token {
@@ -390,14 +401,15 @@ impl<'a> Scanner<'a> {
                     let mut when = WhenClause::default();
                     loop {
                         match self.lex.next() {
-                            None => self.error("Unexpected end of file".into())?,
+                            None => {
+                                self.error("Unexpected end of file".into())?
+                            }
                             Some(Token {
                                 kind: TokenKind::String(s),
                                 ..
-                            }) =>
-                                when.values.push(Some(
-                                    std::str::from_utf8(s).unwrap().to_string()
-                                )),
+                            }) => when.values.push(Some(
+                                std::str::from_utf8(s).unwrap().to_string(),
+                            )),
                             Some(Token {
                                 kind: TokenKind::Others,
                                 ..
@@ -407,10 +419,14 @@ impl<'a> Scanner<'a> {
                                 break;
                             }
                             Some(t) => self.error(format!(
-                                "Unexpected token {} in when", t))?,
+                                "Unexpected token {} in when",
+                                t
+                            ))?,
                         }
                         match self.lex.next() {
-                            None => self.error("Unexpected end of file".into())?,
+                            None => {
+                                self.error("Unexpected end of file".into())?
+                            }
                             Some(Token {
                                 kind: TokenKind::Pipe,
                                 ..
@@ -419,13 +435,17 @@ impl<'a> Scanner<'a> {
                                 kind: TokenKind::Arrow,
                                 ..
                             }) => break,
-                            Some(t) => self.error(format!("Unexpected token {}", t))?,
+                            Some(t) => {
+                                self.error(format!("Unexpected token {}", t))?
+                            }
                         }
                     }
 
                     loop {
                         match self.peek() {
-                            None => self.error("Unexpected end of file".into())?,
+                            None => {
+                                self.error("Unexpected end of file".into())?
+                            }
                             Some(Token {
                                 kind: TokenKind::End | TokenKind::When,
                                 ..
@@ -433,10 +453,9 @@ impl<'a> Scanner<'a> {
                             Some(Token {
                                 kind: TokenKind::For,
                                 ..
-                            }) =>
-                                when.body.push(Statement::Attribute(
-                                    self.parse_attribute_declaration()?
-                                )),
+                            }) => when.body.push(Statement::Attribute(
+                                self.parse_attribute_declaration()?,
+                            )),
                             Some(Token {
                                 kind: TokenKind::Null,
                                 ..
@@ -447,15 +466,16 @@ impl<'a> Scanner<'a> {
                             Some(Token {
                                 kind: TokenKind::Case,
                                 ..
-                            }) =>
-                                when.body.push(self.parse_case_statement()?),
+                            }) => when.body.push(self.parse_case_statement()?),
                             Some(Token {
                                 kind: TokenKind::Identifier(_),
                                 ..
-                            }) =>
-                                when.body.push(self.parse_variable_definition()?),
-                            Some(t) => self.error(format!(
-                                "Unexpected token {}", t))?,
+                            }) => when
+                                .body
+                                .push(self.parse_variable_definition()?),
+                            Some(t) => {
+                                self.error(format!("Unexpected token {}", t))?
+                            }
                         }
                     }
 
@@ -527,7 +547,7 @@ impl<'a> Scanner<'a> {
                     ..
                 }) => {
                     result = result.ampersand(RawExpr::StaticString(
-                        std::str::from_utf8(s).unwrap().to_string()
+                        std::str::from_utf8(s).unwrap().to_string(),
                     ));
                     let _ = self.lex.next(); //  consume the string
                 }
@@ -540,7 +560,9 @@ impl<'a> Scanner<'a> {
                     result = result.ampersand(RawExpr::Identifier(s));
                 }
                 Some(t) => self.error(format!(
-                    "Unexpected token in string expression {}", t))?,
+                    "Unexpected token in string expression {}",
+                    t
+                ))?,
             }
 
             if let Some(Token {
@@ -587,7 +609,9 @@ impl<'a> Scanner<'a> {
                             list.append(s);
 
                             match self.lex.next() {
-                                None => self.error("Unexpected end of file".into())?,
+                                None => {
+                                    self.error("Unexpected end of file".into())?
+                                }
                                 Some(Token {
                                     kind: TokenKind::CloseParenthesis,
                                     ..
@@ -596,7 +620,8 @@ impl<'a> Scanner<'a> {
                                     kind: TokenKind::Comma,
                                     ..
                                 }) => {}
-                                Some(t) => self.error(format!("Unexpected token {}", t))?,
+                                Some(t) => self
+                                    .error(format!("Unexpected token {}", t))?,
                             }
                         }
                     }
@@ -673,7 +698,9 @@ mod tests {
         F: FnOnce(&crate::scanner::RawGPR),
     {
         do_check(s, |g| match &g {
-            Err(e) => assert!(g.is_ok(), "while parsing {}, got error {}", s, e.msg),
+            Err(e) => {
+                assert!(g.is_ok(), "while parsing {}, got error {}", s, e.msg)
+            }
             Ok(g) => check(g),
         })
     }
@@ -691,10 +718,10 @@ mod tests {
                 Mode : Mode_Type := external (\"MODE\");
             end A;",
             |_g| {
-//                assert_eq!(g.types.keys().collect::<Vec<&&str>>(), vec![&"Mode_Type"]);
+                //                assert_eq!(g.types.keys().collect::<Vec<&&str>>(), vec![&"Mode_Type"]);
             },
         );
     }
 
-//    ... tests extends
+    //    ... tests extends
 }

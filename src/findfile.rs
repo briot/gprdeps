@@ -56,7 +56,9 @@ impl Iterator for FileFind {
                 Some(Ok(e)) => {
                     let path = e.path();
                     match path.extension().and_then(OsStr::to_str) {
-                        Some("gpr") => return Some(std::fs::canonicalize(path).unwrap()),
+                        Some("gpr") => {
+                            return Some(std::fs::canonicalize(path).unwrap())
+                        }
                         _ => {
                             if self.traverse_dir(&path) {
                                 self.pushdir(&path);

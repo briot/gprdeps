@@ -101,12 +101,18 @@ impl AllScenarios {
     /// Declares a new scenario variables and the list of all values it can
     /// accept.  If the variable is already declared, check that we are
     /// declaring the same set of values
-    pub fn try_add_variable(&mut self, name: &str, valid: Vec<&str>) -> Result<(), String> {
+    pub fn try_add_variable(
+        &mut self,
+        name: &str,
+        valid: Vec<&str>,
+    ) -> Result<(), String> {
         match self.variables.get(name) {
             None => {
                 println!("MANU found type {:?} {:?}", name, valid);
-                self.variables
-                    .insert(name.to_owned(), ScenarioVariable::new(name, valid));
+                self.variables.insert(
+                    name.to_owned(),
+                    ScenarioVariable::new(name, valid),
+                );
                 Ok(())
             }
             Some(oldvar) => {

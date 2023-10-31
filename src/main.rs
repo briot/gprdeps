@@ -17,7 +17,9 @@ pub mod tokens;
 use crate::environment::{Environment, GPRIndex};
 use crate::gpr::GPR;
 
-pub fn parse_all(path: &Path) -> Result<Environment, Box<dyn std::error::Error>> {
+pub fn parse_all(
+    path: &Path,
+) -> Result<Environment, Box<dyn std::error::Error>> {
     let mut env = Environment::default();
 
     // Prepare the indexes for the GPR files, so that we can later have the list

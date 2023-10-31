@@ -1,7 +1,6 @@
-/// The un-interpreted tree, as parsed from a GPR file
-
-use std::fmt::{Debug, Error, Formatter};
 use crate::lexer::Lexer;
+/// The un-interpreted tree, as parsed from a GPR file
+use std::fmt::{Debug, Error, Formatter};
 
 pub static PROJECT: &str = "project";
 
@@ -59,7 +58,7 @@ pub struct CaseStmt {
 
 #[derive(Debug, Default)]
 pub struct WhenClause {
-    pub values: Vec<Option<String>>,  // None is used for "others"
+    pub values: Vec<Option<String>>, // None is used for "others"
     pub body: Vec<Statement>,
 }
 
@@ -83,9 +82,9 @@ pub enum RawExpr {
     #[default]
     Empty,
     StaticString(String), //  doesn't include surrounding quotes
-    Identifier(AttributeName),   //  Could be "prj.pkg'attribute"
+    Identifier(AttributeName), //  Could be "prj.pkg'attribute"
     Ampersand((Box<RawExpr>, Box<RawExpr>)),
-    Comma((Box<RawExpr>, Box<RawExpr>)),  // argument lists
+    Comma((Box<RawExpr>, Box<RawExpr>)), // argument lists
     List(Vec<Box<RawExpr>>),
     FuncCall(FunctionCall),
 }
@@ -116,10 +115,7 @@ impl RawExpr {
     }
 
     /// Convert to a static string
-    pub fn to_static_str(
-        &self,
-        lex: &Lexer,
-    ) -> crate::errors::Result<String> {
+    pub fn to_static_str(&self, lex: &Lexer) -> crate::errors::Result<String> {
         match self {
             RawExpr::StaticString(s) => Ok(s.to_string()),
             _ => Err(lex.error("not a static string".into())),
@@ -132,11 +128,10 @@ impl RawExpr {
         lex: &Lexer,
     ) -> crate::errors::Result<Vec<String>> {
         match self {
-            RawExpr::List(list) =>
-                Ok(list.iter()
-                    .map(|e| e.to_static_str(lex))
-                    .collect::<crate::errors::Result<Vec<String>>>()?
-                ),
+            RawExpr::List(list) => Ok(list
+                .iter()
+                .map(|e| e.to_static_str(lex))
+                .collect::<crate::errors::Result<Vec<String>>>()?),
             _ => Err(lex.error("not a list of static strings".into())),
         }
     }
@@ -148,12 +143,15 @@ impl Debug for RawExpr {
             RawExpr::Empty => write!(f, "<empty>"),
             RawExpr::StaticString(s) => write!(f, "'{}'", s),
             RawExpr::Identifier(s) => write!(f, "{:?}", s),
-            RawExpr::Ampersand((left, right)) =>
-                write!(f, "{:?} & {:?}", left, right),
-            RawExpr::Comma((left, right)) =>
-                write!(f, "{:?}, {:?}", left, right),
-            RawExpr::FuncCall(c) =>
-                write!(f, "{:?} ({:?})", c.funcname, c.args),
+            RawExpr::Ampersand((left, right)) => {
+                write!(f, "{:?} & {:?}", left, right)
+            }
+            RawExpr::Comma((left, right)) => {
+                write!(f, "{:?}, {:?}", left, right)
+            }
+            RawExpr::FuncCall(c) => {
+                write!(f, "{:?} ({:?})", c.funcname, c.args)
+            }
             RawExpr::List(v) => write!(
                 f,
                 "({})",
