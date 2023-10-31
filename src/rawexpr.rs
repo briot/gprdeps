@@ -82,11 +82,10 @@ pub enum RawExpr {
     #[default]
     Empty,
     StaticString(String), //  doesn't include surrounding quotes
-    Identifier(AttributeName), //  Could be "prj.pkg'attribute"
+    AttributeOrFunc(AttributeName),
     Ampersand((Box<RawExpr>, Box<RawExpr>)),
     Comma((Box<RawExpr>, Box<RawExpr>)), // argument lists
     List(Vec<Box<RawExpr>>),
-    FuncCall(FunctionCall),
 }
 
 impl RawExpr {
@@ -142,15 +141,12 @@ impl Debug for RawExpr {
         match self {
             RawExpr::Empty => write!(f, "<empty>"),
             RawExpr::StaticString(s) => write!(f, "'{}'", s),
-            RawExpr::Identifier(s) => write!(f, "{:?}", s),
+            RawExpr::AttributeOrFunc(s) => write!(f, "{:?}", s),
             RawExpr::Ampersand((left, right)) => {
                 write!(f, "{:?} & {:?}", left, right)
             }
             RawExpr::Comma((left, right)) => {
                 write!(f, "{:?}, {:?}", left, right)
-            }
-            RawExpr::FuncCall(c) => {
-                write!(f, "{:?} ({:?})", c.funcname, c.args)
             }
             RawExpr::List(v) => write!(
                 f,

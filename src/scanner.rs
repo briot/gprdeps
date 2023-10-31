@@ -513,7 +513,7 @@ impl<'a> Scanner<'a> {
                         ..
                     }) => {
                         let s = self.expect_attribute_reference()?;
-                        result = result.comma(RawExpr::Identifier(s));
+                        result = result.comma(RawExpr::AttributeOrFunc(s));
                     }
                     Some(t) => self.error(format!("Unexpected token {}", t))?,
                 }
@@ -557,7 +557,7 @@ impl<'a> Scanner<'a> {
                 }) => {
                     // e.g.  for object_dir use "../" & shared'object_dir
                     let s = self.expect_attribute_reference()?;
-                    result = result.ampersand(RawExpr::Identifier(s));
+                    result = result.ampersand(RawExpr::AttributeOrFunc(s));
                 }
                 Some(t) => self.error(format!(
                     "Unexpected token in string expression {}",
@@ -632,7 +632,7 @@ impl<'a> Scanner<'a> {
                     ..
                 }) => {
                     let att = self.expect_attribute_reference()?;
-                    result = result.ampersand(RawExpr::Identifier(att));
+                    result = result.ampersand(RawExpr::AttributeOrFunc(att));
                 }
                 Some(t) => self.error(format!("Unexpected token {}", t))?,
             }
@@ -717,7 +717,9 @@ mod tests {
                 type Mode_Type is (\"debug\", \"optimize\", \"lto\");
                 Mode : Mode_Type := external (\"MODE\");
             end A;",
-            |_g| {
+            |g| {
+                println!("MANU {}  {:?}", g.name, g.body);
+                assert_eq!(false, true);
                 //                assert_eq!(g.types.keys().collect::<Vec<&&str>>(), vec![&"Mode_Type"]);
             },
         );
