@@ -2,7 +2,7 @@ use crate::gpr::GPR;
 use crate::scenarios::AllScenarios;
 
 #[derive(Clone, Copy)]
-pub struct GPRIndex(pub usize);  // index into Environment.gprs
+pub struct GPRIndex(pub usize); // index into Environment.gprs
 
 /// The whole set of gpr files
 #[derive(Default)]

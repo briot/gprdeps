@@ -1,5 +1,5 @@
 use crate::environment::{Environment, GPRIndex};
-use crate::rawgpr::{Abstract, Aggregate, Library, RawGPR};
+use crate::rawgpr::RawGPR;
 
 /// A specific GPR file
 /// Such an object is independent of the scanner that created it, though it needs an Environment
@@ -7,9 +7,9 @@ use crate::rawgpr::{Abstract, Aggregate, Library, RawGPR};
 pub struct GPR {
     path: std::path::PathBuf,
     name: String,
-    _is_abstract: Abstract,
-    _is_aggregate: Aggregate,
-    _is_library: Library,
+    _is_abstract: bool,
+    _is_aggregate: bool,
+    _is_library: bool,
     _imported: Vec<GPRIndex>,
     _types: std::collections::HashMap<String, Vec<String>>, // lower-cased name
 }

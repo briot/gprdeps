@@ -105,7 +105,7 @@ impl<'a> Lexer<'a> {
     }
 
     /// Peek at the next item, without consuming it
-    pub fn peek(&self) -> &Option<Token<'a>> {
+    pub fn peek(&self) -> &Option<Token> {
         &self.peeked
     }
 }

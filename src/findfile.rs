@@ -30,15 +30,16 @@ impl FileFind {
         let meta = std::fs::symlink_metadata(path);
         let n = path.as_os_str().to_str();
         match (meta, n) {
-            (Ok(meta), Some(n)) =>
+            (Ok(meta), Some(n)) => {
                 meta.is_dir()
-                && !meta.is_symlink()
-                && !n.ends_with("External/Ada_Web_Server/aws-dev")
-                && !n.ends_with("External/GNATCOLL/gnatcoll-dev")
-                && !n.ends_with("Packaging")
-                && !n.ends_with("Compiler")
-                && !n.ends_with(".dbc"),
-            _ => false
+                    && !meta.is_symlink()
+                    && !n.ends_with("External/Ada_Web_Server/aws-dev")
+                    && !n.ends_with("External/GNATCOLL/gnatcoll-dev")
+                    && !n.ends_with("Packaging")
+                    && !n.ends_with("Compiler")
+                    && !n.ends_with(".dbc")
+            }
+            _ => false,
         }
     }
 }

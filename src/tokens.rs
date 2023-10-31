@@ -1,4 +1,4 @@
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum TokenKind<'a> {
     EOF,
     Abstract,
@@ -52,6 +52,7 @@ impl<'a> std::fmt::Display for TokenKind<'a> {
     }
 }
 
+#[derive(Clone)]
 pub struct Token<'a> {
     line: i32,
     pub kind: TokenKind<'a>,

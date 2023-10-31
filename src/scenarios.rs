@@ -88,7 +88,6 @@
 ///            = (mode=debug) = s1     => src2/b.adb
 ///     s9|s10 = (mode=opt|lto,check=some|most) | (mode=opt|lto,check=none)
 ///            = (mode=opt|lto) = s2   => src3/b.adb
-
 use crate::scenario_variables::ScenarioVariable;
 
 pub struct Scenario(u16);
@@ -99,40 +98,33 @@ pub struct AllScenarios {
 }
 
 impl AllScenarios {
-
     /// Declares a new scenario variables and the list of all values it can
     /// accept.  If the variable is already declared, check that we are
     /// declaring the same set of values
-    pub fn try_add_variable(
-        &mut self,
-        name: &str,
-        valid: Vec<&str>,
-    ) -> Result<(), String> {
+    pub fn try_add_variable(&mut self, name: &str, valid: Vec<&str>) -> Result<(), String> {
         match self.variables.get(name) {
             None => {
                 println!("MANU found type {:?} {:?}", name, valid);
-                self.variables.insert(
-                    name.to_owned(),
-                    ScenarioVariable::new(name, valid),
-                );
+                self.variables
+                    .insert(name.to_owned(), ScenarioVariable::new(name, valid));
                 Ok(())
-            },
+            }
             Some(oldvar) => {
                 if oldvar.has_same_valid(&valid) {
                     Ok(())
                 } else {
                     Err(format!(
-                       "Variable {} already defined with another set of \
+                        "Variable {} already defined with another set of \
                         values (was {:?}, now {:?})",
                         name,
                         oldvar.list_valid(),
                         valid.join(", "),
-                    ).to_owned())
+                    )
+                    .to_owned())
                 }
             }
         }
     }
-
 }
 
 // impl Default for All_Scenarios {

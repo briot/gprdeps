@@ -1,18 +1,17 @@
 #[derive(Eq, PartialEq)]
 pub struct ScenarioVariable {
     name: String,
-    valid: Vec<String>,   // always sorted
+    valid: Vec<String>, // always sorted
 }
 
 impl ScenarioVariable {
-
     /// Create a new scenario variable and its list of valid values
     pub fn new(name: &str, valid: Vec<&str>) -> Self {
         let mut vs: Vec<String> = valid.iter().map(|s| s.to_string()).collect();
         vs.sort();
         ScenarioVariable {
-           name: name.to_owned(),
-           valid: vs,
+            name: name.to_owned(),
+            valid: vs,
         }
     }
 
@@ -26,12 +25,13 @@ impl ScenarioVariable {
     /// Show the list of valid values
     pub fn list_valid(&self) -> String {
         self.valid.join(", ")
-}
+    }
 }
 
 impl std::hash::Hash for ScenarioVariable {
     fn hash<H>(&self, state: &mut H)
-       where H: std::hash::Hasher
+    where
+        H: std::hash::Hasher,
     {
         self.name.hash(state)
     }
@@ -42,5 +42,3 @@ impl std::fmt::Display for ScenarioVariable {
         write!(f, "{}", self.name)
     }
 }
-
-

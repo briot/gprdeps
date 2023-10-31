@@ -7,19 +7,17 @@ pub mod files;
 pub mod findfile;
 pub mod gpr;
 pub mod lexer;
-pub mod rawgpr;
 pub mod rawexpr;
+pub mod rawgpr;
 pub mod scanner;
-pub mod scenarios;
 pub mod scenario_variables;
+pub mod scenarios;
 pub mod tokens;
 
 use crate::environment::{Environment, GPRIndex};
 use crate::gpr::GPR;
 
-pub fn parse_all(
-    path: &Path,
-) -> Result<Environment, Box<dyn std::error::Error>> {
+pub fn parse_all(path: &Path) -> Result<Environment, Box<dyn std::error::Error>> {
     let mut env = Environment::default();
 
     // Prepare the indexes for the GPR files, so that we can later have the list
@@ -36,7 +34,7 @@ pub fn parse_all(
         let file = files::File::new(path)?;
         let mut lex = lexer::Lexer::new(&file);
         let scan = scanner::Scanner::new(&mut lex);
-        let rawgpr = scan.parse(&mut env.scenarios)?;
+        let rawgpr = scan.parse()?;
         let gprfile = GPR::new(&env, rawgpr);
         env.gprs[idx.0] = Some(gprfile);
     }
