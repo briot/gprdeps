@@ -59,13 +59,13 @@ impl<'a> Scanner<'a> {
 
     /// Consumes the next token from the lexer, and expects it to be an identifier
     /// which is returned.
-    fn expect_identifier(&mut self) -> Result<&str> {
+    fn expect_identifier(&mut self) -> Result<String> {
         match self.lex.next() {
             None => self.error("Unexpected end of file".into()),
             Some(Token {
                 kind: TokenKind::Identifier(s),
                 ..
-            }) => Ok(std::str::from_utf8(s).unwrap()),
+            }) => Ok(std::str::from_utf8(s).unwrap().to_string()),
             Some(t) => self.error(format!("Expected Identifier, got {}", t)),
         }
     }
@@ -80,13 +80,13 @@ impl<'a> Scanner<'a> {
                     ..
                 }) => {
                     // e.g.  for source_dirs use project'source_dirs & ..
-                    result.name = &PROJECT;
+                    result.name = PROJECT.to_string();
                 }
                 Some(Token {
                     kind: TokenKind::Identifier(s),
                     ..
                 }) => {
-                    result.name = std::str::from_utf8(s).unwrap();
+                    result.name = std::str::from_utf8(s).unwrap().to_string();
                 },
                 Some(t) => self.error(format!("Unexpected token {}", t))?,
             }
@@ -98,8 +98,8 @@ impl<'a> Scanner<'a> {
                 }) => {
                     let _ = self.lex.next();
                     result.project = result.package;
-                    result.package = result.name;
-                    result.name = "";
+                    result.package = Some(result.name);
+                    result.name = String::new();
                 }
                 _ => break,
             }
@@ -156,7 +156,7 @@ impl<'a> Scanner<'a> {
         self.expect(TokenKind::With)?;
 
         let path = self.expect_str()?;
-        self.gpr.imported.push(path);
+        self.gpr.imported.push(path.to_string());
 
         self.expect(TokenKind::Semicolon)?;
         Ok(())
@@ -164,6 +164,7 @@ impl<'a> Scanner<'a> {
 
     /// Parses the declaration of the project, directly into self.gpr
     fn parse_project_declaration(&mut self) -> Result<()> {
+        let mut body = vec![];
         loop {
             match self.peek() {
                 None => self.error("Unexpected end of file".into())?,
@@ -188,16 +189,11 @@ impl<'a> Scanner<'a> {
                     self.gpr.is_abstract = true;
                     let _ = self.lex.next(); // consume "abstract"
                 }
-                Some(Token {
-                    kind: TokenKind::Project,
-                    ..
-                }) => {
-                    break;
-                }
-                _ => self.expect(TokenKind::Project)?,
+                _ => break,
             }
         }
 
+        self.expect(TokenKind::Project)?;
         self.gpr.name = self.expect_identifier()?;
 
         if let Some(Token {
@@ -205,7 +201,7 @@ impl<'a> Scanner<'a> {
             ..
         }) = self.peek()
         {
-            self.gpr.extends = Some(self.parse_project_extension()?);
+            self.gpr.extends = Some(self.parse_project_extension()?.to_string());
         }
 
         self.expect(TokenKind::Is)?;
@@ -220,7 +216,7 @@ impl<'a> Scanner<'a> {
                 Some(Token {
                     kind: TokenKind::For,
                     ..
-                }) => self.gpr.body.push(Statement::Attribute(
+                }) => body.push(Statement::Attribute(
                     self.parse_attribute_declaration()?)),
                 Some(Token {
                     kind: TokenKind::Null,
@@ -229,19 +225,19 @@ impl<'a> Scanner<'a> {
                 Some(Token {
                     kind: TokenKind::Case,
                     ..
-                }) => self.gpr.body.push(self.parse_case_statement()?),
+                }) => body.push(self.parse_case_statement()?),
                 Some(Token {
                     kind: TokenKind::Package,
                     ..
-                }) => self.gpr.body.push(self.parse_package_declaration()?),
+                }) => body.push(self.parse_package_declaration()?),
                 Some(Token {
                     kind: TokenKind::Identifier(_),
                     ..
-                }) => self.gpr.body.push(self.parse_variable_definition()?),
+                }) => body.push(self.parse_variable_definition()?),
                 Some(Token {
                     kind: TokenKind::Type,
                     ..
-                }) => self.gpr.body.push(self.parse_type_definition()?),
+                }) => body.push(self.parse_type_definition()?),
                 Some(t) => self.error(format!("Unexpected token {}", t))?,
             }
         }
@@ -250,15 +246,17 @@ impl<'a> Scanner<'a> {
         let endname = self.expect_identifier()?;
         if self.gpr.name.to_lowercase() != endname.to_lowercase() {
             return self.error(format!(
-                "Expected endname {:?}, got {:?}", self.gpr.name, endname));
+                "Expected endname {}, got {:?}", self.gpr.name, endname));
         }
         self.expect(TokenKind::Semicolon)?;
+
+        self.gpr.body = body;
         Ok(())
     }
 
     fn parse_project_extension(&mut self) -> Result<&str> {
         self.expect(TokenKind::Extends)?;
-        Ok(self.expect_str()?)
+        self.expect_str()
     }
 
     fn parse_type_definition(&mut self) -> Result<Statement> {
@@ -270,7 +268,7 @@ impl<'a> Scanner<'a> {
 
         Ok(Statement::Type(TypeDecl {
             typename,
-            valid: expr.to_static_list(&self.lex)?,
+            valid: expr.to_static_list(self.lex)?,
         }))
     }
 
@@ -346,8 +344,10 @@ impl<'a> Scanner<'a> {
     }
 
     fn parse_variable_definition(&mut self) -> Result<Statement> {
-        let mut result = VariableDecl::default();
-        result.name = self.expect_identifier()?;
+        let mut result = VariableDecl {
+            name: self.expect_identifier()?,
+            ..Default::default()
+        };
 
         if let Some(Token {
             kind: TokenKind::Colon,
@@ -396,7 +396,7 @@ impl<'a> Scanner<'a> {
                                 ..
                             }) =>
                                 when.values.push(Some(
-                                    std::str::from_utf8(s).unwrap()
+                                    std::str::from_utf8(s).unwrap().to_string()
                                 )),
                             Some(Token {
                                 kind: TokenKind::Others,
@@ -527,7 +527,7 @@ impl<'a> Scanner<'a> {
                     ..
                 }) => {
                     result = result.ampersand(RawExpr::StaticString(
-                        std::str::from_utf8(s).unwrap()
+                        std::str::from_utf8(s).unwrap().to_string()
                     ));
                     let _ = self.lex.next(); //  consume the string
                 }
@@ -630,7 +630,7 @@ impl<'a> Scanner<'a> {
         let mut result = AttributeDecl::default();
 
         self.expect(TokenKind::For)?;
-        result.name = self.expect_str()?;
+        result.name = self.expect_str()?.to_string();
 
         if let Some(Token {
             kind: TokenKind::OpenParenthesis,
@@ -638,7 +638,7 @@ impl<'a> Scanner<'a> {
         }) = self.peek()
         {
             self.expect(TokenKind::OpenParenthesis)?;
-            result.index = Some(self.expect_str()?);
+            result.index = Some(self.expect_str()?.to_string());
             self.expect(TokenKind::CloseParenthesis)?;
         }
 
@@ -651,13 +651,11 @@ impl<'a> Scanner<'a> {
 
 #[cfg(test)]
 mod tests {
-    use crate::environment::Environment;
 
     fn do_check<F>(s: &str, check: F)
     where
         F: FnOnce(crate::errors::Result<crate::scanner::RawGPR>),
     {
-        let mut env = Environment::default();
         let mut lex = crate::lexer::Lexer::new_from_string(s);
         let scan = crate::scanner::Scanner::new(&mut lex);
         check(scan.parse())
@@ -692,7 +690,7 @@ mod tests {
                 type Mode_Type is (\"debug\", \"optimize\", \"lto\");
                 Mode : Mode_Type := external (\"MODE\");
             end A;",
-            |g| {
+            |_g| {
 //                assert_eq!(g.types.keys().collect::<Vec<&&str>>(), vec![&"Mode_Type"]);
             },
         );

@@ -8,89 +8,89 @@ pub static PROJECT: &str = "project";
 /// A fully qualified name    project.pkg.name'attname (index)
 /// for instance:    Config.Compiler'Switches ("Ada")
 #[derive(Debug, Default)]
-pub struct VariableName<'a> {
-    pub project: &'a str,
-    pub package: &'a str,
-    pub name: &'a str,
+pub struct VariableName {
+    pub project: Option<String>,
+    pub package: Option<String>,
+    pub name: String,
 }
 
 #[derive(Debug, Default)]
-pub struct AttributeName<'a> {
-    pub project: &'a str,
-    pub package: &'a str,
-    pub name: &'a str,
-    pub attname: Option<&'a str>,
-    pub index: Option<Box<RawExpr<'a>>>,
+pub struct AttributeName {
+    pub project: Option<String>,
+    pub package: Option<String>,
+    pub name: String,
+    pub attname: Option<String>,
+    pub index: Option<Box<RawExpr>>,
 }
 
 #[derive(Debug, Default)]
-pub struct PackageDecl<'a> {
-    pub name: &'a str,
-    pub renames: Option<VariableName<'a>>,
-    pub extends: Option<VariableName<'a>>,
-    pub body: Vec<Statement<'a>>,
+pub struct PackageDecl {
+    pub name: String,
+    pub renames: Option<VariableName>,
+    pub extends: Option<VariableName>,
+    pub body: Vec<Statement>,
 }
 
 #[derive(Debug, Default)]
-pub struct AttributeDecl<'a> {
-    pub name: &'a str,
-    pub index: Option<&'a str>,
-    pub value: RawExpr<'a>,
+pub struct AttributeDecl {
+    pub name: String,
+    pub index: Option<String>,
+    pub value: RawExpr,
 }
 
 #[derive(Debug, Default)]
-pub struct VariableDecl<'a> {
-    pub name: &'a str,
-    pub typename: Option<VariableName<'a>>,
-    pub expr: RawExpr<'a>,
+pub struct VariableDecl {
+    pub name: String,
+    pub typename: Option<VariableName>,
+    pub expr: RawExpr,
 }
 
 #[derive(Debug, Default)]
-pub struct TypeDecl<'a> {
-    pub typename: &'a str,
+pub struct TypeDecl {
+    pub typename: String,
     pub valid: Vec<String>,
 }
 
 #[derive(Debug, Default)]
-pub struct CaseStmt<'a> {
-    pub varname: VariableName<'a>,
-    pub when: Vec<WhenClause<'a>>,
+pub struct CaseStmt {
+    pub varname: VariableName,
+    pub when: Vec<WhenClause>,
 }
 
 #[derive(Debug, Default)]
-pub struct WhenClause<'a> {
-    pub values: Vec<Option<&'a str>>,  // None is used for "others"
-    pub body: Vec<Statement<'a>>,
+pub struct WhenClause {
+    pub values: Vec<Option<String>>,  // None is used for "others"
+    pub body: Vec<Statement>,
 }
 
 #[derive(Debug)]
-pub enum Statement<'a> {
-    Package(PackageDecl<'a>),
-    Type(TypeDecl<'a>),
-    Attribute(AttributeDecl<'a>),
-    Variable(VariableDecl<'a>),
-    Case(CaseStmt<'a>),
+pub enum Statement {
+    Package(PackageDecl),
+    Type(TypeDecl),
+    Attribute(AttributeDecl),
+    Variable(VariableDecl),
+    Case(CaseStmt),
 }
 
 #[derive(Debug)]
-pub struct FunctionCall<'a> {
-    pub funcname: &'a str,
-    pub args: Vec<RawExpr<'a>>,
+pub struct FunctionCall {
+    pub funcname: String,
+    pub args: Vec<RawExpr>,
 }
 
 #[derive(Default)]
-pub enum RawExpr<'a> {
+pub enum RawExpr {
     #[default]
     Empty,
-    StaticString(&'a str), //  doesn't include surrounding quotes
-    Identifier(AttributeName<'a>),   //  Could be "prj.pkg'attribute"
-    Ampersand((Box<RawExpr<'a>>, Box<RawExpr<'a>>)),
-    Comma((Box<RawExpr<'a>>, Box<RawExpr<'a>>)),  // argument lists
-    List(Vec<Box<RawExpr<'a>>>),
-    FuncCall(FunctionCall<'a>),
+    StaticString(String), //  doesn't include surrounding quotes
+    Identifier(AttributeName),   //  Could be "prj.pkg'attribute"
+    Ampersand((Box<RawExpr>, Box<RawExpr>)),
+    Comma((Box<RawExpr>, Box<RawExpr>)),  // argument lists
+    List(Vec<Box<RawExpr>>),
+    FuncCall(FunctionCall),
 }
 
-impl<'a> RawExpr<'a> {
+impl RawExpr {
     /// Combine two expressions with an "&"
     pub fn ampersand(self, right: Self) -> Self {
         match self {
@@ -142,7 +142,7 @@ impl<'a> RawExpr<'a> {
     }
 }
 
-impl<'a> Debug for RawExpr<'a> {
+impl Debug for RawExpr {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         match self {
             RawExpr::Empty => write!(f, "<empty>"),
