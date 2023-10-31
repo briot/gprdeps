@@ -15,7 +15,7 @@ pub enum TokenKind<'a> {
     End,
     Extends,
     For,
-    Identifier(&'a [u8]),
+    Identifier(&'a str),
     InvalidChar(u8),
     Is,
     Library,
@@ -28,7 +28,7 @@ pub enum TokenKind<'a> {
     Project,
     Renames,
     Semicolon,
-    String(&'a [u8]), //  Doesn't include surrounding quotes, but preserves ""
+    String(&'a str), //  Doesn't include surrounding quotes, but preserves ""
     Tick,
     Type,
     Use,
@@ -39,14 +39,8 @@ pub enum TokenKind<'a> {
 impl<'a> std::fmt::Display for TokenKind<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            TokenKind::String(s) => match std::str::from_utf8(s) {
-                Err(_) => write!(f, "String(invalid-utf8, {:?})", s),
-                Ok(s) => write!(f, "String({})", s),
-            },
-            TokenKind::Identifier(s) => match std::str::from_utf8(s) {
-                Err(_) => write!(f, "Identifier(invalid-utf8, {:?})", s),
-                Ok(s) => write!(f, "Identifier({})", s),
-            },
+            TokenKind::String(s) => write!(f, "String({})", s),
+            TokenKind::Identifier(s) => write!(f, "Identifier({})", s),
             _ => write!(f, "{:?}", self),
         }
     }

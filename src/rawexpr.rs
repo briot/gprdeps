@@ -1,104 +1,103 @@
 use crate::lexer::Lexer;
 /// The un-interpreted tree, as parsed from a GPR file
-use std::fmt::{Debug, Error, Formatter};
+use std::fmt::Debug;
 
 pub static PROJECT: &str = "project";
 
 /// A fully qualified name    project.pkg.name'attname (index)
 /// for instance:    Config.Compiler'Switches ("Ada")
 #[derive(Debug, Default)]
-pub struct VariableName {
-    pub project: Option<String>,
-    pub package: Option<String>,
-    pub name: String,
+pub struct VariableName<'a> {
+    pub project: Option<&'a str>,
+    pub package: Option<&'a str>,   //  ??? Only a handful of valid names
+    pub name: &'a str,
 }
 
 #[derive(Debug, Default)]
-pub struct AttributeName {
-    pub project: Option<String>,
-    pub package: Option<String>,
-    pub name: String,
-    pub attname: Option<String>,
-    pub index: Option<Box<RawExpr>>,
+pub struct AttributeName<'a> {
+    pub project: Option<&'a str>,
+    pub package: Option<&'a str>,   //  ??? Only a handful of valid names
+    pub attname: &'a str,           //  ??? Only a handful of valid names
+    pub index: Option<Box<RawExpr<'a>>>,
 }
 
 #[derive(Debug, Default)]
-pub struct PackageDecl {
-    pub name: String,
-    pub renames: Option<VariableName>,
-    pub extends: Option<VariableName>,
-    pub body: Vec<Statement>,
+pub struct PackageDecl<'a> {
+    pub name: &'a str,
+    pub renames: Option<VariableName<'a>>,
+    pub extends: Option<VariableName<'a>>,
+    pub body: Vec<Statement<'a>>,
 }
 
 #[derive(Debug, Default)]
-pub enum StringOrOthers {
-    Str(String),
+pub enum StringOrOthers<'a> {
+    Str(&'a str),
     #[default]
     Others,
 }
 
 #[derive(Debug, Default)]
-pub struct AttributeDecl {
-    pub name: String,
-    pub index: Option<StringOrOthers>,
-    pub value: RawExpr,
+pub struct AttributeDecl<'a> {
+    pub name: &'a str,
+    pub index: Option<StringOrOthers<'a>>,
+    pub value: RawExpr<'a>,
 }
 
 #[derive(Debug, Default)]
-pub struct VariableDecl {
-    pub name: String,
-    pub typename: Option<VariableName>,
-    pub expr: RawExpr,
+pub struct VariableDecl<'a> {
+    pub name: &'a str,
+    pub typename: Option<VariableName<'a>>,
+    pub expr: RawExpr<'a>,
 }
 
 #[derive(Debug, Default)]
-pub struct TypeDecl {
-    pub typename: String,
-    pub valid: Vec<String>,
+pub struct TypeDecl<'a> {
+    pub typename: &'a str,
+    pub valid: Vec<&'a str>,
 }
 
 #[derive(Debug, Default)]
-pub struct CaseStmt {
-    pub varname: VariableName,
-    pub when: Vec<WhenClause>,
+pub struct CaseStmt<'a> {
+    pub varname: VariableName<'a>,
+    pub when: Vec<WhenClause<'a>>,
 }
 
 #[derive(Debug, Default)]
-pub struct WhenClause {
-    pub values: Vec<StringOrOthers>,
-    pub body: Vec<Statement>,
+pub struct WhenClause<'a> {
+    pub values: Vec<StringOrOthers<'a>>,
+    pub body: Vec<Statement<'a>>,
 }
 
 #[derive(Debug)]
-pub enum Statement {
-    Package(PackageDecl),
-    Type(TypeDecl),
-    Attribute(AttributeDecl),
-    Variable(VariableDecl),
-    Case(CaseStmt),
+pub enum Statement<'a> {
+    Package(PackageDecl<'a>),
+    Type(TypeDecl<'a>),
+    Attribute(AttributeDecl<'a>),
+    Variable(VariableDecl<'a>),
+    Case(CaseStmt<'a>),
 }
 
 #[derive(Debug)]
-pub struct FunctionCall {
-    pub funcname: String,
-    pub args: Vec<RawExpr>,
+pub struct FunctionCall<'a> {
+    pub funcname: &'a str,
+    pub args: Vec<RawExpr<'a>>,
 }
 
 #[derive(Debug, Default)]
-pub enum RawExpr {
+pub enum RawExpr<'a> {
     #[default]
     Empty,
     Others,
-    StaticString(String), //  doesn't include surrounding quotes
-    AttributeOrFunc(AttributeName),
-    Ampersand((Box<RawExpr>, Box<RawExpr>)),
-    Comma((Box<RawExpr>, Box<RawExpr>)), // argument lists
-    List(Vec<Box<RawExpr>>),
+    StaticString(&'a str), //  doesn't include surrounding quotes
+    AttributeOrFunc(AttributeName<'a>),
+    Ampersand((Box<RawExpr<'a>>, Box<RawExpr<'a>>)),
+    Comma((Box<RawExpr<'a>>, Box<RawExpr<'a>>)), // argument lists
+    List(Vec<Box<RawExpr<'a>>>),
 }
 
-impl RawExpr {
+impl<'a> RawExpr<'a> {
     /// Combine two expressions with an "&"
-    pub fn ampersand(self, right: Self) -> Self {
+    pub fn ampersand(self, right: RawExpr<'a>) -> RawExpr<'a> {
         match self {
             RawExpr::Empty => right,
             _ => RawExpr::Ampersand((Box::new(self), Box::new(right))),
@@ -106,7 +105,7 @@ impl RawExpr {
     }
 
     /// Build up an argument list
-    pub fn comma(self, right: Self) -> Self {
+    pub fn comma(self, right: RawExpr<'a>) -> RawExpr<'a> {
         match self {
             RawExpr::Empty => right,
             _ => RawExpr::Comma((Box::new(self), Box::new(right))),
@@ -114,7 +113,7 @@ impl RawExpr {
     }
 
     /// Append an element to a list
-    pub fn append(&mut self, right: Self) {
+    pub fn append(&mut self, right: RawExpr<'a>) {
         match self {
             RawExpr::List(list) => list.push(Box::new(right)),
             _ => panic!("Can only append to a list expression"),
@@ -122,9 +121,9 @@ impl RawExpr {
     }
 
     /// Convert to a static string
-    pub fn to_static_str(&self, lex: &Lexer) -> crate::errors::Result<String> {
+    pub fn to_static_str(&self, lex: &Lexer) -> crate::errors::Result<&'a str> {
         match self {
-            RawExpr::StaticString(s) => Ok(s.to_string()),
+            RawExpr::StaticString(s) => Ok(s),
             _ => Err(lex.error("not a static string".into())),
         }
     }
@@ -133,37 +132,13 @@ impl RawExpr {
     pub fn to_static_list(
         &self,
         lex: &Lexer,
-    ) -> crate::errors::Result<Vec<String>> {
+    ) -> crate::errors::Result<Vec<&'a str>> {
         match self {
             RawExpr::List(list) => Ok(list
                 .iter()
                 .map(|e| e.to_static_str(lex))
-                .collect::<crate::errors::Result<Vec<String>>>()?),
+                .collect::<crate::errors::Result<Vec<&'a str>>>()?),
             _ => Err(lex.error("not a list of static strings".into())),
         }
     }
 }
-
-// impl Debug for RawExpr {
-//     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-//         match self {
-//             RawExpr::Empty => write!(f, "<empty>"),
-//             RawExpr::StaticString(s) => write!(f, "'{}'", s),
-//             RawExpr::AttributeOrFunc(s) => write!(f, "{:?}", s),
-//             RawExpr::Ampersand((left, right)) => {
-//                 write!(f, "{:?} & {:?}", left, right)
-//             }
-//             RawExpr::Comma((left, right)) => {
-//                 write!(f, "{:?}, {:?}", left, right)
-//             }
-//             RawExpr::List(v) => write!(
-//                 f,
-//                 "({})",
-//                 v.iter()
-//                     .map(|e| format!("{:?}", e))
-//                     .collect::<Vec<String>>()
-//                     .join(", ")
-//             ),
-//         }
-//     }
-// }

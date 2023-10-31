@@ -13,6 +13,13 @@ impl File {
         })
     }
 
+    pub fn new_from_str(s: &str) -> Self {
+        Self {
+            path: std::path::Path::new(":memory:").to_owned(),
+            buffer: s.to_string(),
+        }
+    }
+
     pub fn as_bytes(&self) -> &[u8] {
         self.buffer.as_bytes()
     }

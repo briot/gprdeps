@@ -2,8 +2,8 @@ use crate::errors::Error;
 use crate::files::File;
 use crate::tokens::{Token, TokenKind};
 
-fn is_alphanumeric(c: u8) -> bool {
-    matches!(c, b'0' ..= b'9' | b'A' ..= b'Z' | b'a' ..= b'z')
+fn is_wordchar(c: u8) -> bool {
+    matches!(c, b'0' ..= b'9' | b'A' ..= b'Z' | b'a' ..= b'z' | b'_')
 }
 
 pub struct Lexer<'a> {
@@ -21,18 +21,6 @@ impl<'a> Lexer<'a> {
             line: 1,
             path: file.path(),
             buffer: file.as_bytes(),
-            peeked: None,
-        };
-        _ = s.next();
-        s
-    }
-
-    pub fn new_from_string(str: &'a str) -> Self {
-        let mut s = Self {
-            current: 0,
-            line: 1,
-            path: std::path::Path::new("<memory>"),
-            buffer: str.as_bytes(),
             peeked: None,
         };
         _ = s.next();
@@ -105,8 +93,8 @@ impl<'a> Lexer<'a> {
     }
 
     /// Peek at the next item, without consuming it
-    pub fn peek(&self) -> &Option<Token> {
-        &self.peeked
+    pub fn peek(&self) -> Option<Token<'a>> {
+        self.peeked.clone()
     }
 }
 
@@ -178,7 +166,10 @@ impl<'a> Iterator for Lexer<'a> {
                 Some(b'"') => {
                     self.take(); // discard opening quote
                     let s = self.take_until(|c| c == b'"');
-                    TokenKind::String(s)
+                    match std::str::from_utf8(s) {
+                        Err(_) => panic!("Invalid UTF8 {:?}", s),
+                        Ok(s) => TokenKind::String(s),
+                    }
                 }
                 Some(b'-') => {
                     self.take();
@@ -188,7 +179,6 @@ impl<'a> Iterator for Lexer<'a> {
                             self.skip_till_end_of_line();
                             continue;
                         }
-                        // ??? Could also be negative number
                         _ => TokenKind::Minus,
                     }
                 }
@@ -201,8 +191,8 @@ impl<'a> Iterator for Lexer<'a> {
                     self.take();
                     continue;
                 }
-                Some(&c) if is_alphanumeric(c) => {
-                    match self.take_while(|c| c == b'_' || is_alphanumeric(c)) {
+                Some(&c) if is_wordchar(c) => {
+                    match self.take_while(is_wordchar) {
                         // ??? Should check case insensitive
                         b"abstract" => TokenKind::Abstract,
                         b"aggregate" => TokenKind::Aggregate,
@@ -221,7 +211,10 @@ impl<'a> Iterator for Lexer<'a> {
                         b"use" => TokenKind::Use,
                         b"with" => TokenKind::With,
                         b"when" => TokenKind::When,
-                        t => TokenKind::Identifier(t),
+                        t => match std::str::from_utf8(t) {
+                            Err(_) => panic!("Invalid UTF8 {:?}", t),
+                            Ok(t) => TokenKind::Identifier(t),
+                        },
                     }
                 }
                 Some(c) => TokenKind::InvalidChar(*c),
@@ -232,7 +225,6 @@ impl<'a> Iterator for Lexer<'a> {
                 _ => Some(Token::new(peeked, start_line)),
             };
             std::mem::swap(&mut self.peeked, &mut p);
-            // println!("{:?}", p);
             return p;
         }
     }

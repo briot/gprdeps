@@ -2,9 +2,6 @@ use crate::gpr::GPR;
 use crate::scenarios::AllScenarios;
 use petgraph::graph::{Graph, NodeIndex};
 
-#[derive(Clone, Copy)]
-pub struct GPRIndex(pub usize); // index into Environment.gprs
-
 #[derive(Debug)]
 pub enum Node {
     Project(GPR),

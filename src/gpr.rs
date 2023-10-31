@@ -1,10 +1,9 @@
-use crate::environment::Environment;
 use crate::rawgpr::RawGPR;
 use petgraph::graph::NodeIndex;
 
 /// A specific GPR file
-/// Such an object is independent of the scanner that created it, though it needs an Environment
-/// object to resolve paths.
+/// Such an object is independent of the scanner that created it, though it
+/// needs an Environment object to resolve paths.
 #[derive(Debug)]
 pub struct GPR {
     path: std::path::PathBuf,

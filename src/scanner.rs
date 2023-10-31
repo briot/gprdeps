@@ -1,28 +1,34 @@
 use crate::errors::Result;
 use crate::lexer::Lexer;
+use crate::files::File;
 use crate::rawexpr::{
     AttributeDecl, AttributeName, CaseStmt, PackageDecl, RawExpr, Statement,
-    TypeDecl, VariableDecl, VariableName, WhenClause, PROJECT, StringOrOthers,
+    StringOrOthers, TypeDecl, VariableDecl, VariableName, WhenClause, PROJECT,
 };
 use crate::rawgpr::RawGPR;
 use crate::tokens::{Token, TokenKind};
 
 pub struct Scanner<'a> {
-    lex: &'a mut Lexer<'a>,
-    gpr: RawGPR,
+    lex: Lexer<'a>,
+    gpr: RawGPR<'a>,
 }
 
 impl<'a> Scanner<'a> {
-    pub fn new(lex: &'a mut Lexer<'a>) -> Self {
+    pub fn new(file: &'a File) -> Self {
         Self {
-            gpr: RawGPR::new(lex.path()),
-            lex,
+            gpr: RawGPR::new(file.path()),
+            lex: Lexer::new(file),
         }
     }
 
-    pub fn parse(mut self) -> Result<RawGPR> {
+    pub fn parse(&mut self) -> Result<()> {
         self.parse_file()?;
-        Ok(self.gpr)
+        Ok(())
+    }
+
+    #[inline]
+    pub fn gpr(&self) -> &RawGPR<'a> {
+        &self.gpr
     }
 
     #[inline]
@@ -31,7 +37,7 @@ impl<'a> Scanner<'a> {
     }
 
     #[inline]
-    fn peek(&self) -> &Option<Token> {
+    fn peek(&self) -> Option<Token> {
         self.lex.peek()
     }
 
@@ -47,20 +53,20 @@ impl<'a> Scanner<'a> {
 
     /// Consumes the next token from the lexer, and expects it to be a string,
     /// which is returned.
-    fn expect_str(&mut self) -> Result<String> {
+    fn expect_str(&mut self) -> Result<&'a str> {
         match self.lex.next() {
             None => self.error("Unexpected end of file".into()),
             Some(Token {
                 kind: TokenKind::String(s),
                 ..
-            }) => Ok(std::str::from_utf8(s).unwrap().to_string()),
+            }) => Ok(s),
             Some(t) => self.error(format!("Expected String, got {}", t)),
         }
     }
 
     /// Consumes the next token from the lexer, and expects it to be a string,
     /// or the keyword "others"
-    fn expect_str_or_others(&mut self) -> Result<StringOrOthers> {
+    fn expect_str_or_others(&mut self) -> Result<StringOrOthers<'a>> {
         match self.lex.next() {
             None => self.error("Unexpected end of file".into()),
             Some(Token {
@@ -70,27 +76,27 @@ impl<'a> Scanner<'a> {
             Some(Token {
                 kind: TokenKind::String(s),
                 ..
-            }) => Ok(StringOrOthers::Str(
-                std::str::from_utf8(s).unwrap().to_string())),
-            Some(t) => self.error(format!(
-                "Expected String or others, got {}", t)),
+            }) => Ok(StringOrOthers::Str(s)),
+            Some(t) => {
+                self.error(format!("Expected String or others, got {}", t))
+            }
         }
     }
 
     /// Consumes the next token from the lexer, and expects it to be an identifier
     /// which is returned.
-    fn expect_identifier(&mut self) -> Result<String> {
+    fn expect_identifier(&mut self) -> Result<&'a str> {
         match self.lex.next() {
             None => self.error("Unexpected end of file".into()),
             Some(Token {
                 kind: TokenKind::Identifier(s),
                 ..
-            }) => Ok(std::str::from_utf8(s).unwrap().to_string()),
+            }) => Ok(s),
             Some(t) => self.error(format!("Expected Identifier, got {}", t)),
         }
     }
 
-    fn expect_variable_reference(&mut self) -> Result<VariableName> {
+    fn expect_variable_reference(&mut self) -> Result<VariableName<'a>> {
         let mut result = VariableName::default();
         loop {
             match self.lex.next() {
@@ -100,14 +106,12 @@ impl<'a> Scanner<'a> {
                     ..
                 }) => {
                     // e.g.  for source_dirs use project'source_dirs & ..
-                    result.name = PROJECT.to_string();
+                    result.name = PROJECT;
                 }
                 Some(Token {
                     kind: TokenKind::Identifier(s),
                     ..
-                }) => {
-                    result.name = std::str::from_utf8(s).unwrap().to_string();
-                }
+                }) => result.name = s,
                 Some(t) => self.error(format!("Unexpected token {}", t))?,
             }
 
@@ -119,7 +123,7 @@ impl<'a> Scanner<'a> {
                     let _ = self.lex.next();
                     result.project = result.package;
                     result.package = Some(result.name);
-                    result.name = String::new();
+                    result.name = "";
                 }
                 _ => break,
             }
@@ -127,13 +131,12 @@ impl<'a> Scanner<'a> {
         Ok(result)
     }
 
-    fn expect_attribute_reference(&mut self) -> Result<AttributeName> {
+    fn expect_attribute_reference(&mut self) -> Result<AttributeName<'a>> {
         let varname = self.expect_variable_reference()?;
         let mut qname = AttributeName {
             project: varname.project,
             package: varname.package,
-            name: varname.name,
-            attname: None,
+            attname: varname.name,
             index: None,
         };
 
@@ -144,7 +147,7 @@ impl<'a> Scanner<'a> {
         {
             // attribute ref
             let _ = self.lex.next();
-            qname.attname = Some(self.expect_identifier()?);
+            qname.attname = self.expect_identifier()?;
         }
         if let Some(Token {
             kind: TokenKind::OpenParenthesis,
@@ -221,8 +224,7 @@ impl<'a> Scanner<'a> {
             ..
         }) = self.peek()
         {
-            self.gpr.extends =
-                Some(self.parse_project_extension()?.to_string());
+            self.gpr.extends = Some(self.parse_project_extension()?);
         }
 
         self.expect(TokenKind::Is)?;
@@ -278,12 +280,12 @@ impl<'a> Scanner<'a> {
         Ok(())
     }
 
-    fn parse_project_extension(&mut self) -> Result<String> {
+    fn parse_project_extension(&mut self) -> Result<&'a str> {
         self.expect(TokenKind::Extends)?;
         self.expect_str()
     }
 
-    fn parse_type_definition(&mut self) -> Result<Statement> {
+    fn parse_type_definition(&mut self) -> Result<Statement<'a>> {
         self.expect(TokenKind::Type)?;
         let typename = self.expect_identifier()?;
         self.expect(TokenKind::Is)?;
@@ -292,11 +294,11 @@ impl<'a> Scanner<'a> {
 
         Ok(Statement::Type(TypeDecl {
             typename,
-            valid: expr.to_static_list(self.lex)?,
+            valid: expr.to_static_list(&self.lex)?,
         }))
     }
 
-    fn parse_package_declaration(&mut self) -> Result<Statement> {
+    fn parse_package_declaration(&mut self) -> Result<Statement<'a>> {
         let mut result = PackageDecl::default();
 
         self.expect(TokenKind::Package)?;
@@ -373,7 +375,7 @@ impl<'a> Scanner<'a> {
         Ok(Statement::Package(result))
     }
 
-    fn parse_variable_definition(&mut self) -> Result<Statement> {
+    fn parse_variable_definition(&mut self) -> Result<Statement<'a>> {
         let mut result = VariableDecl {
             name: self.expect_identifier()?,
             ..Default::default()
@@ -395,7 +397,7 @@ impl<'a> Scanner<'a> {
         Ok(Statement::Variable(result))
     }
 
-    fn parse_case_statement(&mut self) -> Result<Statement> {
+    fn parse_case_statement(&mut self) -> Result<Statement<'a>> {
         let mut result = CaseStmt::default();
 
         self.expect(TokenKind::Case)?;
@@ -426,9 +428,7 @@ impl<'a> Scanner<'a> {
                             Some(Token {
                                 kind: TokenKind::String(s),
                                 ..
-                            }) => when.values.push(StringOrOthers::Str(
-                                std::str::from_utf8(s).unwrap().to_string(),
-                            )),
+                            }) => when.values.push(StringOrOthers::Str(s)),
                             Some(Token {
                                 kind: TokenKind::Others,
                                 ..
@@ -506,7 +506,7 @@ impl<'a> Scanner<'a> {
         Ok(Statement::Case(result))
     }
 
-    fn parse_arg_list(&mut self) -> Result<RawExpr> {
+    fn parse_arg_list(&mut self) -> Result<RawExpr<'a>> {
         let mut result: RawExpr = RawExpr::Empty;
 
         self.expect(TokenKind::OpenParenthesis)?;
@@ -556,28 +556,26 @@ impl<'a> Scanner<'a> {
     ///     "value"
     /// or an actual expression to build a string
     ///     "value" & variable
-    fn parse_string_expression(&mut self) -> Result<RawExpr> {
+    fn parse_string_expression(&mut self) -> Result<RawExpr<'a>> {
         let mut result = RawExpr::Empty;
         loop {
             match self.peek() {
                 None => self.error("Unexpected end of file".into())?,
                 Some(Token {
-                    kind: TokenKind::String(s),
+                    kind: TokenKind::String(_),
                     ..
                 }) => {
-                    result = result.ampersand(RawExpr::StaticString(
-                        std::str::from_utf8(s).unwrap().to_string(),
-                    ));
-                    let _ = self.lex.next(); //  consume the string
-                }
+                    let s = self.expect_str()?;
+                    result = result.ampersand(RawExpr::StaticString(s));
+                },
                 Some(Token {
                     kind: TokenKind::Identifier(_),
                     ..
                 }) => {
                     // e.g.  for object_dir use "../" & shared'object_dir
-                    let s = self.expect_attribute_reference()?;
-                    result = result.ampersand(RawExpr::AttributeOrFunc(s));
-                }
+                    let att = self.expect_attribute_reference()?;
+                    result = result.ampersand(RawExpr::AttributeOrFunc(att));
+                },
                 Some(t) => self.error(format!(
                     "Unexpected token in string expression {}",
                     t
@@ -597,7 +595,7 @@ impl<'a> Scanner<'a> {
         Ok(result)
     }
 
-    fn parse_expression(&mut self) -> Result<RawExpr> {
+    fn parse_expression(&mut self) -> Result<RawExpr<'a>> {
         let mut result = RawExpr::Empty;
         loop {
             match self.peek() {
@@ -670,7 +668,7 @@ impl<'a> Scanner<'a> {
         Ok(result)
     }
 
-    fn parse_attribute_declaration(&mut self) -> Result<AttributeDecl> {
+    fn parse_attribute_declaration(&mut self) -> Result<AttributeDecl<'a>> {
         let mut result = AttributeDecl::default();
 
         self.expect(TokenKind::For)?;
@@ -700,9 +698,12 @@ mod tests {
     where
         F: FnOnce(crate::errors::Result<crate::scanner::RawGPR>),
     {
-        let mut lex = crate::lexer::Lexer::new_from_string(s);
-        let scan = crate::scanner::Scanner::new(&mut lex);
-        check(scan.parse())
+        let file = crate::files::File::new_from_str(s);
+        let mut scan = crate::scanner::Scanner::new(&file);
+        match scan.parse() {
+            Err(e) => check(Err(e)),
+            Ok(_) => check(Ok(scan.gpr)),
+        }
     }
 
     fn expect_error(s: &str, msg: &str) {
@@ -738,8 +739,7 @@ mod tests {
                    for Switches (others) use ();
                 end Linker;
              end A;",
-            |_g| {
-            },
+            |_g| {},
         );
     }
 
