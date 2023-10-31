@@ -4,8 +4,8 @@
 /// it references memory from that scanner directly.
 use crate::rawexpr::Statement;
 
-pub struct RawGPR<'a> {
-    pub path: &'a std::path::Path,
+pub struct RawGPR {
+    pub path: std::path::PathBuf,
     pub imported: Vec<String>,
     pub name: String,
     pub is_abstract: bool,
@@ -15,11 +15,11 @@ pub struct RawGPR<'a> {
     pub body: Vec<Statement>,
 }
 
-impl<'a> RawGPR<'a> {
+impl RawGPR {
     /// Create a new, mostly unset, GPR file
-    pub fn new(path: &'a std::path::Path) -> Self {
+    pub fn new(path: &std::path::Path) -> Self {
         Self {
-            path,
+            path: path.to_path_buf(),
             imported: vec![],
             name: Default::default(),
             is_abstract: false,
@@ -31,7 +31,7 @@ impl<'a> RawGPR<'a> {
     }
 
     /// Resolve relative paths
-    pub fn normalize_path(&self, path: &'a str) -> std::path::PathBuf {
+    pub fn normalize_path(&self, path: &str) -> std::path::PathBuf {
         let mut p = self.path.parent().unwrap().join(path);
         p.set_extension("gpr");
         std::fs::canonicalize(p).unwrap()

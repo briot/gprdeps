@@ -31,9 +31,16 @@ pub struct PackageDecl {
 }
 
 #[derive(Debug, Default)]
+pub enum StringOrOthers {
+    Str(String),
+    #[default]
+    Others,
+}
+
+#[derive(Debug, Default)]
 pub struct AttributeDecl {
     pub name: String,
-    pub index: Option<String>,
+    pub index: Option<StringOrOthers>,
     pub value: RawExpr,
 }
 
@@ -58,7 +65,7 @@ pub struct CaseStmt {
 
 #[derive(Debug, Default)]
 pub struct WhenClause {
-    pub values: Vec<Option<String>>, // None is used for "others"
+    pub values: Vec<StringOrOthers>,
     pub body: Vec<Statement>,
 }
 
@@ -77,10 +84,11 @@ pub struct FunctionCall {
     pub args: Vec<RawExpr>,
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub enum RawExpr {
     #[default]
     Empty,
+    Others,
     StaticString(String), //  doesn't include surrounding quotes
     AttributeOrFunc(AttributeName),
     Ampersand((Box<RawExpr>, Box<RawExpr>)),
@@ -136,26 +144,26 @@ impl RawExpr {
     }
 }
 
-impl Debug for RawExpr {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        match self {
-            RawExpr::Empty => write!(f, "<empty>"),
-            RawExpr::StaticString(s) => write!(f, "'{}'", s),
-            RawExpr::AttributeOrFunc(s) => write!(f, "{:?}", s),
-            RawExpr::Ampersand((left, right)) => {
-                write!(f, "{:?} & {:?}", left, right)
-            }
-            RawExpr::Comma((left, right)) => {
-                write!(f, "{:?}, {:?}", left, right)
-            }
-            RawExpr::List(v) => write!(
-                f,
-                "({})",
-                v.iter()
-                    .map(|e| format!("{:?}", e))
-                    .collect::<Vec<String>>()
-                    .join(", ")
-            ),
-        }
-    }
-}
+// impl Debug for RawExpr {
+//     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+//         match self {
+//             RawExpr::Empty => write!(f, "<empty>"),
+//             RawExpr::StaticString(s) => write!(f, "'{}'", s),
+//             RawExpr::AttributeOrFunc(s) => write!(f, "{:?}", s),
+//             RawExpr::Ampersand((left, right)) => {
+//                 write!(f, "{:?} & {:?}", left, right)
+//             }
+//             RawExpr::Comma((left, right)) => {
+//                 write!(f, "{:?}, {:?}", left, right)
+//             }
+//             RawExpr::List(v) => write!(
+//                 f,
+//                 "({})",
+//                 v.iter()
+//                     .map(|e| format!("{:?}", e))
+//                     .collect::<Vec<String>>()
+//                     .join(", ")
+//             ),
+//         }
+//     }
+// }

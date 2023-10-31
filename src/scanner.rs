@@ -2,14 +2,14 @@ use crate::errors::Result;
 use crate::lexer::Lexer;
 use crate::rawexpr::{
     AttributeDecl, AttributeName, CaseStmt, PackageDecl, RawExpr, Statement,
-    TypeDecl, VariableDecl, VariableName, WhenClause, PROJECT,
+    TypeDecl, VariableDecl, VariableName, WhenClause, PROJECT, StringOrOthers,
 };
 use crate::rawgpr::RawGPR;
 use crate::tokens::{Token, TokenKind};
 
 pub struct Scanner<'a> {
     lex: &'a mut Lexer<'a>,
-    gpr: RawGPR<'a>,
+    gpr: RawGPR,
 }
 
 impl<'a> Scanner<'a> {
@@ -20,7 +20,7 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    pub fn parse(mut self) -> Result<RawGPR<'a>> {
+    pub fn parse(mut self) -> Result<RawGPR> {
         self.parse_file()?;
         Ok(self.gpr)
     }
@@ -47,14 +47,33 @@ impl<'a> Scanner<'a> {
 
     /// Consumes the next token from the lexer, and expects it to be a string,
     /// which is returned.
-    fn expect_str(&mut self) -> Result<&'a str> {
+    fn expect_str(&mut self) -> Result<String> {
         match self.lex.next() {
             None => self.error("Unexpected end of file".into()),
             Some(Token {
                 kind: TokenKind::String(s),
                 ..
-            }) => Ok(std::str::from_utf8(s).unwrap()),
+            }) => Ok(std::str::from_utf8(s).unwrap().to_string()),
             Some(t) => self.error(format!("Expected String, got {}", t)),
+        }
+    }
+
+    /// Consumes the next token from the lexer, and expects it to be a string,
+    /// or the keyword "others"
+    fn expect_str_or_others(&mut self) -> Result<StringOrOthers> {
+        match self.lex.next() {
+            None => self.error("Unexpected end of file".into()),
+            Some(Token {
+                kind: TokenKind::Others,
+                ..
+            }) => Ok(StringOrOthers::Others),
+            Some(Token {
+                kind: TokenKind::String(s),
+                ..
+            }) => Ok(StringOrOthers::Str(
+                std::str::from_utf8(s).unwrap().to_string())),
+            Some(t) => self.error(format!(
+                "Expected String or others, got {}", t)),
         }
     }
 
@@ -157,7 +176,7 @@ impl<'a> Scanner<'a> {
         self.expect(TokenKind::With)?;
 
         let path = self.expect_str()?;
-        self.gpr.imported.push(path.to_string());
+        self.gpr.imported.push(path);
 
         self.expect(TokenKind::Semicolon)?;
         Ok(())
@@ -259,7 +278,7 @@ impl<'a> Scanner<'a> {
         Ok(())
     }
 
-    fn parse_project_extension(&mut self) -> Result<&str> {
+    fn parse_project_extension(&mut self) -> Result<String> {
         self.expect(TokenKind::Extends)?;
         self.expect_str()
     }
@@ -407,7 +426,7 @@ impl<'a> Scanner<'a> {
                             Some(Token {
                                 kind: TokenKind::String(s),
                                 ..
-                            }) => when.values.push(Some(
+                            }) => when.values.push(StringOrOthers::Str(
                                 std::str::from_utf8(s).unwrap().to_string(),
                             )),
                             Some(Token {
@@ -415,7 +434,7 @@ impl<'a> Scanner<'a> {
                                 ..
                             }) => {
                                 self.expect(TokenKind::Arrow)?;
-                                when.values.push(None);
+                                when.values.push(StringOrOthers::Others);
                                 break;
                             }
                             Some(t) => self.error(format!(
@@ -655,7 +674,7 @@ impl<'a> Scanner<'a> {
         let mut result = AttributeDecl::default();
 
         self.expect(TokenKind::For)?;
-        result.name = self.expect_str()?.to_string();
+        result.name = self.expect_identifier()?;
 
         if let Some(Token {
             kind: TokenKind::OpenParenthesis,
@@ -663,7 +682,7 @@ impl<'a> Scanner<'a> {
         }) = self.peek()
         {
             self.expect(TokenKind::OpenParenthesis)?;
-            result.index = Some(self.expect_str()?.to_string());
+            result.index = Some(self.expect_str_or_others()?);
             self.expect(TokenKind::CloseParenthesis)?;
         }
 
@@ -711,6 +730,20 @@ mod tests {
     }
 
     #[test]
+    fn parse_attribute_decl() {
+        expect_success(
+            "project A is
+                for Source_Files use (\"a.adb\");
+                package Linker is
+                   for Switches (others) use ();
+                end Linker;
+             end A;",
+            |_g| {
+            },
+        );
+    }
+
+    #[test]
     fn parse_external() {
         expect_success(
             "project A is
@@ -719,7 +752,6 @@ mod tests {
             end A;",
             |g| {
                 println!("MANU {}  {:?}", g.name, g.body);
-                assert_eq!(false, true);
                 //                assert_eq!(g.types.keys().collect::<Vec<&&str>>(), vec![&"Mode_Type"]);
             },
         );
