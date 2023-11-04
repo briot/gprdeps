@@ -2,28 +2,46 @@ use crate::lexer::Lexer;
 /// The un-interpreted tree, as parsed from a GPR file
 use std::fmt::Debug;
 
-pub static PROJECT: &str = "project";
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub enum PackageName {
+    #[default]
+    Binder,
+    Compiler,
+    Linker,
+}
 
 /// A fully qualified name    project.pkg.name'attname (index)
 /// for instance:    Config.Compiler'Switches ("Ada")
 #[derive(Debug, Default)]
 pub struct VariableName<'a> {
-    pub project: Option<&'a str>,
-    pub package: Option<&'a str>,   //  ??? Only a handful of valid names
+    pub project: Option<&'a str>,   // None for current project
+    pub package: Option<PackageName>,
     pub name: &'a str,
 }
 
+#[derive(Clone, Copy, Debug, Default)]
+pub enum AttributeName {
+    #[default]
+    Unknown,
+    Main,
+    ObjectDir,
+    ExecDir,
+    Switches,
+    SourceDirs,
+    SourceFiles,
+}
+
 #[derive(Debug, Default)]
-pub struct AttributeName<'a> {
-    pub project: Option<&'a str>,
-    pub package: Option<&'a str>,   //  ??? Only a handful of valid names
-    pub attname: &'a str,           //  ??? Only a handful of valid names
+pub struct AttributeRef<'a> {
+    pub project: Option<&'a str>,   // None for current project
+    pub package: Option<PackageName>,
+    pub attname: AttributeName,
     pub index: Option<Box<RawExpr<'a>>>,
 }
 
 #[derive(Debug, Default)]
 pub struct PackageDecl<'a> {
-    pub name: &'a str,
+    pub name: PackageName,
     pub renames: Option<VariableName<'a>>,
     pub extends: Option<VariableName<'a>>,
     pub body: Vec<Statement<'a>>,
@@ -89,7 +107,7 @@ pub enum RawExpr<'a> {
     Empty,
     Others,
     StaticString(&'a str), //  doesn't include surrounding quotes
-    AttributeOrFunc(AttributeName<'a>),
+    AttributeOrFunc(AttributeRef<'a>),
     Ampersand((Box<RawExpr<'a>>, Box<RawExpr<'a>>)),
     Comma((Box<RawExpr<'a>>, Box<RawExpr<'a>>)), // argument lists
     List(Vec<Box<RawExpr<'a>>>),

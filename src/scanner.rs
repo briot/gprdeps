@@ -2,8 +2,9 @@ use crate::errors::Result;
 use crate::lexer::Lexer;
 use crate::files::File;
 use crate::rawexpr::{
-    AttributeDecl, AttributeName, CaseStmt, PackageDecl, RawExpr, Statement,
-    StringOrOthers, TypeDecl, VariableDecl, VariableName, WhenClause, PROJECT,
+    AttributeDecl, AttributeRef, CaseStmt, PackageDecl, RawExpr, Statement,
+    StringOrOthers, TypeDecl, VariableDecl, VariableName, WhenClause,
+    PackageName, AttributeName,
 };
 use crate::rawgpr::RawGPR;
 use crate::tokens::{Token, TokenKind};
@@ -96,59 +97,151 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    fn expect_variable_reference(&mut self) -> Result<VariableName<'a>> {
-        let mut result = VariableName::default();
-        loop {
-            match self.lex.next() {
-                None => self.error("Unexpected end of file".into())?,
-                Some(Token {
-                    kind: TokenKind::Project,
-                    ..
-                }) => {
-                    // e.g.  for source_dirs use project'source_dirs & ..
-                    result.name = PROJECT;
-                }
-                Some(Token {
-                    kind: TokenKind::Identifier(s),
-                    ..
-                }) => result.name = s,
-                Some(t) => self.error(format!("Unexpected token {}", t))?,
+    // Expect either "Project'" or "<name>."
+    fn expect_project_name(&mut self) -> Result<Option<&'a str>> {
+        match self.lex.next() {
+            None => self.error("Unexpected end of file".into())?,
+            Some(Token {
+                kind: TokenKind::Project,
+                ..
+            }) => {
+                // e.g.  for source_dirs use project'source_dirs & ..
+                Ok(None)
             }
-
-            match self.peek() {
-                Some(Token {
-                    kind: TokenKind::Dot,
-                    ..
-                }) => {
-                    let _ = self.lex.next();
-                    result.project = result.package;
-                    result.package = Some(result.name);
-                    result.name = "";
-                }
-                _ => break,
-            }
+            Some(Token {
+                kind: TokenKind::Identifier(s),
+                ..
+            }) => Ok(Some(s)),
+            Some(t) => self.error(format!("Unexpected token {}", t))?,
         }
-        Ok(result)
     }
 
-    fn expect_attribute_reference(&mut self) -> Result<AttributeName<'a>> {
-        let varname = self.expect_variable_reference()?;
-        let mut qname = AttributeName {
-            project: varname.project,
-            package: varname.package,
-            attname: varname.name,
-            index: None,
+    // Check whether we have a valid package name
+    fn expect_package(&self, name: &str) -> Result<PackageName> {
+        // ??? does this allocate memory ?
+        let low = name.to_ascii_lowercase();
+        Ok(match low.as_str() {
+            "binder" => PackageName::Binder,
+            "compiler" => PackageName::Compiler,
+            "linker" => PackageName::Linker,
+            _ => self.error(format!(
+                "Invalid package name {}", name).to_string())?,
+        })
+    }
+
+    // Check whether we have a valid attribute name
+    fn expect_attribute_name(&self, name: &str) -> Result<AttributeName> {
+        // ??? does this allocate memory ?
+        let low = name.to_ascii_lowercase();
+        Ok(match low.as_str() {
+            "main" => AttributeName::Main,
+            "object_dir" => AttributeName::ObjectDir,
+            "exec_dir" => AttributeName::ExecDir,
+            "switches" => AttributeName::Switches,
+            "source_dirs" => AttributeName::SourceDirs,
+            "source_files" => AttributeName::SourceFiles,
+            _ => self.error(format!(
+                "Unknown attribute name {}", name).to_string())?,
+        })
+    }
+
+    fn expect_variable_reference(&mut self) -> Result<VariableName<'a>> {
+        let project_or_name = self.expect_identifier()?;
+        match self.peek() {
+            Some(Token {
+                kind: TokenKind::Dot,
+                ..
+            }) => {
+                let _ = self.lex.next();   //  consume the dot
+                let package_or_name = self.expect_identifier()?;
+                match self.peek() {
+                    Some(Token {
+                        kind: TokenKind::Dot,
+                        ..
+                    }) => {
+                        let _ = self.lex.next();   //  consume the dot
+                        let name = self.expect_identifier()?;
+                        Ok(VariableName {
+                            project: Some(project_or_name),
+                            package: Some(self.expect_package(package_or_name)?),
+                            name,
+                        })
+                    },
+                    _ => {
+                        match self.expect_package(project_or_name) {
+                            Ok(p) => Ok(VariableName {
+                                project: None,
+                                package: Some(p),
+                                name: package_or_name,
+                            }),
+                            Err(_) => Ok(VariableName {
+                                project: Some(project_or_name),
+                                package: None,
+                                name: package_or_name,
+                            }),
+                        }
+                    }
+                }
+            },
+            _ => {
+                Ok(VariableName {
+                    project: None,
+                    package: None,
+                    name: project_or_name,
+                })
+            }
+        }
+    }
+
+    fn expect_attribute_reference(&mut self) -> Result<AttributeRef<'a>> {
+        let name1 = self.expect_project_name()?;
+        let mut qname: AttributeRef = match self.peek() {
+            Some(Token {
+                kind: TokenKind::Dot,
+                ..
+            }) => {
+                let _ = self.lex.next();   //  consume the dot
+                let name2 = self.expect_identifier()?;
+                match self.peek() {
+                    Some(Token {
+                        kind: TokenKind::Tick,
+                        ..
+                    }) => {
+                        let _ = self.lex.next();   //  consume the tick
+                        let name3 = self.expect_identifier()?;
+                        AttributeRef {
+                            project: name1,
+                            package: Some(self.expect_package(name2)?),
+                            attname: self.expect_attribute_name(name3)?,
+                            index: None,
+                        }
+                    },
+                    _ => self.error(format!(
+                            "Invalid attribute reference {:?}.{}",
+                            name1, name2).to_string())?,
+                }
+            },
+            Some(Token {
+                kind: TokenKind::Tick,
+                ..
+            }) => {
+                let _ = self.lex.next();   //  consume the tick
+                let name2 = self.expect_identifier()?;
+                AttributeRef {
+                    project: name1,
+                    package: None,
+                    attname: self.expect_attribute_name(name2)?,
+                    index: None,
+                }
+            },
+            _ => AttributeRef {
+                project: None,
+                package: None,
+                attname: self.expect_attribute_name(name1.unwrap())?,
+                index: None,
+            },
         };
 
-        if let Some(Token {
-            kind: TokenKind::Tick,
-            ..
-        }) = self.peek()
-        {
-            // attribute ref
-            let _ = self.lex.next();
-            qname.attname = self.expect_identifier()?;
-        }
         if let Some(Token {
             kind: TokenKind::OpenParenthesis,
             ..
@@ -302,7 +395,8 @@ impl<'a> Scanner<'a> {
         let mut result = PackageDecl::default();
 
         self.expect(TokenKind::Package)?;
-        result.name = self.expect_identifier()?;
+        let startname = self.expect_identifier()?;
+        result.name = self.expect_package(startname)?;
 
         if let Some(Token {
             kind: TokenKind::Extends,
@@ -354,7 +448,7 @@ impl<'a> Scanner<'a> {
 
                 self.expect(TokenKind::End)?;
                 let endname = self.expect_identifier()?;
-                if result.name != endname {
+                if startname != endname {
                     return self.error(format!(
                         "Expected endname {:?}, got {:?}",
                         result.name, endname
