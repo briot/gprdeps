@@ -23,12 +23,13 @@ pub struct VariableName<'a> {
 pub enum AttributeName {
     #[default]
     Unknown,
+    ExecDir,
+    LinkerOptions,
     Main,
     ObjectDir,
-    ExecDir,
-    Switches,
     SourceDirs,
     SourceFiles,
+    Switches,
 }
 
 #[derive(Debug, Default)]
@@ -36,7 +37,7 @@ pub struct AttributeRef<'a> {
     pub project: Option<&'a str>,   // None for current project
     pub package: Option<PackageName>,
     pub attname: AttributeName,
-    pub index: Option<Box<RawExpr<'a>>>,
+    pub index: Option<Vec<RawExpr<'a>>>,
 }
 
 #[derive(Debug, Default)]
@@ -107,7 +108,9 @@ pub enum RawExpr<'a> {
     Empty,
     Others,
     StaticString(&'a str), //  doesn't include surrounding quotes
-    AttributeOrFunc(AttributeRef<'a>),
+    Attribute(AttributeRef<'a>),
+    Var(VariableName<'a>),
+    Func(FunctionCall<'a>),
     Ampersand((Box<RawExpr<'a>>, Box<RawExpr<'a>>)),
     Comma((Box<RawExpr<'a>>, Box<RawExpr<'a>>)), // argument lists
     List(Vec<Box<RawExpr<'a>>>),

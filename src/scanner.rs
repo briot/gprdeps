@@ -4,7 +4,7 @@ use crate::files::File;
 use crate::rawexpr::{
     AttributeDecl, AttributeRef, CaseStmt, PackageDecl, RawExpr, Statement,
     StringOrOthers, TypeDecl, VariableDecl, VariableName, WhenClause,
-    PackageName, AttributeName,
+    PackageName, AttributeName, FunctionCall,
 };
 use crate::rawgpr::RawGPR;
 use crate::tokens::{Token, TokenKind};
@@ -137,6 +137,7 @@ impl<'a> Scanner<'a> {
             "main" => AttributeName::Main,
             "object_dir" => AttributeName::ObjectDir,
             "exec_dir" => AttributeName::ExecDir,
+            "linker_options" => AttributeName::LinkerOptions,
             "switches" => AttributeName::Switches,
             "source_dirs" => AttributeName::SourceDirs,
             "source_files" => AttributeName::SourceFiles,
@@ -193,9 +194,12 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    fn expect_attribute_reference(&mut self) -> Result<AttributeRef<'a>> {
+    /// Expect either an attribute reference (e.g. `project'switches ("ada")` or
+    /// just `switches("ada")` or a function call (`external ("NAME")`)
+    fn expect_attribute_or_func(&mut self) -> Result<RawExpr<'a>> {
         let name1 = self.expect_project_name()?;
-        let mut qname: AttributeRef = match self.peek() {
+        println!("MANU attribute_or_func peek {:?}", self.peek());
+        match self.peek() {
             Some(Token {
                 kind: TokenKind::Dot,
                 ..
@@ -209,16 +213,29 @@ impl<'a> Scanner<'a> {
                     }) => {
                         let _ = self.lex.next();   //  consume the tick
                         let name3 = self.expect_identifier()?;
-                        AttributeRef {
+                        println!("MANU dot-tick {:?} {:?} {:?}", name1, name2, name3);
+                        Ok(RawExpr::Attribute(AttributeRef {
                             project: name1,
                             package: Some(self.expect_package(name2)?),
                             attname: self.expect_attribute_name(name3)?,
-                            index: None,
+                            index: self.parse_opt_arg_list()?,
+                        }))
+                    },
+                    _ => {
+                        let p = self.expect_package(name1.unwrap());
+                        match p {
+                            Ok(p) => Ok(RawExpr::Var(VariableName {
+                                project: None,
+                                package: Some(p),
+                                name: name2,
+                            })),
+                            Err(_) => Ok(RawExpr::Var(VariableName {
+                                project: name1,
+                                package: None,
+                                name: name2,
+                            })),
                         }
                     },
-                    _ => self.error(format!(
-                            "Invalid attribute reference {:?}.{}",
-                            name1, name2).to_string())?,
                 }
             },
             Some(Token {
@@ -227,30 +244,39 @@ impl<'a> Scanner<'a> {
             }) => {
                 let _ = self.lex.next();   //  consume the tick
                 let name2 = self.expect_identifier()?;
-                AttributeRef {
+                Ok(RawExpr::Attribute(AttributeRef {
                     project: name1,
                     package: None,
                     attname: self.expect_attribute_name(name2)?,
-                    index: None,
+                    index: self.parse_opt_arg_list()?,
+                }))
+            },
+            Some(Token {
+                kind: TokenKind::OpenParenthesis,
+                ..
+            }) => {
+                // Could be either an unqualified attribute name or a function
+                // call.
+                let n = self.expect_attribute_name(name1.unwrap());
+                match n {
+                    Ok(n) => Ok(RawExpr::Attribute(AttributeRef {
+                        project: None,
+                        package: None,
+                        attname: n,
+                        index: self.parse_opt_arg_list()?,
+                    })),
+                    Err(_) => Ok(RawExpr::Func(FunctionCall {
+                        funcname: name1.unwrap(),
+                        args: self.parse_opt_arg_list()?.unwrap(),
+                    })),
                 }
             },
-            _ => AttributeRef {
+            _ => Ok(RawExpr::Var(VariableName {
                 project: None,
                 package: None,
-                attname: self.expect_attribute_name(name1.unwrap())?,
-                index: None,
-            },
-        };
-
-        if let Some(Token {
-            kind: TokenKind::OpenParenthesis,
-            ..
-        }) = self.peek()
-        {
-            qname.index = Some(Box::new(self.parse_arg_list()?));
+                name: name1.unwrap(),
+            })),
         }
-
-        Ok(qname)
     }
 
     /// Parse a whole file
@@ -600,50 +626,62 @@ impl<'a> Scanner<'a> {
         Ok(Statement::Case(result))
     }
 
-    fn parse_arg_list(&mut self) -> Result<RawExpr<'a>> {
-        let mut result: RawExpr = RawExpr::Empty;
+    /// Parse a parenthesized expression as an attribute index, or a function
+    /// argument list.
+    fn parse_opt_arg_list(&mut self) -> Result<Option<Vec<RawExpr<'a>>>> {
+        let mut result: Vec<RawExpr> = vec![];
 
-        self.expect(TokenKind::OpenParenthesis)?;
+        match self.peek() {
+            Some(Token {
+                kind: TokenKind::OpenParenthesis,
+                ..
+            }) => {
+                let _ = self.lex.next();  //  consume parenthesis
+            },
+            _ => return Ok(None),
+        }
 
-        if let Some(Token {
-            kind: TokenKind::Others,
-            ..
-        }) = self.peek()
-        {
-            let _ = self.lex.next(); // consume "others"
-        } else {
-            loop {
-                match self.peek() {
-                    None => self.error("Unexpected end of file".into())?,
-                    Some(Token {
-                        kind: TokenKind::String(_),
-                        ..
-                    }) => {
-                        result = result.comma(self.parse_string_expression()?);
-                    }
-                    Some(Token {
-                        kind: TokenKind::Identifier(_),
-                        ..
-                    }) => {
-                        let s = self.expect_attribute_reference()?;
-                        result = result.comma(RawExpr::AttributeOrFunc(s));
-                    }
-                    Some(t) => self.error(format!("Unexpected token {}", t))?,
-                }
+        loop {
+            match self.lex.peek() {
+                None => self.error(
+                    "Unexpected end of file, expecting closing parenthesis"
+                    .into(),
+                )?,
 
-                if let Some(Token {
+                Some(Token {
+                    kind: TokenKind::Others,
+                    ..
+                }) => {
+                    let _ = self.lex.next();
+                    result.push(RawExpr::Others);
+                },
+
+                Some(Token {
+                    kind: TokenKind::String(_) | TokenKind::Identifier(_),
+                    ..
+                }) => {
+                    result.push(self.parse_string_expression()?);
+                },
+
+                Some(t) => self.error(format!("Unexpected token {}", t))?,
+
+            };
+
+            match self.lex.next() {
+                Some(Token {
                     kind: TokenKind::Comma,
                     ..
-                }) = self.peek()
-                {
-                    let _ = self.lex.next(); // consume ','
-                } else {
-                    break;
-                }
+                }) => (),
+
+                Some(Token {
+                    kind: TokenKind::CloseParenthesis,
+                    ..
+                }) => break,
+
+                n => self.error(format!( "Unexpected token {:?}", n))?,
             }
         }
-        self.expect(TokenKind::CloseParenthesis)?;
-        Ok(result)
+        Ok(Some(result))
     }
 
     /// Parse a string expression.  This could either be a static string,
@@ -667,8 +705,8 @@ impl<'a> Scanner<'a> {
                     ..
                 }) => {
                     // e.g.  for object_dir use "../" & shared'object_dir
-                    let att = self.expect_attribute_reference()?;
-                    result = result.ampersand(RawExpr::AttributeOrFunc(att));
+                    let att = self.expect_attribute_or_func()?;
+                    result = result.ampersand(att);
                 },
                 Some(t) => self.error(format!(
                     "Unexpected token in string expression {}",
@@ -742,8 +780,8 @@ impl<'a> Scanner<'a> {
                     kind: TokenKind::Identifier(_) | TokenKind::Project,
                     ..
                 }) => {
-                    let att = self.expect_attribute_reference()?;
-                    result = result.ampersand(RawExpr::AttributeOrFunc(att));
+                    let att = self.expect_attribute_or_func()?;
+                    result = result.ampersand(att);
                 }
                 Some(t) => self.error(format!("Unexpected token {}", t))?,
             }
@@ -833,7 +871,10 @@ mod tests {
                    for Switches (others) use ();
                 end Linker;
              end A;",
-            |_g| {},
+            |g| {
+                println!("MANU {}  {:?}", g.name, g.body);
+                assert!(false);
+            },
         );
     }
 
