@@ -7,7 +7,7 @@ use petgraph::graph::NodeIndex;
 #[derive(Debug)]
 pub struct GPR {
     path: std::path::PathBuf,
-    name: String,
+    _name: String,
     _is_abstract: bool,
     _is_aggregate: bool,
     _is_library: bool,
@@ -19,7 +19,7 @@ impl GPR {
     pub fn new(raw: &RawGPR) -> Self {
         Self {
             path: raw.path.to_owned(),
-            name: raw.name.to_string(),
+            _name: raw.name.to_string(),
             _is_abstract: raw.is_abstract,
             _is_aggregate: raw.is_aggregate,
             _is_library: raw.is_library,
@@ -49,6 +49,6 @@ impl GPR {
 
 impl std::fmt::Display for GPR {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}:(name={})", self.path, self.name)
+        write!(f, "{:?}", self.path)
     }
 }

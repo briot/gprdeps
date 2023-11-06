@@ -10,7 +10,7 @@ use crate::tokens::{Token, TokenKind};
 
 pub struct Scanner<'a> {
     lex: Lexer<'a>,
-    gpr: RawGPR<'a>,
+    gpr: RawGPR,
 }
 
 impl<'a> Scanner<'a> {
@@ -21,14 +21,9 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    pub fn parse(&mut self) -> Result<()> {
+    pub fn parse(mut self) -> Result<RawGPR> {
         self.parse_file()?;
-        Ok(())
-    }
-
-    #[inline]
-    pub fn gpr(&self) -> &RawGPR<'a> {
-        &self.gpr
+        Ok(self.gpr)
     }
 
     /// Get the next token, failing with error on end of file
@@ -225,7 +220,7 @@ impl<'a> Scanner<'a> {
     fn parse_with_clause(&mut self) -> Result<()> {
         self.expect(TokenKind::With)?;
 
-        let path = self.expect_str()?;
+        let path = self.expect_str()?.to_string();
         self.gpr.imported.push(path);
 
         self.expect(TokenKind::Semicolon)?;
@@ -297,9 +292,9 @@ impl<'a> Scanner<'a> {
         Ok(())
     }
 
-    fn parse_project_extension(&mut self) -> Result<&'a str> {
+    fn parse_project_extension(&mut self) -> Result<String> {
         self.expect(TokenKind::Extends)?;
-        self.expect_str()
+        Ok(self.expect_str()?.to_string())
     }
 
     fn parse_type_definition(&mut self) -> Result<Statement> {
@@ -653,11 +648,9 @@ mod tests {
         F: FnOnce(crate::errors::Result<crate::scanner::RawGPR>),
     {
         let file = crate::files::File::new_from_str(s);
-        let mut scan = crate::scanner::Scanner::new(&file);
-        match scan.parse() {
-            Err(e) => check(Err(e)),
-            Ok(_) => check(Ok(scan.gpr)),
-        }
+        let scan = crate::scanner::Scanner::new(&file);
+        let gpr = scan.parse();
+        check(gpr);
     }
 
     fn expect_error(s: &str, msg: &str) {

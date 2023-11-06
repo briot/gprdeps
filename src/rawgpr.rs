@@ -4,18 +4,18 @@
 /// it references memory from that scanner directly.
 use crate::rawexpr::Statement;
 
-pub struct RawGPR<'a> {
+pub struct RawGPR {
     pub path: std::path::PathBuf,
-    pub imported: Vec<&'a str>,
+    pub imported: Vec<String>,
     pub name: String,
     pub is_abstract: bool,
     pub is_aggregate: bool,
     pub is_library: bool,
-    pub extends: Option<&'a str>,
+    pub extends: Option<String>,
     pub body: Vec<Statement>,
 }
 
-impl<'a> RawGPR<'a> {
+impl RawGPR {
     /// Create a new, mostly unset, GPR file
     pub fn new(path: &std::path::Path) -> Self {
         Self {
