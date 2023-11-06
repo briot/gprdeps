@@ -5,13 +5,16 @@ use std::fmt::Debug;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum PackageName {
     Binder,
+    Builder,
     Compiler,
+    IDE,
     Linker,
+    Naming,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum AttributeOrVarName {
-    Name(String),   // Either variable or attribute name, lower-cased
+    Name(String), // Either variable or attribute name, lower-cased
     ExecDir,
     LinkerOptions,
     Main,
@@ -43,7 +46,7 @@ pub enum AttributeOrVarName {
 ///     project'name
 #[derive(Debug, PartialEq)]
 pub struct QualifiedName {
-    pub project: Option<String>,   // None for current project or "Project'"
+    pub project: Option<String>, // None for current project or "Project'"
     pub package: Option<PackageName>,
     pub name: AttributeOrVarName,
     pub index: Option<Vec<RawExpr>>,

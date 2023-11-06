@@ -21,7 +21,7 @@ pub fn parse_all(
     path: &Path,
 ) -> Result<Environment, Box<dyn std::error::Error>> {
     let mut env = Environment::default();
-//    let mut rawgprs = Vec::new();
+    //    let mut rawgprs = Vec::new();
 
     // Parse the GPR files, but do not analyze them yet.
 
@@ -39,7 +39,7 @@ pub fn parse_all(
 
         // Insert into the graph, so that we know the index for this file
         let idx = env.graph.add_node(Node::Project(gprfile));
-//        rawgprs.push((idx, rawgpr));
+        //        rawgprs.push((idx, rawgpr));
         env.gprmap.insert(gpr.to_path_buf(), idx);
     }
 
@@ -47,22 +47,22 @@ pub fn parse_all(
     // We'll need to parse them in the correct order so that files included by
     // others are already parsed when we reference their attributes.
 
-//    let mut edges = Vec::new();
-//    for (idx, rawgpr) in &rawgprs {
-//        let node = &mut env.graph[*idx];
-//        match node {
-//            Node::Project(ref mut p) => {
-//                p.resolve_deps(&env.gprmap, rawgpr);
-//                for dep in &p.imported {
-//                    edges.push((*idx, *dep)); // , Edge::Imports));
-//                }
-//            }
-//            _ => panic!("Project node found"),
-//        }
-//    }
-//    for (from, to) in edges {
-//        env.graph.add_edge(from, to, Edge::Imports);
-//    }
+    //    let mut edges = Vec::new();
+    //    for (idx, rawgpr) in &rawgprs {
+    //        let node = &mut env.graph[*idx];
+    //        match node {
+    //            Node::Project(ref mut p) => {
+    //                p.resolve_deps(&env.gprmap, rawgpr);
+    //                for dep in &p.imported {
+    //                    edges.push((*idx, *dep)); // , Edge::Imports));
+    //                }
+    //            }
+    //            _ => panic!("Project node found"),
+    //        }
+    //    }
+    //    for (from, to) in edges {
+    //        env.graph.add_edge(from, to, Edge::Imports);
+    //    }
 
     // Then parse the GPR files.
 

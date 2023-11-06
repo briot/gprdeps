@@ -192,29 +192,28 @@ impl<'a> Iterator for Lexer<'a> {
                     continue;
                 }
                 Some(&c) if is_wordchar(c) => {
-                    match self.take_while(is_wordchar) {
-                        // ??? Should check case insensitive
-                        b"abstract" => TokenKind::Abstract,
-                        b"aggregate" => TokenKind::Aggregate,
-                        b"case" => TokenKind::Case,
-                        b"end" => TokenKind::End,
-                        b"extends" => TokenKind::Extends,
-                        b"for" => TokenKind::For,
-                        b"is" => TokenKind::Is,
-                        b"library" => TokenKind::Library,
-                        b"others" => TokenKind::Others,
-                        b"package" => TokenKind::Package,
-                        b"project" => TokenKind::Project,
-                        b"renames" => TokenKind::Renames,
-                        b"type" => TokenKind::Type,
-                        b"null" => TokenKind::Null,
-                        b"use" => TokenKind::Use,
-                        b"with" => TokenKind::With,
-                        b"when" => TokenKind::When,
-                        t => match std::str::from_utf8(t) {
-                            Err(_) => panic!("Invalid UTF8 {:?}", t),
-                            Ok(t) => TokenKind::Identifier(t),
-                        },
+                    let n = std::str::from_utf8(self.take_while(is_wordchar))
+                        .unwrap()
+                        .to_lowercase();
+                    match n.as_str() {
+                        "abstract" => TokenKind::Abstract,
+                        "aggregate" => TokenKind::Aggregate,
+                        "case" => TokenKind::Case,
+                        "end" => TokenKind::End,
+                        "extends" => TokenKind::Extends,
+                        "for" => TokenKind::For,
+                        "is" => TokenKind::Is,
+                        "library" => TokenKind::Library,
+                        "others" => TokenKind::Others,
+                        "package" => TokenKind::Package,
+                        "project" => TokenKind::Project,
+                        "renames" => TokenKind::Renames,
+                        "type" => TokenKind::Type,
+                        "null" => TokenKind::Null,
+                        "use" => TokenKind::Use,
+                        "with" => TokenKind::With,
+                        "when" => TokenKind::When,
+                        _ => TokenKind::Identifier(n),
                     }
                 }
                 Some(c) => TokenKind::InvalidChar(*c),

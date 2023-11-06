@@ -15,7 +15,7 @@ pub enum TokenKind<'a> {
     End,
     Extends,
     For,
-    Identifier(&'a str),
+    Identifier(String), // lower-cased
     InvalidChar(u8),
     Is,
     Library,
