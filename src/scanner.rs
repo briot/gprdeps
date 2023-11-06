@@ -2,9 +2,8 @@ use crate::errors::Result;
 use crate::lexer::Lexer;
 use crate::files::File;
 use crate::rawexpr::{
-    AttributeDecl, AttributeRef, CaseStmt, PackageDecl, RawExpr, Statement,
-    StringOrOthers, TypeDecl, VariableDecl, VariableName, WhenClause,
-    PackageName, AttributeName, FunctionCall,
+    RawExpr, Statement, StringOrOthers, WhenClause, PackageName, QualifiedName,
+    AttributeOrVarName,
 };
 use crate::rawgpr::RawGPR;
 use crate::tokens::{Token, TokenKind};
@@ -32,262 +31,190 @@ impl<'a> Scanner<'a> {
         &self.gpr
     }
 
+    /// Get the next token, failing with error on end of file
+    #[inline]
+    fn safe_next(&mut self) -> Result<Token<'a>> {
+        match self.lex.next() {
+            Some(n) => Ok(n),
+            None => self.error("Unexpected end of file".into()),
+        }
+    }
+
     #[inline]
     fn error<T>(&self, msg: String) -> Result<T> {
         Err(self.lex.error(msg))
     }
 
-    #[inline]
-    fn peek(&self) -> Option<Token> {
-        self.lex.peek()
-    }
-
     /// Consumes the next token from the lexer, and expect it to be a specific
     /// token.  Raises an error otherwise.
     fn expect(&mut self, token: TokenKind) -> Result<()> {
-        match self.lex.next() {
-            Some(tk) if tk.kind == token => Ok(()),
-            Some(tk) => self.error(format!("Expected {}, got {}", token, tk)),
-            None => self.error("Unexpected end of file".into()),
+        let n = self.safe_next()?;
+        match n {
+            tk if tk.kind == token => Ok(()),
+            tk => self.error(format!("Expected {}, got {}", token, tk)),
         }
     }
 
     /// Consumes the next token from the lexer, and expects it to be a string,
     /// which is returned.
     fn expect_str(&mut self) -> Result<&'a str> {
-        match self.lex.next() {
-            None => self.error("Unexpected end of file".into()),
-            Some(Token {
-                kind: TokenKind::String(s),
-                ..
-            }) => Ok(s),
-            Some(t) => self.error(format!("Expected String, got {}", t)),
+        let n = self.safe_next()?;
+        match n.kind {
+            TokenKind::String(s) => Ok(s),
+            _ => self.error(format!("Expected String, got {}", n)),
         }
     }
 
     /// Consumes the next token from the lexer, and expects it to be a string,
     /// or the keyword "others"
-    fn expect_str_or_others(&mut self) -> Result<StringOrOthers<'a>> {
-        match self.lex.next() {
-            None => self.error("Unexpected end of file".into()),
-            Some(Token {
-                kind: TokenKind::Others,
-                ..
-            }) => Ok(StringOrOthers::Others),
-            Some(Token {
-                kind: TokenKind::String(s),
-                ..
-            }) => Ok(StringOrOthers::Str(s)),
-            Some(t) => {
-                self.error(format!("Expected String or others, got {}", t))
-            }
+    fn expect_str_or_others(&mut self) -> Result<StringOrOthers> {
+        let n = self.safe_next()?;
+        match n.kind {
+            TokenKind::Others => Ok(StringOrOthers::Others),
+            TokenKind::String(s) => Ok(StringOrOthers::Str(s.to_string())),
+            _ => self.error(format!("Expected String or others, got {}", n)),
         }
     }
 
     /// Consumes the next token from the lexer, and expects it to be an identifier
-    /// which is returned.
-    fn expect_identifier(&mut self) -> Result<&'a str> {
-        match self.lex.next() {
-            None => self.error("Unexpected end of file".into()),
-            Some(Token {
-                kind: TokenKind::Identifier(s),
-                ..
-            }) => Ok(s),
-            Some(t) => self.error(format!("Expected Identifier, got {}", t)),
+    /// which is returned.  The identifier is always lower-cased.
+    fn expect_identifier(&mut self) -> Result<String> {
+        let n = self.safe_next()?;
+        match n.kind {
+            TokenKind::Identifier(s) => Ok(s.to_lowercase()),
+            _ => self.error(format!("Expected Identifier, got {}", n)),
         }
     }
 
     // Expect either "Project'" or "<name>."
-    fn expect_project_name(&mut self) -> Result<Option<&'a str>> {
-        match self.lex.next() {
-            None => self.error("Unexpected end of file".into())?,
-            Some(Token {
-                kind: TokenKind::Project,
-                ..
-            }) => {
-                // e.g.  for source_dirs use project'source_dirs & ..
-                Ok(None)
-            }
-            Some(Token {
-                kind: TokenKind::Identifier(s),
-                ..
-            }) => Ok(Some(s)),
-            Some(t) => self.error(format!("Unexpected token {}", t))?,
+    fn expect_project_name(&mut self) -> Result<Option<String>> {
+        let n = self.safe_next()?;
+        match n.kind {
+            TokenKind::Project => Ok(None),
+            TokenKind::Identifier(s) => Ok(Some(s.to_lowercase())),
+            _ => self.error(format!("Unexpected project name {}", n))?,
         }
     }
 
-    // Check whether we have a valid package name
-    fn expect_package(&self, name: &str) -> Result<PackageName> {
-        // ??? does this allocate memory ?
-        let low = name.to_ascii_lowercase();
-        Ok(match low.as_str() {
-            "binder" => PackageName::Binder,
-            "compiler" => PackageName::Compiler,
-            "linker" => PackageName::Linker,
-            _ => self.error(format!(
-                "Invalid package name {}", name).to_string())?,
-        })
+    /// Check whether we have a valid package name.
+    /// When we do not have a package name, the Err returns the string itself,
+    /// so that further processing can be done
+    fn as_package(
+        &self,
+        lower: String,
+    ) -> std::result::Result<PackageName, String> {
+        match lower.as_str() {
+            "binder" => Ok(PackageName::Binder),
+            "compiler" => Ok(PackageName::Compiler),
+            "linker" => Ok(PackageName::Linker),
+            _ => Err(lower),
+        }
+    }
+
+    /// Similar to as_package(), but returns an actual error message if the
+    /// parameter is not a valid package name
+    fn as_mandatory_package(&self, lower: String) -> Result<PackageName> {
+        let p = self.as_package(lower);
+        match p {
+            Ok(p) => Ok(p),
+            Err(p) => self.error(format!("Invalid package name {}", p))?,
+        }
     }
 
     // Check whether we have a valid attribute name
-    fn expect_attribute_name(&self, name: &str) -> Result<AttributeName> {
-        // ??? does this allocate memory ?
-        let low = name.to_ascii_lowercase();
-        Ok(match low.as_str() {
-            "main" => AttributeName::Main,
-            "object_dir" => AttributeName::ObjectDir,
-            "exec_dir" => AttributeName::ExecDir,
-            "linker_options" => AttributeName::LinkerOptions,
-            "switches" => AttributeName::Switches,
-            "source_dirs" => AttributeName::SourceDirs,
-            "source_files" => AttributeName::SourceFiles,
-            _ => self.error(format!(
-                "Unknown attribute name {}", name).to_string())?,
-        })
-    }
-
-    fn expect_variable_reference(&mut self) -> Result<VariableName<'a>> {
-        let project_or_name = self.expect_identifier()?;
-        match self.peek() {
-            Some(Token {
-                kind: TokenKind::Dot,
-                ..
-            }) => {
-                let _ = self.lex.next();   //  consume the dot
-                let package_or_name = self.expect_identifier()?;
-                match self.peek() {
-                    Some(Token {
-                        kind: TokenKind::Dot,
-                        ..
-                    }) => {
-                        let _ = self.lex.next();   //  consume the dot
-                        let name = self.expect_identifier()?;
-                        Ok(VariableName {
-                            project: Some(project_or_name),
-                            package: Some(self.expect_package(package_or_name)?),
-                            name,
-                        })
-                    },
-                    _ => {
-                        match self.expect_package(project_or_name) {
-                            Ok(p) => Ok(VariableName {
-                                project: None,
-                                package: Some(p),
-                                name: package_or_name,
-                            }),
-                            Err(_) => Ok(VariableName {
-                                project: Some(project_or_name),
-                                package: None,
-                                name: package_or_name,
-                            }),
-                        }
-                    }
-                }
-            },
-            _ => {
-                Ok(VariableName {
-                    project: None,
-                    package: None,
-                    name: project_or_name,
-                })
-            }
+    fn as_attribute(&self, lower: String) -> AttributeOrVarName {
+        match lower.as_str() {
+            "exec_dir" => AttributeOrVarName::ExecDir,
+            "linker_options" => AttributeOrVarName::LinkerOptions,
+            "main" => AttributeOrVarName::Main,
+            "object_dir" => AttributeOrVarName::ObjectDir,
+            "source_dirs" => AttributeOrVarName::SourceDirs,
+            "source_files" => AttributeOrVarName::SourceFiles,
+            "switches" => AttributeOrVarName::Switches,
+            _ => AttributeOrVarName::Name(lower),
         }
     }
 
-    /// Expect either an attribute reference (e.g. `project'switches ("ada")` or
-    /// just `switches("ada")` or a function call (`external ("NAME")`)
-    fn expect_attribute_or_func(&mut self) -> Result<RawExpr<'a>> {
+    /// Parse of expect_qname.
+    /// Should be called after we parsed a first identifier, and the final one.
+    /// name1 should be None if we had parsed "Project'"
+    fn expect_qname2(
+        &mut self,
+        name1: Option<String>,
+        name2: String,
+    ) -> Result<QualifiedName> {
+        match name1 {
+            None => Ok(QualifiedName {
+                project: name1,
+                package: None,
+                name: self.as_attribute(name2),
+                index: self.parse_opt_arg_list()?,
+            }),
+            Some(n1) =>
+                match self.as_package(n1) {
+                    Ok(p) => Ok(QualifiedName {
+                        project: None,
+                        package: Some(p),
+                        name: self.as_attribute(name2),
+                        index: self.parse_opt_arg_list()?,
+                    }),
+                    Err(n) => Ok(QualifiedName {
+                        project: Some(n),
+                        package: None,
+                        name: self.as_attribute(name2),
+                        index: self.parse_opt_arg_list()?,
+                    }),
+                }
+        }
+    }
+
+    fn expect_qname(&mut self) -> Result<QualifiedName> {
         let name1 = self.expect_project_name()?;
-        println!("MANU attribute_or_func peek {:?}", self.peek());
-        match self.peek() {
-            Some(Token {
-                kind: TokenKind::Dot,
-                ..
-            }) => {
+        match self.lex.peek() {
+            TokenKind::Dot => {
                 let _ = self.lex.next();   //  consume the dot
                 let name2 = self.expect_identifier()?;
-                match self.peek() {
-                    Some(Token {
-                        kind: TokenKind::Tick,
-                        ..
-                    }) => {
-                        let _ = self.lex.next();   //  consume the tick
+                match self.lex.peek() {
+                    TokenKind::Dot | TokenKind::Tick => {
+                        let _ = self.lex.next();   //  consume the dot
                         let name3 = self.expect_identifier()?;
-                        println!("MANU dot-tick {:?} {:?} {:?}", name1, name2, name3);
-                        Ok(RawExpr::Attribute(AttributeRef {
+                        let p = self.as_mandatory_package(name2)?;
+                        Ok(QualifiedName {
                             project: name1,
-                            package: Some(self.expect_package(name2)?),
-                            attname: self.expect_attribute_name(name3)?,
+                            package: Some(p),
+                            name: self.as_attribute(name3),
                             index: self.parse_opt_arg_list()?,
-                        }))
+                        })
                     },
-                    _ => {
-                        let p = self.expect_package(name1.unwrap());
-                        match p {
-                            Ok(p) => Ok(RawExpr::Var(VariableName {
-                                project: None,
-                                package: Some(p),
-                                name: name2,
-                            })),
-                            Err(_) => Ok(RawExpr::Var(VariableName {
-                                project: name1,
-                                package: None,
-                                name: name2,
-                            })),
-                        }
-                    },
+                    _ => self.expect_qname2(name1, name2),
                 }
             },
-            Some(Token {
-                kind: TokenKind::Tick,
-                ..
-            }) => {
-                let _ = self.lex.next();   //  consume the tick
+            TokenKind::Tick => {
+                let _ = self.lex.next();   //  consume the dot
                 let name2 = self.expect_identifier()?;
-                Ok(RawExpr::Attribute(AttributeRef {
-                    project: name1,
-                    package: None,
-                    attname: self.expect_attribute_name(name2)?,
-                    index: self.parse_opt_arg_list()?,
-                }))
-            },
-            Some(Token {
-                kind: TokenKind::OpenParenthesis,
-                ..
-            }) => {
-                // Could be either an unqualified attribute name or a function
-                // call.
-                let n = self.expect_attribute_name(name1.unwrap());
-                match n {
-                    Ok(n) => Ok(RawExpr::Attribute(AttributeRef {
+                self.expect_qname2(name1, name2)
+            }
+            _ => {
+                match name1 {
+                    None => self.error(
+                        "`Project'` must be followed by attribute name".into())?,
+                    Some(n1) => Ok(QualifiedName {
                         project: None,
                         package: None,
-                        attname: n,
+                        name: self.as_attribute(n1),
                         index: self.parse_opt_arg_list()?,
-                    })),
-                    Err(_) => Ok(RawExpr::Func(FunctionCall {
-                        funcname: name1.unwrap(),
-                        args: self.parse_opt_arg_list()?.unwrap(),
-                    })),
+                    })
                 }
-            },
-            _ => Ok(RawExpr::Var(VariableName {
-                project: None,
-                package: None,
-                name: name1.unwrap(),
-            })),
+            }
         }
     }
 
     /// Parse a whole file
     fn parse_file(&mut self) -> Result<()> {
         loop {
-            match self.peek() {
-                None => return Ok(()),
-                Some(Token {
-                    kind: TokenKind::With,
-                    ..
-                }) => self.parse_with_clause()?,
+            match self.lex.peek() {
+                TokenKind::EOF => return Ok(()),
+                TokenKind::With => self.parse_with_clause()?,
                 _ => self.parse_project_declaration()?,
             }
         }
@@ -306,96 +233,63 @@ impl<'a> Scanner<'a> {
 
     /// Parses the declaration of the project, directly into self.gpr
     fn parse_project_declaration(&mut self) -> Result<()> {
-        let mut body = vec![];
         loop {
-            match self.peek() {
-                None => self.error("Unexpected end of file".into())?,
-                Some(Token {
-                    kind: TokenKind::Aggregate,
-                    ..
-                }) => {
-                    self.gpr.is_aggregate = true;
-                    let _ = self.lex.next(); // consume "aggregate"
-                }
-                Some(Token {
-                    kind: TokenKind::Library,
-                    ..
-                }) => {
-                    self.gpr.is_library = true;
-                    let _ = self.lex.next(); // consume "library"
-                }
-                Some(Token {
-                    kind: TokenKind::Abstract,
-                    ..
-                }) => {
-                    self.gpr.is_abstract = true;
-                    let _ = self.lex.next(); // consume "abstract"
-                }
-                _ => break,
+            let n = self.safe_next()?;
+            match n.kind {
+                TokenKind::Aggregate => self.gpr.is_aggregate = true,
+                TokenKind::Library => self.gpr.is_library = true,
+                TokenKind::Abstract => self.gpr.is_abstract = true,
+                TokenKind::Project => break,
+                _ => self.error(format!("Unexpected token {}", n))?,
             }
         }
 
-        self.expect(TokenKind::Project)?;
         self.gpr.name = self.expect_identifier()?;
-
-        if let Some(Token {
-            kind: TokenKind::Extends,
-            ..
-        }) = self.peek()
-        {
-            self.gpr.extends = Some(self.parse_project_extension()?);
-        }
+        self.gpr.extends = if self.lex.peek() == TokenKind::Extends {
+            Some(self.parse_project_extension()?)
+        } else {
+            None
+        };
 
         self.expect(TokenKind::Is)?;
 
+        let mut body = Vec::new();
+
         loop {
-            match self.peek() {
-                None => self.error("Unexpected end of file".into())?,
-                Some(Token {
-                    kind: TokenKind::End,
-                    ..
-                }) => break,
-                Some(Token {
-                    kind: TokenKind::For,
-                    ..
-                }) => body.push(Statement::Attribute(
-                    self.parse_attribute_declaration()?,
-                )),
-                Some(Token {
-                    kind: TokenKind::Null,
-                    ..
-                }) => {}
-                Some(Token {
-                    kind: TokenKind::Case,
-                    ..
-                }) => body.push(self.parse_case_statement()?),
-                Some(Token {
-                    kind: TokenKind::Package,
-                    ..
-                }) => body.push(self.parse_package_declaration()?),
-                Some(Token {
-                    kind: TokenKind::Identifier(_),
-                    ..
-                }) => body.push(self.parse_variable_definition()?),
-                Some(Token {
-                    kind: TokenKind::Type,
-                    ..
-                }) => body.push(self.parse_type_definition()?),
-                Some(t) => self.error(format!("Unexpected token {}", t))?,
+            match self.lex.peek() {
+                TokenKind::EOF => self.error("Unexpected end of file".into())?,
+                TokenKind::End => {
+                    let _ = self.lex.next();  //  consume
+                    let endname = self.expect_identifier()?;
+                    if self.gpr.name != endname {
+                        return self.error(format!(
+                            "Expected endname {}, got {:?}",
+                            self.gpr.name, endname
+                        ));
+                    }
+                    break;
+                },
+                TokenKind::Null => {},
+                TokenKind::For => 
+                    body.push(self.parse_attribute_declaration()?),
+                TokenKind::Case =>
+                    body.push(self.parse_case_statement()?),
+                TokenKind::Package =>
+                    body.push(self.parse_package_declaration()?),
+                TokenKind::Identifier(_) =>
+                    body.push(self.parse_variable_definition()?),
+                TokenKind::Type =>
+                    body.push(self.parse_type_definition()?),
+                _ => {
+                    let n = self.safe_next()?;
+                    self.error(format!("Unexpected token {}", n))?;
+                },
             }
         }
 
-        self.expect(TokenKind::End)?;
-        let endname = self.expect_identifier()?;
-        if self.gpr.name.to_lowercase() != endname.to_lowercase() {
-            return self.error(format!(
-                "Expected endname {}, got {:?}",
-                self.gpr.name, endname
-            ));
-        }
-        self.expect(TokenKind::Semicolon)?;
-
         self.gpr.body = body;
+
+        self.expect(TokenKind::Semicolon)?;
         Ok(())
     }
 
@@ -404,34 +298,31 @@ impl<'a> Scanner<'a> {
         self.expect_str()
     }
 
-    fn parse_type_definition(&mut self) -> Result<Statement<'a>> {
+    fn parse_type_definition(&mut self) -> Result<Statement> {
         self.expect(TokenKind::Type)?;
         let typename = self.expect_identifier()?;
         self.expect(TokenKind::Is)?;
         let expr = self.parse_expression()?;
         self.expect(TokenKind::Semicolon)?;
 
-        Ok(Statement::Type(TypeDecl {
-            typename,
+        Ok(Statement::TypeDecl {
+            typename: typename.to_string(),
             valid: expr.to_static_list(&self.lex)?,
-        }))
+        })
     }
 
-    fn parse_package_declaration(&mut self) -> Result<Statement<'a>> {
-        let mut result = PackageDecl::default();
-
+    fn parse_package_declaration(&mut self) -> Result<Statement> {
         self.expect(TokenKind::Package)?;
         let startname = self.expect_identifier()?;
-        result.name = self.expect_package(startname)?;
+        let extends = if self.lex.peek() == TokenKind::Extends {
+            let _ = self.lex.next();  //  consume extends
+            Some(self.expect_qname()?)
+        } else {
+            None
+        };
 
-        if let Some(Token {
-            kind: TokenKind::Extends,
-            ..
-        }) = self.peek()
-        {
-            self.expect(TokenKind::Extends)?;
-            result.extends = Some(self.expect_variable_reference()?);
-        }
+        let mut renames: Option<QualifiedName> = None;
+        let mut body = Vec::new();
 
         match self.lex.next() {
             None => self.error("Unexpected end of file".into())?,
@@ -440,202 +331,157 @@ impl<'a> Scanner<'a> {
                 ..
             }) => {
                 loop {
-                    match self.peek() {
-                        None => self.error("Unexpected end of file".into())?,
-                        Some(Token {
-                            kind: TokenKind::End,
-                            ..
-                        }) => break,
-                        Some(Token {
-                            kind: TokenKind::For,
-                            ..
-                        }) => result.body.push(Statement::Attribute(
-                            self.parse_attribute_declaration()?,
-                        )),
-                        Some(Token {
-                            kind: TokenKind::Null,
-                            ..
-                        }) => {}
-                        Some(Token {
-                            kind: TokenKind::Case,
-                            ..
-                        }) => result.body.push(self.parse_case_statement()?),
-                        Some(Token {
-                            kind: TokenKind::Identifier(_),
-                            ..
-                        }) => {
-                            result.body.push(self.parse_variable_definition()?)
-                        }
-                        Some(t) => {
+                    match self.lex.peek() {
+                        TokenKind::EOF =>
+                            self.error("Unexpected end of file".into())?,
+                        TokenKind::End => {
+                            let _ = self.lex.next();  //  consume
+                            let endname = self.expect_identifier()?;
+                            if startname != endname {
+                                self.error(format!(
+                                    "Expected endname {:?}, got {:?}",
+                                    startname, endname
+                                ))?;
+                            }
+                            break;
+                        },
+                        TokenKind::Null => {},
+                        TokenKind::For =>
+                            body.push(self.parse_attribute_declaration()?),
+                        TokenKind::Case => 
+                            body.push(self.parse_case_statement()?),
+                        TokenKind::Identifier(_) =>
+                            body.push(self.parse_variable_definition()?),
+                        t =>
                             self.error(format!("Unexpected token {}", t))?
-                        }
                     }
-                }
-
-                self.expect(TokenKind::End)?;
-                let endname = self.expect_identifier()?;
-                if startname != endname {
-                    return self.error(format!(
-                        "Expected endname {:?}, got {:?}",
-                        result.name, endname
-                    ));
                 }
             }
             Some(Token {
                 kind: TokenKind::Renames,
                 ..
-            }) => {
-                result.renames = Some(self.expect_variable_reference()?);
-            }
+            }) => renames = Some(self.expect_qname()?),
             Some(t) => self.error(format!("Unexpected {}", t))?,
         }
 
         self.expect(TokenKind::Semicolon)?;
 
-        Ok(Statement::Package(result))
+        Ok(Statement::Package {
+            name: self.as_mandatory_package(startname)?,
+            renames,
+            extends,
+            body,
+        })
     }
 
-    fn parse_variable_definition(&mut self) -> Result<Statement<'a>> {
-        let mut result = VariableDecl {
-            name: self.expect_identifier()?,
-            ..Default::default()
+    fn parse_variable_definition(&mut self) -> Result<Statement> {
+        let name = self.expect_identifier()?;
+        let typename = if self.lex.peek() == TokenKind::Colon {
+            let _ = self.lex.next(); // consume ":"
+            Some(self.expect_qname()?)
+        } else {
+            None
         };
 
-        if let Some(Token {
-            kind: TokenKind::Colon,
-            ..
-        }) = self.peek()
-        {
-            let _ = self.lex.next(); // consume ":"
-            result.typename = Some(self.expect_variable_reference()?);
-        }
-
         self.expect(TokenKind::Assign)?;
-        result.expr = self.parse_expression()?;
+        let expr = self.parse_expression()?;
         self.expect(TokenKind::Semicolon)?;
 
-        Ok(Statement::Variable(result))
+        Ok(Statement::VariableDecl {
+            name,
+            typename,
+            expr,
+        })
     }
 
-    fn parse_case_statement(&mut self) -> Result<Statement<'a>> {
-        let mut result = CaseStmt::default();
-
+    fn parse_case_statement(&mut self) -> Result<Statement> {
         self.expect(TokenKind::Case)?;
-        result.varname = self.expect_variable_reference()?;
+        let varname = self.expect_qname()?;
+        let mut when = Vec::new();
         self.expect(TokenKind::Is)?;
 
         loop {
-            match self.lex.next() {
-                None => self.error("Unexpected end of file".into())?,
-                Some(Token {
-                    kind: TokenKind::End,
-                    ..
-                }) => {
+            let n = self.safe_next()?;
+            match n.kind {
+                TokenKind::End => {
                     self.expect(TokenKind::Case)?;
                     self.expect(TokenKind::Semicolon)?;
                     break;
-                }
-                Some(Token {
-                    kind: TokenKind::When,
-                    ..
-                }) => {
-                    let mut when = WhenClause::default();
+                },
+                TokenKind::When => {
+                    let mut values = Vec::new();
+                    let mut body = Vec::new();
                     loop {
-                        match self.lex.next() {
-                            None => {
-                                self.error("Unexpected end of file".into())?
-                            }
-                            Some(Token {
-                                kind: TokenKind::String(s),
-                                ..
-                            }) => when.values.push(StringOrOthers::Str(s)),
-                            Some(Token {
-                                kind: TokenKind::Others,
-                                ..
-                            }) => {
+                        let n = self.safe_next()?;
+                        match n.kind {
+                            TokenKind::EOF =>
+                                self.error("Unexpected end of file".into())?,
+                            TokenKind::String(s) =>
+                                values.push(StringOrOthers::Str(
+                                    s.to_string())),
+                            TokenKind::Others => {
                                 self.expect(TokenKind::Arrow)?;
-                                when.values.push(StringOrOthers::Others);
+                                values.push(StringOrOthers::Others);
                                 break;
                             }
-                            Some(t) => self.error(format!(
-                                "Unexpected token {} in when",
-                                t
-                            ))?,
+                            _ => self.error(format!(
+                                "Unexpected token {} in when", n))?,
                         }
-                        match self.lex.next() {
-                            None => {
-                                self.error("Unexpected end of file".into())?
-                            }
-                            Some(Token {
-                                kind: TokenKind::Pipe,
-                                ..
-                            }) => {}
-                            Some(Token {
-                                kind: TokenKind::Arrow,
-                                ..
-                            }) => break,
-                            Some(t) => {
-                                self.error(format!("Unexpected token {}", t))?
-                            }
+
+                        let n = self.safe_next()?;
+                        match n.kind {
+                            TokenKind::EOF =>
+                                self.error("Unexpected end of file".into())?,
+                            TokenKind::Pipe => {},
+                            TokenKind::Arrow => break,
+                            _ => self.error(format!("Unexpected token {}", n))?,
                         }
                     }
 
                     loop {
-                        match self.peek() {
-                            None => {
-                                self.error("Unexpected end of file".into())?
-                            }
-                            Some(Token {
-                                kind: TokenKind::End | TokenKind::When,
-                                ..
-                            }) => break,
-                            Some(Token {
-                                kind: TokenKind::For,
-                                ..
-                            }) => when.body.push(Statement::Attribute(
-                                self.parse_attribute_declaration()?,
-                            )),
-                            Some(Token {
-                                kind: TokenKind::Null,
-                                ..
-                            }) => {
+                        match self.lex.peek() {
+                            TokenKind::EOF =>
+                                self.error("Unexpected end of file".into())?,
+                            TokenKind::End | TokenKind::When => break,
+                            TokenKind::For =>
+                                body.push(self.parse_attribute_declaration()?),
+                            TokenKind::Null => {
                                 let _ = self.lex.next();
                                 self.expect(TokenKind::Semicolon)?;
-                            }
-                            Some(Token {
-                                kind: TokenKind::Case,
-                                ..
-                            }) => when.body.push(self.parse_case_statement()?),
-                            Some(Token {
-                                kind: TokenKind::Identifier(_),
-                                ..
-                            }) => when
-                                .body
-                                .push(self.parse_variable_definition()?),
-                            Some(t) => {
-                                self.error(format!("Unexpected token {}", t))?
+                            },
+                            TokenKind::Case => 
+                                body.push(self.parse_case_statement()?),
+                            TokenKind::Identifier(_) =>
+                                body.push(
+                                    self.parse_variable_definition()?),
+                            _ => {
+                                let n = self.safe_next()?;
+                                self.error(format!("Unexpected token {}", n))?;
                             }
                         }
                     }
 
-                    result.when.push(when);
+                    when.push(WhenClause {
+                        values,
+                        body
+                    });
                 }
-                Some(t) => self.error(format!("Unexpected token {}", t))?,
+                _ => self.error(format!("Unexpected token {}", n))?,
             }
         }
-        Ok(Statement::Case(result))
+        Ok(Statement::Case {
+            varname,
+            when,
+        })
     }
 
     /// Parse a parenthesized expression as an attribute index, or a function
     /// argument list.
-    fn parse_opt_arg_list(&mut self) -> Result<Option<Vec<RawExpr<'a>>>> {
+    fn parse_opt_arg_list(&mut self) -> Result<Option<Vec<RawExpr>>> {
         let mut result: Vec<RawExpr> = vec![];
 
-        match self.peek() {
-            Some(Token {
-                kind: TokenKind::OpenParenthesis,
-                ..
-            }) => {
+        match self.lex.peek() {
+            TokenKind::OpenParenthesis => {
                 let _ = self.lex.next();  //  consume parenthesis
             },
             _ => return Ok(None),
@@ -643,42 +489,28 @@ impl<'a> Scanner<'a> {
 
         loop {
             match self.lex.peek() {
-                None => self.error(
+                TokenKind::EOF => self.error(
                     "Unexpected end of file, expecting closing parenthesis"
                     .into(),
                 )?,
-
-                Some(Token {
-                    kind: TokenKind::Others,
-                    ..
-                }) => {
+                TokenKind::Others => {
                     let _ = self.lex.next();
                     result.push(RawExpr::Others);
                 },
-
-                Some(Token {
-                    kind: TokenKind::String(_) | TokenKind::Identifier(_),
-                    ..
-                }) => {
+                TokenKind::String(_) | TokenKind::Identifier(_) => {
                     result.push(self.parse_string_expression()?);
                 },
-
-                Some(t) => self.error(format!("Unexpected token {}", t))?,
-
+                _ => {
+                    let n = self.safe_next()?;
+                    self.error(format!("Unexpected token {}", n))?;
+                },
             };
 
-            match self.lex.next() {
-                Some(Token {
-                    kind: TokenKind::Comma,
-                    ..
-                }) => (),
-
-                Some(Token {
-                    kind: TokenKind::CloseParenthesis,
-                    ..
-                }) => break,
-
-                n => self.error(format!( "Unexpected token {:?}", n))?,
+            let n = self.safe_next()?;
+            match n.kind {
+                TokenKind::Comma => {},
+                TokenKind::CloseParenthesis => break,
+                _ => self.error(format!( "Unexpected token {:?}", n))?,
             }
         }
         Ok(Some(result))
@@ -688,143 +520,115 @@ impl<'a> Scanner<'a> {
     ///     "value"
     /// or an actual expression to build a string
     ///     "value" & variable
-    fn parse_string_expression(&mut self) -> Result<RawExpr<'a>> {
+    fn parse_string_expression(&mut self) -> Result<RawExpr> {
         let mut result = RawExpr::Empty;
         loop {
-            match self.peek() {
-                None => self.error("Unexpected end of file".into())?,
-                Some(Token {
-                    kind: TokenKind::String(_),
-                    ..
-                }) => {
-                    let s = self.expect_str()?;
+            match self.lex.peek() {
+                TokenKind::EOF => self.error("Unexpected end of file".into())?,
+                TokenKind::String(_) => {
+                    let s = self.expect_str()?.to_string();
                     result = result.ampersand(RawExpr::StaticString(s));
                 },
-                Some(Token {
-                    kind: TokenKind::Identifier(_),
-                    ..
-                }) => {
+                TokenKind::Identifier(_) => {
                     // e.g.  for object_dir use "../" & shared'object_dir
-                    let att = self.expect_attribute_or_func()?;
+                    let att = RawExpr::Name(self.expect_qname()?);
                     result = result.ampersand(att);
                 },
-                Some(t) => self.error(format!(
-                    "Unexpected token in string expression {}",
-                    t
-                ))?,
+                _ => {
+                    let n = self.safe_next()?;
+                    self.error(format!(
+                        "Unexpected token in string expression {}", n))?;
+                },
             }
 
-            if let Some(Token {
-                kind: TokenKind::Ampersand,
-                ..
-            }) = self.peek()
-            {
-                let _ = self.lex.next(); // consume "&"
-            } else {
-                break;
+            match self.lex.peek() {
+                TokenKind::Ampersand => {
+                    let _ = self.lex.next(); // consume "&"
+                },
+                _ => break,
             }
         }
         Ok(result)
     }
 
-    fn parse_expression(&mut self) -> Result<RawExpr<'a>> {
+    fn parse_expression(&mut self) -> Result<RawExpr> {
         let mut result = RawExpr::Empty;
         loop {
-            match self.peek() {
-                None => self.error("Unexpected end of file".into())?,
-                Some(Token {
-                    kind: TokenKind::String(_),
-                    ..
-                }) => {
+            match self.lex.peek() {
+                TokenKind::EOF => self.error("Unexpected end of file".into())?,
+                TokenKind::String(_) => {
                     let r = self.parse_string_expression()?;
                     result = result.ampersand(r);
                 }
-                Some(Token {
-                    kind: TokenKind::OpenParenthesis,
-                    ..
-                }) => {
+                TokenKind::OpenParenthesis => {
                     let mut list = RawExpr::List(vec![]);
                     let _ = self.lex.next(); // consume "("
-                    if let Some(Token {
-                        kind: TokenKind::CloseParenthesis,
-                        ..
-                    }) = self.peek()
-                    {
-                        let _ = self.lex.next(); //  consume ")"
-                                                 // Empty list
+                    if self.lex.peek() == TokenKind::CloseParenthesis {
+                        let _ = self.lex.next(); //  consume ")",  empty list
                     } else {
                         loop {
                             let s = self.parse_string_expression()?;
                             list.append(s);
 
-                            match self.lex.next() {
-                                None => {
-                                    self.error("Unexpected end of file".into())?
-                                }
-                                Some(Token {
-                                    kind: TokenKind::CloseParenthesis,
-                                    ..
-                                }) => break,
-                                Some(Token {
-                                    kind: TokenKind::Comma,
-                                    ..
-                                }) => {}
-                                Some(t) => self
-                                    .error(format!("Unexpected token {}", t))?,
+                            let n = self.safe_next()?;
+                            match n.kind {
+                                TokenKind::CloseParenthesis => break,
+                                TokenKind::Comma => {},
+                                _ => self.error(format!(
+                                    "Unexpected token {}", n))?,
                             }
                         }
                     }
                     result = result.ampersand(list);
-                }
-                Some(Token {
-                    kind: TokenKind::Identifier(_) | TokenKind::Project,
-                    ..
-                }) => {
-                    let att = self.expect_attribute_or_func()?;
+                },
+                TokenKind::Identifier(_) | TokenKind::Project => {
+                    let att = RawExpr::Name(self.expect_qname()?);
                     result = result.ampersand(att);
-                }
-                Some(t) => self.error(format!("Unexpected token {}", t))?,
+                },
+                _ => {
+                    let n = self.safe_next()?;
+                    self.error(format!("Unexpected token {}", n))?;
+                },
             }
 
-            if let Some(Token {
-                kind: TokenKind::Ampersand,
-                ..
-            }) = self.peek()
-            {
-                let _ = self.lex.next(); // consume "&"
-            } else {
-                break;
+            match self.lex.peek() {
+                TokenKind::Ampersand => {
+                    let _ = self.lex.next(); // consume "&"
+                },
+                _ => break,
             }
         }
 
         Ok(result)
     }
 
-    fn parse_attribute_declaration(&mut self) -> Result<AttributeDecl<'a>> {
-        let mut result = AttributeDecl::default();
-
+    fn parse_attribute_declaration(&mut self) -> Result<Statement> {
         self.expect(TokenKind::For)?;
-        result.name = self.expect_identifier()?;
-
-        if let Some(Token {
-            kind: TokenKind::OpenParenthesis,
-            ..
-        }) = self.peek()
-        {
+        let name = self.expect_identifier()?;
+        let index = if self.lex.peek() == TokenKind::OpenParenthesis {
             self.expect(TokenKind::OpenParenthesis)?;
-            result.index = Some(self.expect_str_or_others()?);
+            let index = Some(self.expect_str_or_others()?);
             self.expect(TokenKind::CloseParenthesis)?;
-        }
+            index
+        } else {
+            None
+        };
 
         self.expect(TokenKind::Use)?;
-        result.value = self.parse_expression()?;
+        let value = self.parse_expression()?;
         self.expect(TokenKind::Semicolon)?;
-        Ok(result)
+        Ok(Statement::AttributeDecl {
+            name: self.as_attribute(name),
+            index,
+            value,
+        })
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::rawexpr::{
+        Statement, AttributeOrVarName, RawExpr, PackageName, StringOrOthers};
 
     fn do_check<F>(s: &str, check: F)
     where
@@ -857,6 +661,16 @@ mod tests {
         })
     }
 
+    fn expect_statements(s: &str, expected: Vec<Statement>)
+    {
+        do_check(s, |g| match &g {
+            Err(e) => {
+                assert!(g.is_ok(), "while parsing {}, got error {}", s, e.msg)
+            }
+            Ok(g) => assert_eq!(g.body, expected),
+        })
+    }
+
     #[test]
     fn parse_errors() {
         expect_error("project A is", "Unexpected end of file");
@@ -864,17 +678,41 @@ mod tests {
 
     #[test]
     fn parse_attribute_decl() {
-        expect_success(
+        expect_statements(
             "project A is
                 for Source_Files use (\"a.adb\");
                 package Linker is
                    for Switches (others) use ();
                 end Linker;
              end A;",
-            |g| {
-                println!("MANU {}  {:?}", g.name, g.body);
-                assert!(false);
-            },
+            vec![
+                Statement::AttributeDecl {
+                    name: AttributeOrVarName::SourceFiles,
+                    index: None,
+                    value: RawExpr::List(vec![
+                        Box::new(RawExpr::StaticString("a.adb".to_string())),
+                    ])
+                },
+                Statement::Package {
+                    name: PackageName::Linker,
+                    renames: None,
+                    extends: None,
+                    body: vec![
+                        Statement::AttributeDecl {
+                            name: AttributeOrVarName::Switches,
+                            index: Some(StringOrOthers::Others),
+                            value: RawExpr::List(vec![]),
+                        },
+                    ],
+                },
+            ]
+        );
+
+        expect_success(
+            "project A is
+                for Source_Files use Project'Source_Files;
+             end A;",
+            |_g| {}
         );
     }
 

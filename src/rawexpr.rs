@@ -1,28 +1,17 @@
-use crate::lexer::Lexer;
 /// The un-interpreted tree, as parsed from a GPR file
+use crate::lexer::Lexer;
 use std::fmt::Debug;
 
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum PackageName {
-    #[default]
     Binder,
     Compiler,
     Linker,
 }
 
-/// A fully qualified name    project.pkg.name'attname (index)
-/// for instance:    Config.Compiler'Switches ("Ada")
-#[derive(Debug, Default)]
-pub struct VariableName<'a> {
-    pub project: Option<&'a str>,   // None for current project
-    pub package: Option<PackageName>,
-    pub name: &'a str,
-}
-
-#[derive(Clone, Copy, Debug, Default)]
-pub enum AttributeName {
-    #[default]
-    Unknown,
+#[derive(Clone, Debug, PartialEq)]
+pub enum AttributeOrVarName {
+    Name(String),   // Either variable or attribute name, lower-cased
     ExecDir,
     LinkerOptions,
     Main,
@@ -32,93 +21,88 @@ pub enum AttributeName {
     Switches,
 }
 
-#[derive(Debug, Default)]
-pub struct AttributeRef<'a> {
-    pub project: Option<&'a str>,   // None for current project
+/// A fully qualified name.
+/// The scanner itself cannot distinguish between attributes, variables and
+/// function names, this requires access to the symbol table.  For instance:
+///     for Source_Files use Source_Files & (..);  --  an attribute
+///     for Source_Files use My_List & (..);       --  a variable
+///
+///     Switches ("Ada")   --  an attribute
+///     external ("Ada")   --  a function call
+///
+/// We know the depth of the names hierarchy, but again the parser is not able
+/// to distinguish between packages and projects (though it does have a list
+/// of hard-coded package names).
+///     name
+///     name (index)
+///     package.name
+///     package'name
+///     package'name (index)
+///     project.package'name
+///     package'name
+///     project'name
+#[derive(Debug, PartialEq)]
+pub struct QualifiedName {
+    pub project: Option<String>,   // None for current project or "Project'"
     pub package: Option<PackageName>,
-    pub attname: AttributeName,
-    pub index: Option<Vec<RawExpr<'a>>>,
+    pub name: AttributeOrVarName,
+    pub index: Option<Vec<RawExpr>>,
 }
 
-#[derive(Debug, Default)]
-pub struct PackageDecl<'a> {
-    pub name: PackageName,
-    pub renames: Option<VariableName<'a>>,
-    pub extends: Option<VariableName<'a>>,
-    pub body: Vec<Statement<'a>>,
-}
-
-#[derive(Debug, Default)]
-pub enum StringOrOthers<'a> {
-    Str(&'a str),
-    #[default]
+#[derive(Debug, PartialEq)]
+pub enum StringOrOthers {
+    Str(String),
     Others,
 }
 
-#[derive(Debug, Default)]
-pub struct AttributeDecl<'a> {
-    pub name: &'a str,
-    pub index: Option<StringOrOthers<'a>>,
-    pub value: RawExpr<'a>,
+#[derive(Debug, PartialEq)]
+pub struct WhenClause {
+    pub values: Vec<StringOrOthers>,
+    pub body: Vec<Statement>,
 }
 
-#[derive(Debug, Default)]
-pub struct VariableDecl<'a> {
-    pub name: &'a str,
-    pub typename: Option<VariableName<'a>>,
-    pub expr: RawExpr<'a>,
+#[derive(Debug, PartialEq)]
+pub enum Statement {
+    Package {
+        name: PackageName,
+        renames: Option<QualifiedName>,
+        extends: Option<QualifiedName>,
+        body: Vec<Statement>,
+    },
+    TypeDecl {
+        typename: String,
+        valid: Vec<String>,
+    },
+    AttributeDecl {
+        name: AttributeOrVarName,
+        index: Option<StringOrOthers>,
+        value: RawExpr,
+    },
+    VariableDecl {
+        name: String,
+        typename: Option<QualifiedName>,
+        expr: RawExpr,
+    },
+    Case {
+        varname: QualifiedName,
+        when: Vec<WhenClause>,
+    },
 }
 
-#[derive(Debug, Default)]
-pub struct TypeDecl<'a> {
-    pub typename: &'a str,
-    pub valid: Vec<&'a str>,
-}
-
-#[derive(Debug, Default)]
-pub struct CaseStmt<'a> {
-    pub varname: VariableName<'a>,
-    pub when: Vec<WhenClause<'a>>,
-}
-
-#[derive(Debug, Default)]
-pub struct WhenClause<'a> {
-    pub values: Vec<StringOrOthers<'a>>,
-    pub body: Vec<Statement<'a>>,
-}
-
-#[derive(Debug)]
-pub enum Statement<'a> {
-    Package(PackageDecl<'a>),
-    Type(TypeDecl<'a>),
-    Attribute(AttributeDecl<'a>),
-    Variable(VariableDecl<'a>),
-    Case(CaseStmt<'a>),
-}
-
-#[derive(Debug)]
-pub struct FunctionCall<'a> {
-    pub funcname: &'a str,
-    pub args: Vec<RawExpr<'a>>,
-}
-
-#[derive(Debug, Default)]
-pub enum RawExpr<'a> {
-    #[default]
+#[derive(Debug, PartialEq)]
+pub enum RawExpr {
     Empty,
     Others,
-    StaticString(&'a str), //  doesn't include surrounding quotes
-    Attribute(AttributeRef<'a>),
-    Var(VariableName<'a>),
-    Func(FunctionCall<'a>),
-    Ampersand((Box<RawExpr<'a>>, Box<RawExpr<'a>>)),
-    Comma((Box<RawExpr<'a>>, Box<RawExpr<'a>>)), // argument lists
-    List(Vec<Box<RawExpr<'a>>>),
+    StaticString(String), //  doesn't include surrounding quotes
+    Name(QualifiedName),
+    Ampersand((Box<RawExpr>, Box<RawExpr>)),
+    Comma((Box<RawExpr>, Box<RawExpr>)), // argument lists
+    List(Vec<Box<RawExpr>>),
 }
 
-impl<'a> RawExpr<'a> {
+impl RawExpr {
     /// Combine two expressions with an "&"
-    pub fn ampersand(self, right: RawExpr<'a>) -> RawExpr<'a> {
+    pub fn ampersand(self, right: RawExpr) -> RawExpr {
         match self {
             RawExpr::Empty => right,
             _ => RawExpr::Ampersand((Box::new(self), Box::new(right))),
@@ -126,7 +110,7 @@ impl<'a> RawExpr<'a> {
     }
 
     /// Build up an argument list
-    pub fn comma(self, right: RawExpr<'a>) -> RawExpr<'a> {
+    pub fn comma(self, right: RawExpr) -> RawExpr {
         match self {
             RawExpr::Empty => right,
             _ => RawExpr::Comma((Box::new(self), Box::new(right))),
@@ -134,7 +118,7 @@ impl<'a> RawExpr<'a> {
     }
 
     /// Append an element to a list
-    pub fn append(&mut self, right: RawExpr<'a>) {
+    pub fn append(&mut self, right: RawExpr) {
         match self {
             RawExpr::List(list) => list.push(Box::new(right)),
             _ => panic!("Can only append to a list expression"),
@@ -142,7 +126,7 @@ impl<'a> RawExpr<'a> {
     }
 
     /// Convert to a static string
-    pub fn to_static_str(&self, lex: &Lexer) -> crate::errors::Result<&'a str> {
+    pub fn to_static_str(self, lex: &Lexer) -> crate::errors::Result<String> {
         match self {
             RawExpr::StaticString(s) => Ok(s),
             _ => Err(lex.error("not a static string".into())),
@@ -151,14 +135,14 @@ impl<'a> RawExpr<'a> {
 
     /// Convert to a list of static strings
     pub fn to_static_list(
-        &self,
+        self,
         lex: &Lexer,
-    ) -> crate::errors::Result<Vec<&'a str>> {
+    ) -> crate::errors::Result<Vec<String>> {
         match self {
             RawExpr::List(list) => Ok(list
-                .iter()
+                .into_iter()
                 .map(|e| e.to_static_str(lex))
-                .collect::<crate::errors::Result<Vec<&'a str>>>()?),
+                .collect::<crate::errors::Result<Vec<String>>>()?),
             _ => Err(lex.error("not a list of static strings".into())),
         }
     }

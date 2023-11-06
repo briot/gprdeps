@@ -7,12 +7,12 @@ use crate::rawexpr::Statement;
 pub struct RawGPR<'a> {
     pub path: std::path::PathBuf,
     pub imported: Vec<&'a str>,
-    pub name: &'a str,
+    pub name: String,
     pub is_abstract: bool,
     pub is_aggregate: bool,
     pub is_library: bool,
     pub extends: Option<&'a str>,
-    pub body: Vec<Statement<'a>>,
+    pub body: Vec<Statement>,
 }
 
 impl<'a> RawGPR<'a> {

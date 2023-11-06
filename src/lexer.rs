@@ -11,7 +11,7 @@ pub struct Lexer<'a> {
     line: i32,
     path: &'a std::path::Path,
     buffer: &'a [u8], // The file, as bytes.  All keywords are ASCII
-    peeked: Option<Token<'a>>,
+    peeked: Token<'a>,
 }
 
 impl<'a> Lexer<'a> {
@@ -21,7 +21,7 @@ impl<'a> Lexer<'a> {
             line: 1,
             path: file.path(),
             buffer: file.as_bytes(),
-            peeked: None,
+            peeked: Token::new(TokenKind::EOF, -1),
         };
         _ = s.next();
         s
@@ -93,8 +93,8 @@ impl<'a> Lexer<'a> {
     }
 
     /// Peek at the next item, without consuming it
-    pub fn peek(&self) -> Option<Token<'a>> {
-        self.peeked.clone()
+    pub fn peek(&self) -> TokenKind {
+        self.peeked.kind.clone()
     }
 }
 
@@ -220,12 +220,9 @@ impl<'a> Iterator for Lexer<'a> {
                 Some(c) => TokenKind::InvalidChar(*c),
             };
 
-            let mut p = match peeked {
-                TokenKind::EOF => None,
-                _ => Some(Token::new(peeked, start_line)),
-            };
+            let mut p = Token::new(peeked, start_line);
             std::mem::swap(&mut self.peeked, &mut p);
-            return p;
+            return Some(p);
         }
     }
 }
