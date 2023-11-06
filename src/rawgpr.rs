@@ -3,10 +3,12 @@
 /// Such an object is only valid as long as the scanner that generates it, since
 /// it references memory from that scanner directly.
 use crate::rawexpr::Statement;
+use crate::environment::NodeIndex;
 
+#[derive(Default)]
 pub struct RawGPR {
     pub path: std::path::PathBuf,
-    pub imported: Vec<String>,
+    pub imported: Vec<NodeIndex>,
     pub name: String,
     pub is_abstract: bool,
     pub is_aggregate: bool,

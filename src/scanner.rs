@@ -1,6 +1,7 @@
 use crate::errors::Result;
 use crate::files::File;
 use crate::lexer::Lexer;
+use crate::environment::PathToId;
 use crate::rawexpr::{
     AttributeOrVarName, PackageName, QualifiedName, RawExpr, Statement,
     StringOrOthers, WhenClause,
@@ -21,8 +22,8 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    pub fn parse(mut self) -> Result<RawGPR> {
-        self.parse_file()?;
+    pub fn parse(mut self, path_to_id: &PathToId) -> Result<RawGPR> {
+        self.parse_file(path_to_id)?;
         Ok(self.gpr)
     }
 
@@ -206,22 +207,23 @@ impl<'a> Scanner<'a> {
     }
 
     /// Parse a whole file
-    fn parse_file(&mut self) -> Result<()> {
+    fn parse_file(&mut self, path_to_id: &PathToId) -> Result<()> {
         loop {
             match self.lex.peek() {
                 TokenKind::EOF => return Ok(()),
-                TokenKind::With => self.parse_with_clause()?,
+                TokenKind::With => self.parse_with_clause(path_to_id)?,
                 _ => self.parse_project_declaration()?,
             }
         }
     }
 
     /// Expect a with_clause
-    fn parse_with_clause(&mut self) -> Result<()> {
+    fn parse_with_clause(&mut self, path_to_id: &PathToId) -> Result<()> {
         self.expect(TokenKind::With)?;
 
-        let path = self.expect_str()?.to_string();
-        self.gpr.imported.push(path);
+        let path = self.expect_str()?;
+        let idx = path_to_id[&self.gpr.normalize_path(path)];
+        self.gpr.imported.push(idx);
 
         self.expect(TokenKind::Semicolon)?;
         Ok(())
@@ -642,6 +644,7 @@ mod tests {
         AttributeOrVarName, PackageName, QualifiedName, RawExpr, Statement,
         StringOrOthers,
     };
+    use crate::environment::PathToId;
 
     fn do_check<F>(s: &str, check: F)
     where
@@ -649,7 +652,8 @@ mod tests {
     {
         let file = crate::files::File::new_from_str(s);
         let scan = crate::scanner::Scanner::new(&file);
-        let gpr = scan.parse();
+        let path_to_id: PathToId = Default::default();
+        let gpr = scan.parse(&path_to_id);
         check(gpr);
     }
 
