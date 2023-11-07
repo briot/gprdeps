@@ -1,9 +1,9 @@
+use crate::environment::NodeIndex;
 /// A GPR file that hasn't been processed yet.  All we store here is the info we
 /// extracted from the file itself, but we did not resolve paths, for instance.
 /// Such an object is only valid as long as the scanner that generates it, since
 /// it references memory from that scanner directly.
 use crate::rawexpr::Statement;
-use crate::environment::NodeIndex;
 
 #[derive(Default)]
 pub struct RawGPR {
@@ -13,7 +13,7 @@ pub struct RawGPR {
     pub is_abstract: bool,
     pub is_aggregate: bool,
     pub is_library: bool,
-    pub extends: Option<String>,
+    pub extends: Option<NodeIndex>,
     pub body: Vec<Statement>,
 }
 

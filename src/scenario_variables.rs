@@ -5,24 +5,22 @@ pub struct ScenarioVariable {
 }
 
 impl ScenarioVariable {
-    /// Create a new scenario variable and its list of valid values
-    pub fn new(name: &str, valid: Vec<&str>) -> Self {
-        let mut vs: Vec<String> = valid.iter().map(|s| s.to_string()).collect();
-        vs.sort();
+    /// Create a new scenario variable and its list of valid values.
+    /// The list of values must be sorted.
+    pub fn new(name: &str, valid: Vec<String>) -> Self {
         ScenarioVariable {
             name: name.to_owned(),
-            valid: vs,
+            valid,
         }
     }
 
     /// Check whether this variable has the exact same set of valid values.
-    pub fn has_same_valid(&self, valid: &[&str]) -> bool {
-        let mut v = valid.to_vec();
-        v.sort();
-        v == self.valid
+    /// The list of values must be sorted.
+    pub fn has_same_valid(&self, valid: &[String]) -> bool {
+        valid == self.valid
     }
 
-    /// Show the list of valid values
+    /// Show the list of valid values (sorted alphabetically)
     pub fn list_valid(&self) -> String {
         self.valid.join(", ")
     }

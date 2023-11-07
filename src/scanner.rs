@@ -1,7 +1,7 @@
+use crate::environment::PathToId;
 use crate::errors::Result;
 use crate::files::File;
 use crate::lexer::Lexer;
-use crate::environment::PathToId;
 use crate::rawexpr::{
     AttributeOrVarName, PackageName, QualifiedName, RawExpr, Statement,
     StringOrOthers, WhenClause,
@@ -212,7 +212,7 @@ impl<'a> Scanner<'a> {
             match self.lex.peek() {
                 TokenKind::EOF => return Ok(()),
                 TokenKind::With => self.parse_with_clause(path_to_id)?,
-                _ => self.parse_project_declaration()?,
+                _ => self.parse_project_declaration(path_to_id)?,
             }
         }
     }
@@ -222,7 +222,8 @@ impl<'a> Scanner<'a> {
         self.expect(TokenKind::With)?;
 
         let path = self.expect_str()?;
-        let idx = path_to_id[&self.gpr.normalize_path(path)];
+        let normalized = self.gpr.normalize_path(path);
+        let idx = path_to_id[&normalized];
         self.gpr.imported.push(idx);
 
         self.expect(TokenKind::Semicolon)?;
@@ -230,7 +231,7 @@ impl<'a> Scanner<'a> {
     }
 
     /// Parses the declaration of the project, directly into self.gpr
-    fn parse_project_declaration(&mut self) -> Result<()> {
+    fn parse_project_declaration(&mut self, path_to_id: &PathToId) -> Result<()> {
         loop {
             let n = self.safe_next()?;
             match n.kind {
@@ -244,7 +245,9 @@ impl<'a> Scanner<'a> {
 
         self.gpr.name = self.expect_identifier()?;
         self.gpr.extends = if self.lex.peek() == TokenKind::Extends {
-            Some(self.parse_project_extension()?)
+            let ext = self.parse_project_extension()?;
+            let normalized = self.gpr.normalize_path(ext);
+            Some(path_to_id[&normalized])
         } else {
             None
         };
@@ -294,9 +297,9 @@ impl<'a> Scanner<'a> {
         Ok(())
     }
 
-    fn parse_project_extension(&mut self) -> Result<String> {
+    fn parse_project_extension(&mut self) -> Result<&'a str> {
         self.expect(TokenKind::Extends)?;
-        Ok(self.expect_str()?.to_string())
+        self.expect_str()
     }
 
     fn parse_type_definition(&mut self) -> Result<Statement> {
@@ -640,11 +643,11 @@ impl<'a> Scanner<'a> {
 
 #[cfg(test)]
 mod tests {
+    use crate::environment::PathToId;
     use crate::rawexpr::{
         AttributeOrVarName, PackageName, QualifiedName, RawExpr, Statement,
         StringOrOthers,
     };
-    use crate::environment::PathToId;
 
     fn do_check<F>(s: &str, check: F)
     where

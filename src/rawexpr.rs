@@ -11,6 +11,18 @@ pub enum PackageName {
     Linker,
     Naming,
 }
+impl std::fmt::Display for PackageName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PackageName::Binder => write!(f, "binder"),
+            PackageName::Builder => write!(f, "builder"),
+            PackageName::Compiler => write!(f, "compiler"),
+            PackageName::IDE => write!(f, "ide"),
+            PackageName::Linker => write!(f, "linker"),
+            PackageName::Naming => write!(f, "naming"),
+        }
+    }
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum AttributeOrVarName {
@@ -22,6 +34,20 @@ pub enum AttributeOrVarName {
     SourceDirs,
     SourceFiles,
     Switches,
+}
+impl std::fmt::Display for AttributeOrVarName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AttributeOrVarName::Name(s) => write!(f, "{}", s),
+            AttributeOrVarName::ExecDir => write!(f, "exec_dir"),
+            AttributeOrVarName::LinkerOptions => write!(f, "linker_options"),
+            AttributeOrVarName::Main => write!(f, "main"),
+            AttributeOrVarName::ObjectDir => write!(f, "object_dir"),
+            AttributeOrVarName::SourceDirs => write!(f, "source_dirs"),
+            AttributeOrVarName::SourceFiles => write!(f, "source_files"),
+            AttributeOrVarName::Switches => write!(f, "switches"),
+        }
+    }
 }
 
 /// A fully qualified name.
@@ -50,6 +76,22 @@ pub struct QualifiedName {
     pub package: Option<PackageName>,
     pub name: AttributeOrVarName,
     pub index: Option<Vec<RawExpr>>,
+}
+
+impl std::fmt::Display for QualifiedName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(p) = &self.project {
+            write!(f, "{}.", p)?;
+        }
+        if let Some(p) = self.package {
+            write!(f, "{}.", p)?;
+        }
+        write!(f, "{}", self.name)?;
+        if self.index.is_some() {
+            write!(f, "(..)")?;
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -104,6 +146,36 @@ pub enum RawExpr {
 }
 
 impl RawExpr {
+    /// Whether the expression contains a call to external().
+    /// Returns the name of the scenario variable
+    pub fn has_external(&self) -> Option<&String> {
+        match self {
+            RawExpr::Empty | RawExpr::Others | RawExpr::StaticString(_) => None,
+            RawExpr::Ampersand((left, right)) =>
+                left.has_external().or_else(|| right.has_external()),
+            RawExpr::Comma((left, right)) =>
+                left.has_external().or_else(|| right.has_external()),
+            RawExpr::List(v) => v.iter().find_map(|e| e.has_external()),
+            RawExpr::Name(QualifiedName {
+                project: None,
+                package: None,
+                name: n,
+                index: Some(idx),
+            }) => match n {
+                    AttributeOrVarName::Name(n2) if n2 == "external" => {
+                        match &idx[0] {
+                            RawExpr::StaticString(s) => Some(s),
+                            _ => panic!(
+                                "First argument to external must \
+                                 be static string"),
+                        }
+                    },
+                    _ => None,
+            },
+            RawExpr::Name(_) => None,
+        }
+    }
+
     /// Combine two expressions with an "&"
     pub fn ampersand(self, right: RawExpr) -> RawExpr {
         match self {

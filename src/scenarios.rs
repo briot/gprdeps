@@ -89,12 +89,13 @@
 ///     s9|s10 = (mode=opt|lto,check=some|most) | (mode=opt|lto,check=none)
 ///            = (mode=opt|lto) = s2   => src3/b.adb
 use crate::scenario_variables::ScenarioVariable;
+use std::collections::HashMap;
 
 pub struct Scenario(u16);
 
 #[derive(Default)]
 pub struct AllScenarios {
-    variables: std::collections::HashMap<String, ScenarioVariable>,
+    variables: HashMap<String, ScenarioVariable>,
 }
 
 impl AllScenarios {
@@ -104,11 +105,12 @@ impl AllScenarios {
     pub fn try_add_variable(
         &mut self,
         name: &str,
-        valid: Vec<&str>,
+        mut valid: Vec<String>,
     ) -> Result<(), String> {
+        valid.sort();
+
         match self.variables.get(name) {
             None => {
-                println!("MANU found type {:?} {:?}", name, valid);
                 self.variables.insert(
                     name.to_owned(),
                     ScenarioVariable::new(name, valid),
@@ -120,8 +122,8 @@ impl AllScenarios {
                     Ok(())
                 } else {
                     Err(format!(
-                        "Variable {} already defined with another set of \
-                        values (was {:?}, now {:?})",
+                        "Scenario variable `{}` already defined with another \
+                          set of values (was `{:?}`, now `{:?}`)",
                         name,
                         oldvar.list_valid(),
                         valid.join(", "),

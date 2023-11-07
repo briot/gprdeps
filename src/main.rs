@@ -12,8 +12,8 @@ pub mod scenario_variables;
 pub mod scenarios;
 pub mod tokens;
 
-use std::path::Path;
 use crate::environment::Environment;
+use std::path::Path;
 
 fn main() {
     let mut env = Environment::default();
