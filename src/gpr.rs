@@ -117,7 +117,7 @@ impl GPR {
                     if let (Some(typename), Some(ext)) = (typename, ext) {
                         let t = self.find_named(typename, graph)?;
                         if let Statement::TypeDecl { valid, .. } = t {
-                            scenarios.try_add_variable(ext, valid.clone())?;
+                            scenarios.try_add_variable(ext, valid)?;
                         }
                     }
                 },

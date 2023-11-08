@@ -1,6 +1,7 @@
 /// The un-interpreted tree, as parsed from a GPR file
 use crate::lexer::Lexer;
 use std::fmt::Debug;
+use std::collections::HashSet;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum PackageName {
@@ -116,7 +117,7 @@ pub enum Statement {
     },
     TypeDecl {
         typename: String,
-        valid: Vec<String>,
+        valid: HashSet<String>,
     },
     AttributeDecl {
         name: AttributeOrVarName,
@@ -209,15 +210,15 @@ impl RawExpr {
     }
 
     /// Convert to a list of static strings
-    pub fn to_static_list(
+    pub fn to_static_set(
         self,
         lex: &Lexer,
-    ) -> crate::errors::Result<Vec<String>> {
+    ) -> crate::errors::Result<HashSet<String>> {
         match self {
             RawExpr::List(list) => Ok(list
                 .into_iter()
                 .map(|e| e.to_static_str(lex))
-                .collect::<crate::errors::Result<Vec<String>>>()?),
+                .collect::<crate::errors::Result<HashSet<String>>>()?),
             _ => Err(lex.error("not a list of static strings".into())),
         }
     }

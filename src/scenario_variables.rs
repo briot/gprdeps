@@ -1,28 +1,30 @@
+use std::collections::HashSet;
+
 #[derive(Eq, PartialEq)]
 pub struct ScenarioVariable {
     name: String,
-    valid: Vec<String>, // always sorted
+    valid: HashSet<String>, // always sorted
 }
 
 impl ScenarioVariable {
     /// Create a new scenario variable and its list of valid values.
     /// The list of values must be sorted.
-    pub fn new(name: &str, valid: Vec<String>) -> Self {
+    pub fn new(name: &str, valid: &HashSet<String>) -> Self {
         ScenarioVariable {
             name: name.to_owned(),
-            valid,
+            valid: valid.to_owned(),
         }
     }
 
     /// Check whether this variable has the exact same set of valid values.
     /// The list of values must be sorted.
-    pub fn has_same_valid(&self, valid: &[String]) -> bool {
-        valid == self.valid
+    pub fn has_same_valid(&self, valid: &HashSet<String>) -> bool {
+        *valid == self.valid
     }
 
     /// Show the list of valid values (sorted alphabetically)
-    pub fn list_valid(&self) -> String {
-        self.valid.join(", ")
+    pub fn list_valid(&self) -> &HashSet<String> {
+        &self.valid
     }
 }
 

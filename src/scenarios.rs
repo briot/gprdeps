@@ -88,27 +88,133 @@
 ///            = (mode=debug) = s1     => src2/b.adb
 ///     s9|s10 = (mode=opt|lto,check=some|most) | (mode=opt|lto,check=none)
 ///            = (mode=opt|lto) = s2   => src3/b.adb
+
 use crate::scenario_variables::ScenarioVariable;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
-pub struct Scenario(u16);
-
+/// Describes the set of scenario variables covered by a scenario.  For each
+/// known scenario variables, we either have:
+///    * no entry in vars: all values of the variables are valid
+///    * a vector of values: the scenario is only valid for those values
 #[derive(Default)]
+struct ScenarioDetails {
+    vars: HashMap<String, HashSet<String>>,
+}
+
+impl PartialEq for ScenarioDetails {
+    fn eq(&self, other: &Self) -> bool {
+        self.vars == other.vars
+    }
+}
+
+impl Clone for ScenarioDetails {
+    fn clone(&self) -> Self {
+        Self {
+            vars: self.vars.clone(),
+        }
+    }
+}
+
+impl std::fmt::Display for ScenarioDetails {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for (var, values) in &self.vars {
+            write!(
+                f,
+                "{}={},",
+                var,
+                values.iter()
+                   .map(|s| s.as_str())
+                   .collect::<Vec<_>>()
+                   .join("|")
+            )?
+        }
+        Ok(())
+    }
+}
+
+/// A pointer to a specific scenario.
+/// The default is a scenario that allows all values for all variables
+#[derive(Clone, Copy, Default, Eq, PartialEq, Hash)]
+pub struct Scenario(usize);
+
+impl std::fmt::Display for Scenario{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "s{}", self.0)
+    }
+}
+
+/// The collection of all variants of scenarios needed to analyze the project
+/// tree.  Each scenario is unique.
+
 pub struct AllScenarios {
     variables: HashMap<String, ScenarioVariable>,
+    scenarios: Vec<ScenarioDetails>,  // indexed by Scenario
+}
+
+impl std::fmt::Display for AllScenarios{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for (s, d) in self.scenarios.iter().enumerate() {
+            write!(f, "{}=({}) ", s, d)?
+        }
+        Ok(())
+    }
+}
+
+impl Default for AllScenarios {
+    fn default() -> Self {
+        let mut s = Self {
+            variables: Default::default(),
+            scenarios: Default::default(),
+        };
+        s.scenarios.push(ScenarioDetails::default());
+        s
+    }
 }
 
 impl AllScenarios {
+
+    /// Restrict the scenario to a subset of values for the given variables.
+    /// This either returns an existing matching scenario, or a new one
+    pub fn split_scenario(
+        &mut self,
+        scenario: Scenario,
+        variable: &str,
+        values: &[&str],
+    ) -> Scenario {
+        // Prepare the new details
+        let mut tmp = self.scenarios[scenario.0].clone();
+        let mut old = tmp.vars.get_mut(variable);
+        match old {
+            None => {
+                tmp.vars.insert(
+                    variable.to_string(),
+                    values.iter().map(|s| s.to_string()).collect(),
+                );
+            },
+            Some(ref mut v) => {
+                v.retain(|old| values.iter().any(|v| v == old));
+            },
+        }
+
+        // Check if we already have a similar scenario, or create a new one
+        for (idx, candidate) in self.scenarios.iter().enumerate() {
+            if *candidate == tmp {
+                return Scenario(idx);
+            }
+        }
+
+        self.scenarios.push(tmp);
+        Scenario(self.scenarios.len() - 1)
+    }
+
     /// Declares a new scenario variables and the list of all values it can
     /// accept.  If the variable is already declared, check that we are
     /// declaring the same set of values
     pub fn try_add_variable(
         &mut self,
         name: &str,
-        mut valid: Vec<String>,
+        valid: &HashSet<String>,
     ) -> Result<(), String> {
-        valid.sort();
-
         match self.variables.get(name) {
             None => {
                 self.variables.insert(
@@ -118,15 +224,21 @@ impl AllScenarios {
                 Ok(())
             }
             Some(oldvar) => {
-                if oldvar.has_same_valid(&valid) {
+                if oldvar.has_same_valid(valid) {
                     Ok(())
                 } else {
                     Err(format!(
                         "Scenario variable `{}` already defined with another \
                           set of values (was `{:?}`, now `{:?}`)",
                         name,
-                        oldvar.list_valid(),
-                        valid.join(", "),
+                        oldvar.list_valid().iter()
+                            .map(|s| s.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", "),
+                        valid.iter()
+                            .map(|s| s.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", ")
                     )
                     .to_owned())
                 }
@@ -135,10 +247,50 @@ impl AllScenarios {
     }
 }
 
-// impl Default for All_Scenarios {
-//     fn default() -> Self {
-//         All_Scenarios {
-//             variables: vec![],
-//         }
-//     }
-// }
+#[cfg(test)]
+mod tests {
+    use crate::scenarios::{AllScenarios, Scenario};
+    use std::collections::HashSet;
+
+    fn build_set(values: &[&str]) -> HashSet<String> {
+        let mut s = HashSet::new();
+        for v in values {
+            s.insert(v.to_string());
+        }
+        s
+    }
+
+    #[test]
+    fn create_scenario() {
+        let mut scenarios = AllScenarios::default();
+
+        scenarios.try_add_variable(
+            "MODE", &build_set(&["debug", "optimize", "lto"])).unwrap();
+        scenarios.try_add_variable(
+            "CHECK", &build_set(&["none", "some", "most"])).unwrap();
+
+        let s0 = Scenario::default();
+
+        //  case Mode is
+        //     when "debug" => ...
+        let _s1 = scenarios.split_scenario(s0, "MODE", &["debug"]);
+
+        //  when others  => for Source_Dirs use ("src1", "src3");
+        //     case Check is
+        let s2 = scenarios.split_scenario(s0, "MODE", &["optimize", "lto"]);
+        let _  = scenarios.split_scenario(s0, "MODE", &["optimize", "lto"]);
+        let _s3 = scenarios.split_scenario(s2, "CHECK", &["most"]);
+        let _s4 = scenarios.split_scenario(s2, "CHECK", &["none", "some"]);
+
+        //   case Check is
+        //      when "none" => for Excluded_Source_Files use ("a.ads");
+        let _s5 = scenarios.split_scenario(s0, "CHECK", &["none"]);
+
+        //      when others => null;
+        let _s6 = scenarios.split_scenario(s0, "CHECK", &["some", "most"]);
+
+        println!("MANU {}", scenarios);
+        //assert!(false);
+    }
+
+}

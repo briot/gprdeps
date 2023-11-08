@@ -308,10 +308,9 @@ impl<'a> Scanner<'a> {
         self.expect(TokenKind::Is)?;
         let expr = self.parse_expression()?;
         self.expect(TokenKind::Semicolon)?;
-
         Ok(Statement::TypeDecl {
             typename: typename.to_string(),
-            valid: expr.to_static_list(&self.lex)?,
+            valid: expr.to_static_set(&self.lex)?,
         })
     }
 
@@ -738,11 +737,10 @@ mod tests {
             vec![
                 Statement::TypeDecl {
                     typename: "mode_type".to_string(),
-                    valid: vec![
-                        "Debug".to_string(),
-                        "Optimize".to_string(),
-                        "lto".to_string(),
-                    ],
+                    valid: ["Debug", "Optimize", "lto"]
+                       .iter()
+                       .map(|s| s.to_string())
+                       .collect(),
                 },
                 Statement::VariableDecl {
                     name: "mode".to_string(),
