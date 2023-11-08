@@ -175,7 +175,7 @@ impl AllScenarios {
 
     /// Restrict the scenario to a subset of values for the given variables.
     /// This either returns an existing matching scenario, or a new one
-    pub fn split_scenario(
+    pub fn split(
         &mut self,
         scenario: Scenario,
         variable: &str,
@@ -205,6 +205,19 @@ impl AllScenarios {
 
         self.scenarios.push(tmp);
         Scenario(self.scenarios.len() - 1)
+    }
+
+    /// Union of two scenarios
+    /// Used when a value (e.g. one of the source directories) is present in
+    /// multiple scenarios.
+    ///     [mode=debug, check=on]      use src1
+    ///     [mode=optimize, check=on]   use src1
+    ///     [mode=lto, check=off]       use src1
+    /// we can merge the first two, but we cannot merge the last...
+    /// So merging is only applicable when only one variable differs.
+
+    pub fn merge(&mut self, s1: Scenario, s2: Scenario) -> Vec<Scenario> {
+        vec![]
     }
 
     /// Declares a new scenario variables and the list of all values it can
@@ -250,15 +263,7 @@ impl AllScenarios {
 #[cfg(test)]
 mod tests {
     use crate::scenarios::{AllScenarios, Scenario};
-    use std::collections::HashSet;
-
-    fn build_set(values: &[&str]) -> HashSet<String> {
-        let mut s = HashSet::new();
-        for v in values {
-            s.insert(v.to_string());
-        }
-        s
-    }
+    use crate::scenario_variables::build_set;
 
     #[test]
     fn create_scenario() {
@@ -273,21 +278,21 @@ mod tests {
 
         //  case Mode is
         //     when "debug" => ...
-        let _s1 = scenarios.split_scenario(s0, "MODE", &["debug"]);
+        let _s1 = scenarios.split(s0, "MODE", &["debug"]);
 
         //  when others  => for Source_Dirs use ("src1", "src3");
         //     case Check is
-        let s2 = scenarios.split_scenario(s0, "MODE", &["optimize", "lto"]);
-        let _  = scenarios.split_scenario(s0, "MODE", &["optimize", "lto"]);
-        let _s3 = scenarios.split_scenario(s2, "CHECK", &["most"]);
-        let _s4 = scenarios.split_scenario(s2, "CHECK", &["none", "some"]);
+        let s2 = scenarios.split(s0, "MODE", &["optimize", "lto"]);
+        let _  = scenarios.split(s0, "MODE", &["optimize", "lto"]);
+        let _s3 = scenarios.split(s2, "CHECK", &["most"]);
+        let _s4 = scenarios.split(s2, "CHECK", &["none", "some"]);
 
         //   case Check is
         //      when "none" => for Excluded_Source_Files use ("a.ads");
-        let _s5 = scenarios.split_scenario(s0, "CHECK", &["none"]);
+        let _s5 = scenarios.split(s0, "CHECK", &["none"]);
 
         //      when others => null;
-        let _s6 = scenarios.split_scenario(s0, "CHECK", &["some", "most"]);
+        let _s6 = scenarios.split(s0, "CHECK", &["some", "most"]);
 
         println!("MANU {}", scenarios);
         //assert!(false);
