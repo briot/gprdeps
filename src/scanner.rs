@@ -145,20 +145,20 @@ impl<'a> Scanner<'a> {
         match name1 {
             None => Ok(QualifiedName {
                 project: name1,
-                package: None,
+                package: PackageName::None,
                 name: self.as_attribute(name2),
                 index: self.parse_opt_arg_list()?,
             }),
             Some(n1) => match self.as_package(n1) {
                 Ok(p) => Ok(QualifiedName {
                     project: None,
-                    package: Some(p),
+                    package: p,
                     name: self.as_attribute(name2),
                     index: self.parse_opt_arg_list()?,
                 }),
                 Err(n) => Ok(QualifiedName {
                     project: Some(n),
-                    package: None,
+                    package: PackageName::None,
                     name: self.as_attribute(name2),
                     index: self.parse_opt_arg_list()?,
                 }),
@@ -179,7 +179,7 @@ impl<'a> Scanner<'a> {
                         let p = self.as_mandatory_package(name2)?;
                         Ok(QualifiedName {
                             project: name1,
-                            package: Some(p),
+                            package: p,
                             name: self.as_attribute(name3),
                             index: self.parse_opt_arg_list()?,
                         })
@@ -198,7 +198,7 @@ impl<'a> Scanner<'a> {
                 )?,
                 Some(n1) => Ok(QualifiedName {
                     project: None,
-                    package: None,
+                    package: PackageName::None,
                     name: self.as_attribute(n1),
                     index: self.parse_opt_arg_list()?,
                 }),
@@ -231,7 +231,10 @@ impl<'a> Scanner<'a> {
     }
 
     /// Parses the declaration of the project, directly into self.gpr
-    fn parse_project_declaration(&mut self, path_to_id: &PathToId) -> Result<()> {
+    fn parse_project_declaration(
+        &mut self,
+        path_to_id: &PathToId,
+    ) -> Result<()> {
         loop {
             let n = self.safe_next()?;
             match n.kind {
@@ -719,7 +722,7 @@ mod tests {
                 index: None,
                 value: RawExpr::Name(QualifiedName {
                     project: None,
-                    package: None,
+                    package: PackageName::None,
                     name: AttributeOrVarName::SourceFiles,
                     index: None,
                 }),
@@ -738,21 +741,21 @@ mod tests {
                 Statement::TypeDecl {
                     typename: "mode_type".to_string(),
                     valid: ["Debug", "Optimize", "lto"]
-                       .iter()
-                       .map(|s| s.to_string())
-                       .collect(),
+                        .iter()
+                        .map(|s| s.to_string())
+                        .collect(),
                 },
                 Statement::VariableDecl {
                     name: "mode".to_string(),
                     typename: Some(QualifiedName {
                         project: None,
-                        package: None,
+                        package: PackageName::None,
                         name: AttributeOrVarName::Name("mode_type".to_string()),
                         index: None,
                     }),
                     expr: RawExpr::Name(QualifiedName {
                         project: None,
-                        package: None,
+                        package: PackageName::None,
                         name: AttributeOrVarName::Name("external".to_string()),
                         index: Some(vec![RawExpr::StaticString(
                             "MODE".to_string(),

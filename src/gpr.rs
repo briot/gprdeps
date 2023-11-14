@@ -1,9 +1,12 @@
 use crate::environment::{DepGraph, NodeIndex};
-use crate::scenarios::AllScenarios;
 use crate::rawexpr::{
     AttributeOrVarName, PackageName, QualifiedName, Statement,
+    PACKAGE_NAME_VARIANTS,
 };
 use crate::rawgpr::RawGPR;
+use crate::scenarios::AllScenarios;
+use crate::values::ExprValue;
+use std::collections::HashMap;
 
 /// A specific GPR file
 /// Such an object is independent of the scanner that created it, though it
@@ -12,6 +15,10 @@ pub struct GPR {
     index: NodeIndex,
     path: std::path::PathBuf,
     raw: RawGPR,
+    values: [HashMap<
+        AttributeOrVarName, // variable or attribute name
+        ExprValue,          // value for each scenario
+    >; PACKAGE_NAME_VARIANTS],
 }
 
 impl GPR {
@@ -20,6 +27,7 @@ impl GPR {
             path,
             index: Default::default(),
             raw: Default::default(),
+            values: Default::default(),
         }
     }
 
@@ -28,14 +36,55 @@ impl GPR {
         self.raw = raw;
     }
 
+    /// Declare a new named object.
+    /// It is an error if such an object already exists.
+    pub fn declare(
+        &mut self,
+        package: PackageName,
+        name: AttributeOrVarName,
+        value: ExprValue,
+    ) -> Result<(), String> {
+        let pkg = &mut self.values[package as usize];
+        if pkg.contains_key(&name) {
+            return Err(format!("{}: object already declared {}.{}",
+                self, package, name));
+        }
+        pkg.insert(name, value);
+        Ok(())
+    }
+
+    /// After a project has been processed, we can lookup values of variables
+    /// and attributes directly, for each scenario.
+    /// The lookup is also done in imported projects.
+    pub fn lookup<'a>(
+        &'a self,
+        name: &QualifiedName,
+        graph: &'a DepGraph,
+    ) -> Result<&ExprValue, String> {
+        let project = match &name.project {
+            None => Some(self),
+            Some(c) if c == self.raw.name.as_str() => Some(self),
+            Some(n) => graph
+                .gpr_dependencies(self.index)
+                .iter()
+                .copied()
+                .filter(|gpr| gpr.raw.name == *n)
+                .nth(0),
+        };
+        project
+            .and_then(|p| p.values[name.package as usize].get(&name.name))
+            .ok_or_else(|| format!("{}: {} not found", self, name))
+    }
+
     /// Find the declaration for the given package, in Self
-    fn find_package_decl(
+    /// This should be used before the project has been processed.
+    fn find_raw_package_decl(
         &self,
-        pkg: Option<PackageName>,
-    ) -> std::result::Result<&Vec<Statement>, String> {
+        pkg: PackageName,
+    ) -> Result<&Vec<Statement>, String> {
         match pkg {
-            None => Ok(&self.raw.body),
-            Some(p) => {
+            PackageName::None => Ok(&self.raw.body),
+            p => {
                 for s in &self.raw.body {
                     if let Statement::Package { name, body, .. } = s {
                         if *name == p {
@@ -49,21 +98,21 @@ impl GPR {
     }
 
     /// Find the given named object in self (but not in imported projects).
-    fn find_named_in_project(
+    /// This should be used before the project has been processed.
+    fn find_raw_named_in_project(
         &self,
         name: &QualifiedName,
     ) -> std::result::Result<&Statement, String> {
-        for stmt in self.find_package_decl(name.package)? {
+        for stmt in self.find_raw_package_decl(name.package)? {
             match (&name.name, stmt) {
                 (
                     AttributeOrVarName::Name(n),
                     Statement::TypeDecl { typename, .. },
                 ) if *n == *typename => return Ok(stmt),
 
-                (
-                    n,
-                    Statement::AttributeDecl { name, .. },
-                ) if *n == *name => return Ok(stmt),
+                (n, Statement::AttributeDecl { name, .. }) if *n == *name => {
+                    return Ok(stmt)
+                }
 
                 (
                     AttributeOrVarName::Name(n),
@@ -76,21 +125,24 @@ impl GPR {
         Err(format!("{:?} is not defined in {}", name, self))
     }
 
-    /// Find the given named object in self or its imported projects
-    fn find_named<'a>(
+    /// Find the given named object in self or its imported projects.
+    /// This should be used before the project has been processed.
+    pub fn find_raw_named<'a>(
         &'a self,
         name: &QualifiedName,
         graph: &'a DepGraph,
     ) -> std::result::Result<&'a Statement, String> {
         let current_project = self.raw.name.as_str();
         match &name.project {
-            None => self.find_named_in_project(name),
-            Some(c) if c == current_project => self.find_named_in_project(name),
+            None => self.find_raw_named_in_project(name),
+            Some(c) if c == current_project => {
+                self.find_raw_named_in_project(name)
+            }
             Some(n) => {
                 for gpr in graph.gpr_dependencies(self.index) {
                     if gpr.raw.name == *n {
                         //  ??? Possibly searching multiple times in same project
-                        let found = gpr.find_named(name, graph);
+                        let found = gpr.find_raw_named(name, graph);
                         if found.is_ok() {
                             return found;
                         }
@@ -107,21 +159,42 @@ impl GPR {
         graph: &DepGraph,
         scenarios: &mut AllScenarios,
     ) -> std::result::Result<(), String> {
+        let mut vars = HashMap::new();
+
         for s in &self.raw.body {
             match s {
-                Statement::TypeDecl { .. } => {
-                },
-                Statement::VariableDecl { typename, expr, .. } => {
+                Statement::VariableDecl {
+                    name,
+                    typename,
+                    expr,
+                } => {
                     // Is this a scenario variable ?
                     let ext = expr.has_external();
                     if let (Some(typename), Some(ext)) = (typename, ext) {
-                        let t = self.find_named(typename, graph)?;
+                        let t = self.find_raw_named(typename, graph)?;
                         if let Statement::TypeDecl { valid, .. } = t {
                             scenarios.try_add_variable(ext, valid)?;
                         }
+
+                    // Else a simple variable
+                    } else {
+                        println!("{}: variable {} {:?}", self, name, expr);
+                        vars.insert(name.clone(), expr);
                     }
-                },
-                _ => {}
+                }
+                Statement::TypeDecl { typename, .. } => {
+                    println!("{}: type {}", self, typename);
+                }
+                Statement::AttributeDecl {
+                    name,
+                    index: _index,
+                    ..
+                } => {
+                    println!("{}: attribute {}", self, name);
+                }
+                _ => {
+                    panic!("{}: Unhandled statement {:?}", self, s);
+                }
             }
         }
         Ok(())
@@ -130,6 +203,6 @@ impl GPR {
 
 impl std::fmt::Display for GPR {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self.path)
+        write!(f, "{}", self.path.display())
     }
 }

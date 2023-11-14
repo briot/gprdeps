@@ -88,7 +88,6 @@
 ///            = (mode=debug) = s1     => src2/b.adb
 ///     s9|s10 = (mode=opt|lto,check=some|most) | (mode=opt|lto,check=none)
 ///            = (mode=opt|lto) = s2   => src3/b.adb
-
 use crate::scenario_variables::ScenarioVariable;
 use std::collections::{HashMap, HashSet};
 
@@ -121,17 +120,11 @@ impl std::fmt::Display for ScenarioDetails {
         varnames.sort();
 
         for n in varnames {
-            let mut vals = self.vars[n].iter()
-               .map(|s| s.as_str())
-               .collect::<Vec<_>>();
+            let mut vals =
+                self.vars[n].iter().map(|s| s.as_str()).collect::<Vec<_>>();
             vals.sort();
 
-            write!(
-                f,
-                "{}={},",
-                n,
-                vals.join("|")
-            )?
+            write!(f, "{}={},", n, vals.join("|"))?
         }
         Ok(())
     }
@@ -139,10 +132,10 @@ impl std::fmt::Display for ScenarioDetails {
 
 /// A pointer to a specific scenario.
 /// The default is a scenario that allows all values for all variables
-#[derive(Clone, Copy, Default, Eq, PartialEq, Hash)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash)]
 pub struct Scenario(usize);
 
-impl std::fmt::Display for Scenario{
+impl std::fmt::Display for Scenario {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "s{}", self.0)
     }
@@ -153,10 +146,10 @@ impl std::fmt::Display for Scenario{
 
 pub struct AllScenarios {
     variables: HashMap<String, ScenarioVariable>,
-    scenarios: Vec<ScenarioDetails>,  // indexed by Scenario
+    scenarios: Vec<ScenarioDetails>, // indexed by Scenario
 }
 
-impl std::fmt::Display for AllScenarios{
+impl std::fmt::Display for AllScenarios {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for (s, d) in self.scenarios.iter().enumerate() {
             write!(f, "{}=({}) ", s, d)?
@@ -177,7 +170,6 @@ impl Default for AllScenarios {
 }
 
 impl AllScenarios {
-
     fn create_or_reuse(&mut self, details: ScenarioDetails) -> Scenario {
         // Check if we already have a similar scenario, or create a new one
         for (idx, candidate) in self.scenarios.iter().enumerate() {
@@ -207,13 +199,33 @@ impl AllScenarios {
                     variable.to_string(),
                     values.iter().map(|s| s.to_string()).collect(),
                 );
-            },
+            }
             Some(ref mut v) => {
                 v.retain(|old| values.iter().any(|v| v == old));
-            },
+            }
         }
 
         self.create_or_reuse(tmp)
+    }
+
+    /// Similar to split, but passes an existing scenario
+    pub fn intersection(&mut self, s1: Scenario, s2: Scenario) -> Scenario {
+        let mut d1 = self.scenarios[s1.0].clone();
+        for (name, vals) in &self.scenarios[s2.0].vars {
+            let mut old = d1.vars.get_mut(name);
+            match old {
+                None => {
+                    d1.vars.insert(
+                        name.to_string(),
+                        vals.iter().map(|s| s.to_string()).collect(),
+                    );
+                }
+                Some(ref mut v) => {
+                    v.retain(|old| vals.iter().any(|v| v == old));
+                }
+            }
+        }
+        self.create_or_reuse(d1)
     }
 
     /// Union of two scenarios
@@ -258,7 +270,7 @@ impl AllScenarios {
                     //     value.insert(v.to_string());
                     // }
                     to_remove = Some(name.clone());
-                },
+                }
                 Some(value2) if value != value2 => {
                     if diffcount > 0 {
                         return None;
@@ -268,8 +280,8 @@ impl AllScenarios {
                     for v in value2 {
                         value.insert(v.clone());
                     }
-                },
-                Some(_) => {},
+                }
+                Some(_) => {}
             }
         }
 
@@ -314,11 +326,14 @@ impl AllScenarios {
                         "Scenario variable `{}` already defined with another \
                           set of values (was `{:?}`, now `{:?}`)",
                         name,
-                        oldvar.list_valid().iter()
+                        oldvar
+                            .list_valid()
+                            .iter()
                             .map(|s| s.as_str())
                             .collect::<Vec<_>>()
                             .join(", "),
-                        valid.iter()
+                        valid
+                            .iter()
                             .map(|s| s.as_str())
                             .collect::<Vec<_>>()
                             .join(", ")
@@ -332,21 +347,21 @@ impl AllScenarios {
 
 #[cfg(test)]
 mod tests {
-    use crate::scenarios::{AllScenarios, Scenario};
     use crate::scenario_variables::build_set;
+    use crate::scenarios::{AllScenarios, Scenario};
 
     #[test]
     fn create_scenario() {
         let mut scenarios = AllScenarios::default();
-        scenarios.try_add_variable(
-            "MODE", &build_set(&["debug", "optimize", "lto"])).unwrap();
-        scenarios.try_add_variable(
-            "CHECK", &build_set(&["none", "some", "most"])).unwrap();
+        scenarios
+            .try_add_variable("MODE", &build_set(&["debug", "optimize", "lto"]))
+            .unwrap();
+        scenarios
+            .try_add_variable("CHECK", &build_set(&["none", "some", "most"]))
+            .unwrap();
 
         let s0 = Scenario::default();
-        assert_eq!(
-            scenarios.scenarios.get(s0.0).unwrap().to_string(),
-            "");
+        assert_eq!(scenarios.scenarios.get(s0.0).unwrap().to_string(), "");
 
         //  case Mode is
         //     when "debug" => ...
@@ -354,7 +369,8 @@ mod tests {
         assert_eq!(s1.0, 1);
         assert_eq!(
             scenarios.scenarios.get(s1.0).unwrap().to_string(),
-            "MODE=debug,");
+            "MODE=debug,"
+        );
 
         //  when others  => for Source_Dirs use ("src1", "src3");
         //     case Check is
@@ -362,22 +378,25 @@ mod tests {
         assert_eq!(s2.0, 2);
         assert_eq!(
             scenarios.scenarios.get(s2.0).unwrap().to_string(),
-            "MODE=lto|optimize,");
+            "MODE=lto|optimize,"
+        );
 
-        let same  = scenarios.split(s0, "MODE", &["optimize", "lto"]);
+        let same = scenarios.split(s0, "MODE", &["optimize", "lto"]);
         assert_eq!(same.0, 2);
 
         let s3 = scenarios.split(s2, "CHECK", &["most"]);
         assert_eq!(s3.0, 3);
         assert_eq!(
             scenarios.scenarios.get(s3.0).unwrap().to_string(),
-            "CHECK=most,MODE=lto|optimize,");
+            "CHECK=most,MODE=lto|optimize,"
+        );
 
         let s4 = scenarios.split(s2, "CHECK", &["none", "some"]);
         assert_eq!(s4.0, 4);
         assert_eq!(
             scenarios.scenarios.get(s4.0).unwrap().to_string(),
-            "CHECK=none|some,MODE=lto|optimize,");
+            "CHECK=none|some,MODE=lto|optimize,"
+        );
 
         //   case Check is
         //      when "none" => for Excluded_Source_Files use ("a.ads");
@@ -385,23 +404,27 @@ mod tests {
         assert_eq!(s5.0, 5);
         assert_eq!(
             scenarios.scenarios.get(s5.0).unwrap().to_string(),
-            "CHECK=none,");
+            "CHECK=none,"
+        );
 
         //      when others => null;
         let s6 = scenarios.split(s0, "CHECK", &["some", "most"]);
         assert_eq!(s6.0, 6);
         assert_eq!(
             scenarios.scenarios.get(s6.0).unwrap().to_string(),
-            "CHECK=most|some,");
+            "CHECK=most|some,"
+        );
     }
 
     #[test]
     fn test_union() {
         let mut scenarios = AllScenarios::default();
-        scenarios.try_add_variable(
-            "MODE", &build_set(&["debug", "optimize", "lto"])).unwrap();
-        scenarios.try_add_variable(
-            "CHECK", &build_set(&["none", "some", "most"])).unwrap();
+        scenarios
+            .try_add_variable("MODE", &build_set(&["debug", "optimize", "lto"]))
+            .unwrap();
+        scenarios
+            .try_add_variable("CHECK", &build_set(&["none", "some", "most"]))
+            .unwrap();
         let s0 = Scenario::default();
 
         //  s2=[mode=debug,    check=some]
@@ -416,14 +439,16 @@ mod tests {
         assert_eq!(s5.unwrap().0, 5);
         assert_eq!(
             scenarios.scenarios.get(s5.unwrap().0).unwrap().to_string(),
-            "CHECK=some,MODE=debug|optimize,");
+            "CHECK=some,MODE=debug|optimize,"
+        );
 
-        let s5 = scenarios.union(s4, s2);   //  reverse order
+        let s5 = scenarios.union(s4, s2); //  reverse order
         assert!(s5.is_some());
         assert_eq!(s5.unwrap().0, 5);
         assert_eq!(
             scenarios.scenarios.get(s5.unwrap().0).unwrap().to_string(),
-            "CHECK=some,MODE=debug|optimize,");
+            "CHECK=some,MODE=debug|optimize,"
+        );
 
         //  s2=[mode=debug, check=some]
         //  s7=[mode=lto,   check=most]
@@ -432,7 +457,7 @@ mod tests {
         let s7 = scenarios.split(s6, "CHECK", &["most"]);
         let res = scenarios.union(s2, s7);
         assert!(res.is_none());
-        let res = scenarios.union(s7, s2);  // reverse order
+        let res = scenarios.union(s7, s2); // reverse order
         assert!(res.is_none());
 
         //  s2=[mode=debug, check=some]
@@ -443,14 +468,68 @@ mod tests {
         assert_eq!(res.unwrap().0, 1);
         assert_eq!(
             scenarios.scenarios.get(res.unwrap().0).unwrap().to_string(),
-            "MODE=debug,");
+            "MODE=debug,"
+        );
 
-        let res = scenarios.union(s1, s2);  //  reverse order
+        let res = scenarios.union(s1, s2); //  reverse order
         assert!(res.is_some());
         assert_eq!(res.unwrap().0, 1);
         assert_eq!(
             scenarios.scenarios.get(res.unwrap().0).unwrap().to_string(),
-            "MODE=debug,");
+            "MODE=debug,"
+        );
     }
 
+    #[test]
+    fn test_intersection() {
+        let mut scenarios = AllScenarios::default();
+        scenarios
+            .try_add_variable("MODE", &build_set(&["debug", "optimize", "lto"]))
+            .unwrap();
+        scenarios
+            .try_add_variable("CHECK", &build_set(&["none", "some", "most"]))
+            .unwrap();
+        let s0 = Scenario::default();
+
+        // s0=everything
+        // s1=MODE=debug
+        //    => s1
+        let s1 = scenarios.split(s0, "MODE", &["debug"]);
+        let res = scenarios.intersection(s0, s1);
+        assert_eq!(res, s1);
+        let res = scenarios.intersection(s1, s0); // reverse order
+        assert_eq!(res, s1);
+
+        // s1=MODE=debug
+        // s2=MODE=debug,CHECK=some
+        //    => s2
+        let s2 = scenarios.split(s1, "CHECK", &["some"]);
+        let res = scenarios.intersection(s1, s2);
+        assert_eq!(res, s2);
+        let res = scenarios.intersection(s2, s1); // reverse order
+        assert_eq!(res, s2);
+
+        // s2=MODE=debug,CHECK=some
+        // s3=CHECK=none|some
+        //    => s2=MODE=debug,CHECK=some
+        let s3 = scenarios.split(s0, "CHECK", &["none", "some"]);
+        let res = scenarios.intersection(s2, s3);
+        assert_eq!(res, s2);
+        let res = scenarios.intersection(s3, s2); // reverse order
+        assert_eq!(res, s2);
+
+        // s4=MODE=debug|optimize,CHECK=some
+        // s5=MODE=lto|optimize,CHECK=some|most
+        //    =>  s6=MODE=optimize,CHECK=some
+        let s4_step1 = scenarios.split(s0, "MODE", &["debug", "optimize"]);
+        let s4 = scenarios.split(s4_step1, "CHECK", &["some"]);
+        let s5_step1 = scenarios.split(s0, "MODE", &["lto", "optimize"]);
+        let s5 = scenarios.split(s5_step1, "CHECK", &["some", "most"]);
+        let s6_step1 = scenarios.split(s0, "MODE", &["optimize"]);
+        let s6 = scenarios.split(s6_step1, "CHECK", &["some"]);
+        let res = scenarios.intersection(s4, s5);
+        assert_eq!(res, s6);
+        let res = scenarios.intersection(s5, s4); // reverse order
+        assert_eq!(res, s6);
+    }
 }

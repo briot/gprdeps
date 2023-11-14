@@ -11,6 +11,7 @@ pub mod scanner;
 pub mod scenario_variables;
 pub mod scenarios;
 pub mod tokens;
+pub mod values;
 
 use crate::environment::Environment;
 use std::path::Path;

@@ -3,9 +3,6 @@ name = "dependencies"
 version = "0.1.0"
 edition = "2021"
 
-[build]
-rustflags = ["-Z", "threads=8"]
-
 [profile.dev]
 opt-level = 1
 

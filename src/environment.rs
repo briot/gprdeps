@@ -75,7 +75,6 @@ pub struct Environment {
 }
 
 impl Environment {
-
     /// Recursively look for all project files, parse them and prepare the
     /// dependency graph.
     pub fn parse_all(
@@ -111,7 +110,7 @@ impl Environment {
             p.set_raw(raw, *idx);
         }
         for (from, to) in edges {
-           self.graph.add_edge(from, to, Edge::Imports);
+            self.graph.add_edge(from, to, Edge::Imports);
         }
 
         // Process the projects in topological order, so that any reference to a
@@ -120,10 +119,9 @@ impl Environment {
         println!("Parsed {} gpr files", gprmap.len());
 
         for idx in self.graph.toposort().iter().rev() {
-            self.graph.get_project(*idx).process(
-                &self.graph,
-                &mut self.scenarios,
-            )?;
+            self.graph
+                .get_project(*idx)
+                .process(&self.graph, &mut self.scenarios)?;
         }
 
         //    let pool = threadpool::ThreadPool::new(1);

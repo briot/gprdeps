@@ -16,7 +16,6 @@ pub struct VariableContext<'a> {
 }
 
 impl<'a> VariableContext<'a> {
-
     /// Called when seeing a `when` clause, to remove the corresponding state
     /// from the set of remaining values.
     pub fn when(&mut self, value: &str) {
@@ -29,7 +28,6 @@ impl<'a> VariableContext<'a> {
         &self.remaining
     }
 }
-
 
 #[derive(Eq, PartialEq)]
 pub struct ScenarioVariable {
@@ -59,9 +57,9 @@ impl ScenarioVariable {
     }
 
     /// Create a new context for a `case` statement
-    pub fn start_case_stmt(&self)  -> VariableContext {
+    pub fn start_case_stmt(&self) -> VariableContext {
         VariableContext {
-             remaining: self.valid.iter().map(|s| s.as_str()).collect(),
+            remaining: self.valid.iter().map(|s| s.as_str()).collect(),
         }
     }
 }

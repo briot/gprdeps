@@ -1,10 +1,11 @@
 /// The un-interpreted tree, as parsed from a GPR file
 use crate::lexer::Lexer;
-use std::fmt::Debug;
 use std::collections::HashSet;
+use std::fmt::Debug;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum PackageName {
+    None = 0,
     Binder,
     Builder,
     Compiler,
@@ -12,9 +13,14 @@ pub enum PackageName {
     Linker,
     Naming,
 }
+
+// In rust nightly, we can use std::mem::variant_count::<PackageName>()
+pub const PACKAGE_NAME_VARIANTS: usize = 7;
+
 impl std::fmt::Display for PackageName {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            PackageName::None => write!(f, "<top>"),
             PackageName::Binder => write!(f, "binder"),
             PackageName::Builder => write!(f, "builder"),
             PackageName::Compiler => write!(f, "compiler"),
@@ -25,7 +31,7 @@ impl std::fmt::Display for PackageName {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum AttributeOrVarName {
     Name(String), // Either variable or attribute name, lower-cased
     ExecDir,
@@ -74,7 +80,7 @@ impl std::fmt::Display for AttributeOrVarName {
 #[derive(Debug, PartialEq)]
 pub struct QualifiedName {
     pub project: Option<String>, // None for current project or "Project'"
-    pub package: Option<PackageName>,
+    pub package: PackageName,
     pub name: AttributeOrVarName,
     pub index: Option<Vec<RawExpr>>,
 }
@@ -84,10 +90,7 @@ impl std::fmt::Display for QualifiedName {
         if let Some(p) = &self.project {
             write!(f, "{}.", p)?;
         }
-        if let Some(p) = self.package {
-            write!(f, "{}.", p)?;
-        }
-        write!(f, "{}", self.name)?;
+        write!(f, "{}.{}", self.package, self.name)?;
         if self.index.is_some() {
             write!(f, "(..)")?;
         }
@@ -142,7 +145,6 @@ pub enum RawExpr {
     StaticString(String), //  doesn't include surrounding quotes
     Name(QualifiedName),
     Ampersand((Box<RawExpr>, Box<RawExpr>)),
-    Comma((Box<RawExpr>, Box<RawExpr>)), // argument lists
     List(Vec<Box<RawExpr>>),
 }
 
@@ -152,26 +154,26 @@ impl RawExpr {
     pub fn has_external(&self) -> Option<&String> {
         match self {
             RawExpr::Empty | RawExpr::Others | RawExpr::StaticString(_) => None,
-            RawExpr::Ampersand((left, right)) =>
-                left.has_external().or_else(|| right.has_external()),
-            RawExpr::Comma((left, right)) =>
-                left.has_external().or_else(|| right.has_external()),
+            RawExpr::Ampersand((left, right)) => {
+                left.has_external().or_else(|| right.has_external())
+            }
             RawExpr::List(v) => v.iter().find_map(|e| e.has_external()),
             RawExpr::Name(QualifiedName {
                 project: None,
-                package: None,
+                package: PackageName::None,
                 name: n,
                 index: Some(idx),
             }) => match n {
-                    AttributeOrVarName::Name(n2) if n2 == "external" => {
-                        match &idx[0] {
-                            RawExpr::StaticString(s) => Some(s),
-                            _ => panic!(
-                                "First argument to external must \
-                                 be static string"),
-                        }
-                    },
-                    _ => None,
+                AttributeOrVarName::Name(n2) if n2 == "external" => {
+                    match &idx[0] {
+                        RawExpr::StaticString(s) => Some(s),
+                        _ => panic!(
+                            "First argument to external must \
+                                 be static string"
+                        ),
+                    }
+                }
+                _ => None,
             },
             RawExpr::Name(_) => None,
         }
@@ -185,14 +187,6 @@ impl RawExpr {
         }
     }
 
-    /// Build up an argument list
-    pub fn comma(self, right: RawExpr) -> RawExpr {
-        match self {
-            RawExpr::Empty => right,
-            _ => RawExpr::Comma((Box::new(self), Box::new(right))),
-        }
-    }
-
     /// Append an element to a list
     pub fn append(&mut self, right: RawExpr) {
         match self {
@@ -202,6 +196,7 @@ impl RawExpr {
     }
 
     /// Convert to a static string
+    /// ??? Should use values.rs
     pub fn to_static_str(self, lex: &Lexer) -> crate::errors::Result<String> {
         match self {
             RawExpr::StaticString(s) => Ok(s),
@@ -210,6 +205,7 @@ impl RawExpr {
     }
 
     /// Convert to a list of static strings
+    /// ??? Should use values.rs
     pub fn to_static_set(
         self,
         lex: &Lexer,
