@@ -117,15 +117,20 @@ impl Clone for ScenarioDetails {
 
 impl std::fmt::Display for ScenarioDetails {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for (var, values) in &self.vars {
+        let mut varnames = self.vars.keys().collect::<Vec<_>>();
+        varnames.sort();
+
+        for n in varnames {
+            let mut vals = self.vars[n].iter()
+               .map(|s| s.as_str())
+               .collect::<Vec<_>>();
+            vals.sort();
+
             write!(
                 f,
                 "{}={},",
-                var,
-                values.iter()
-                   .map(|s| s.as_str())
-                   .collect::<Vec<_>>()
-                   .join("|")
+                n,
+                vals.join("|")
             )?
         }
         Ok(())
@@ -173,6 +178,18 @@ impl Default for AllScenarios {
 
 impl AllScenarios {
 
+    fn create_or_reuse(&mut self, details: ScenarioDetails) -> Scenario {
+        // Check if we already have a similar scenario, or create a new one
+        for (idx, candidate) in self.scenarios.iter().enumerate() {
+            if *candidate == details {
+                return Scenario(idx);
+            }
+        }
+
+        self.scenarios.push(details);
+        Scenario(self.scenarios.len() - 1)
+    }
+
     /// Restrict the scenario to a subset of values for the given variables.
     /// This either returns an existing matching scenario, or a new one
     pub fn split(
@@ -196,28 +213,81 @@ impl AllScenarios {
             },
         }
 
-        // Check if we already have a similar scenario, or create a new one
-        for (idx, candidate) in self.scenarios.iter().enumerate() {
-            if *candidate == tmp {
-                return Scenario(idx);
-            }
-        }
-
-        self.scenarios.push(tmp);
-        Scenario(self.scenarios.len() - 1)
+        self.create_or_reuse(tmp)
     }
 
     /// Union of two scenarios
     /// Used when a value (e.g. one of the source directories) is present in
-    /// multiple scenarios.
-    ///     [mode=debug, check=on]      use src1
-    ///     [mode=optimize, check=on]   use src1
-    ///     [mode=lto, check=off]       use src1
-    /// we can merge the first two, but we cannot merge the last...
-    /// So merging is only applicable when only one variable differs.
+    /// multiple scenarios.  If possible it returns a new (bigger) scenario
+    /// where the variable applies.
+    ///
+    ///     [mode=debug,    check=on]
+    ///     [mode=optimize, check=on]
+    ///        => [mode=debug|optimize, check=on]
+    ///
+    ///     [mode=debug, check=on]
+    ///     [mode=lto,   check=off]
+    ///        => no merging, they differ on more than one variable
+    ///
+    ///     [mode=debug, check=on]
+    ///     [mode=debug]      valid for all values of check
+    ///        => [mode=debug]
+    ///
 
-    pub fn merge(&mut self, s1: Scenario, s2: Scenario) -> Vec<Scenario> {
-        vec![]
+    pub fn union(&mut self, s1: Scenario, s2: Scenario) -> Option<Scenario> {
+        //  The variable on which the two scenarios differ
+        let mut diffcount = 0;
+
+        let mut d1 = self.scenarios[s1.0].clone();
+        let d2 = &self.scenarios[s2.0];
+
+        let mut to_remove: Option<String> = None;
+
+        for (name, value) in &mut d1.vars {
+            match d2.vars.get(name) {
+                None => {
+                    if diffcount > 0 {
+                        return None;
+                    }
+
+                    // `name` is not found in s2, so this behaves as if it
+                    // accepted all possible values of the variable.  To
+                    // represent this, we remove the entry for the variable.
+                    diffcount += 1;
+                    // for v in self.variables[name].list_valid() {
+                    //     value.insert(v.to_string());
+                    // }
+                    to_remove = Some(name.clone());
+                },
+                Some(value2) if value != value2 => {
+                    if diffcount > 0 {
+                        return None;
+                    }
+
+                    diffcount += 1;
+                    for v in value2 {
+                        value.insert(v.clone());
+                    }
+                },
+                Some(_) => {},
+            }
+        }
+
+        if let Some(n) = to_remove {
+            d1.vars.remove(&n);
+        }
+
+        for name in d2.vars.keys() {
+            if !d1.vars.contains_key(name) {
+                if diffcount > 0 {
+                    return None;
+                }
+                diffcount += 1;
+                d1.vars.remove(name);
+            }
+        }
+
+        Some(self.create_or_reuse(d1))
     }
 
     /// Declares a new scenario variables and the list of all values it can
@@ -268,34 +338,119 @@ mod tests {
     #[test]
     fn create_scenario() {
         let mut scenarios = AllScenarios::default();
-
         scenarios.try_add_variable(
             "MODE", &build_set(&["debug", "optimize", "lto"])).unwrap();
         scenarios.try_add_variable(
             "CHECK", &build_set(&["none", "some", "most"])).unwrap();
 
         let s0 = Scenario::default();
+        assert_eq!(
+            scenarios.scenarios.get(s0.0).unwrap().to_string(),
+            "");
 
         //  case Mode is
         //     when "debug" => ...
-        let _s1 = scenarios.split(s0, "MODE", &["debug"]);
+        let s1 = scenarios.split(s0, "MODE", &["debug"]);
+        assert_eq!(s1.0, 1);
+        assert_eq!(
+            scenarios.scenarios.get(s1.0).unwrap().to_string(),
+            "MODE=debug,");
 
         //  when others  => for Source_Dirs use ("src1", "src3");
         //     case Check is
         let s2 = scenarios.split(s0, "MODE", &["optimize", "lto"]);
-        let _  = scenarios.split(s0, "MODE", &["optimize", "lto"]);
-        let _s3 = scenarios.split(s2, "CHECK", &["most"]);
-        let _s4 = scenarios.split(s2, "CHECK", &["none", "some"]);
+        assert_eq!(s2.0, 2);
+        assert_eq!(
+            scenarios.scenarios.get(s2.0).unwrap().to_string(),
+            "MODE=lto|optimize,");
+
+        let same  = scenarios.split(s0, "MODE", &["optimize", "lto"]);
+        assert_eq!(same.0, 2);
+
+        let s3 = scenarios.split(s2, "CHECK", &["most"]);
+        assert_eq!(s3.0, 3);
+        assert_eq!(
+            scenarios.scenarios.get(s3.0).unwrap().to_string(),
+            "CHECK=most,MODE=lto|optimize,");
+
+        let s4 = scenarios.split(s2, "CHECK", &["none", "some"]);
+        assert_eq!(s4.0, 4);
+        assert_eq!(
+            scenarios.scenarios.get(s4.0).unwrap().to_string(),
+            "CHECK=none|some,MODE=lto|optimize,");
 
         //   case Check is
         //      when "none" => for Excluded_Source_Files use ("a.ads");
-        let _s5 = scenarios.split(s0, "CHECK", &["none"]);
+        let s5 = scenarios.split(s0, "CHECK", &["none"]);
+        assert_eq!(s5.0, 5);
+        assert_eq!(
+            scenarios.scenarios.get(s5.0).unwrap().to_string(),
+            "CHECK=none,");
 
         //      when others => null;
-        let _s6 = scenarios.split(s0, "CHECK", &["some", "most"]);
+        let s6 = scenarios.split(s0, "CHECK", &["some", "most"]);
+        assert_eq!(s6.0, 6);
+        assert_eq!(
+            scenarios.scenarios.get(s6.0).unwrap().to_string(),
+            "CHECK=most|some,");
+    }
 
-        println!("MANU {}", scenarios);
-        //assert!(false);
+    #[test]
+    fn test_union() {
+        let mut scenarios = AllScenarios::default();
+        scenarios.try_add_variable(
+            "MODE", &build_set(&["debug", "optimize", "lto"])).unwrap();
+        scenarios.try_add_variable(
+            "CHECK", &build_set(&["none", "some", "most"])).unwrap();
+        let s0 = Scenario::default();
+
+        //  s2=[mode=debug,    check=some]
+        //  s4=[mode=optimize, check=some]
+        //     => s5=[mode=debug|optimize, check=some]
+        let s1 = scenarios.split(s0, "MODE", &["debug"]);
+        let s2 = scenarios.split(s1, "CHECK", &["some"]);
+        let s3 = scenarios.split(s0, "MODE", &["optimize"]);
+        let s4 = scenarios.split(s3, "CHECK", &["some"]);
+        let s5 = scenarios.union(s2, s4);
+        assert!(s5.is_some());
+        assert_eq!(s5.unwrap().0, 5);
+        assert_eq!(
+            scenarios.scenarios.get(s5.unwrap().0).unwrap().to_string(),
+            "CHECK=some,MODE=debug|optimize,");
+
+        let s5 = scenarios.union(s4, s2);   //  reverse order
+        assert!(s5.is_some());
+        assert_eq!(s5.unwrap().0, 5);
+        assert_eq!(
+            scenarios.scenarios.get(s5.unwrap().0).unwrap().to_string(),
+            "CHECK=some,MODE=debug|optimize,");
+
+        //  s2=[mode=debug, check=some]
+        //  s7=[mode=lto,   check=most]
+        //     => no merging, they differ on more than one variable
+        let s6 = scenarios.split(s0, "MODE", &["lto"]);
+        let s7 = scenarios.split(s6, "CHECK", &["most"]);
+        let res = scenarios.union(s2, s7);
+        assert!(res.is_none());
+        let res = scenarios.union(s7, s2);  // reverse order
+        assert!(res.is_none());
+
+        //  s2=[mode=debug, check=some]
+        //  s1=[mode=debug]      valid for all values of check
+        //     => s1=[mode=debug]
+        let res = scenarios.union(s2, s1);
+        assert!(res.is_some());
+        assert_eq!(res.unwrap().0, 1);
+        assert_eq!(
+            scenarios.scenarios.get(res.unwrap().0).unwrap().to_string(),
+            "MODE=debug,");
+
+        let res = scenarios.union(s1, s2);  //  reverse order
+        assert!(res.is_some());
+        assert_eq!(res.unwrap().0, 1);
+        assert_eq!(
+            scenarios.scenarios.get(res.unwrap().0).unwrap().to_string(),
+            "MODE=debug,");
     }
 
 }
