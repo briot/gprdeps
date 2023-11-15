@@ -4,9 +4,10 @@ use petgraph::algo::toposort;
 use petgraph::graph::Graph;
 use petgraph::visit::Bfs;
 use petgraph::Directed;
+use std::collections::HashMap;
 
 pub enum Node {
-    Project(GPR),
+    Project(Box<GPR>),
     Source,
 }
 
@@ -82,12 +83,13 @@ impl Environment {
         path: &std::path::Path,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let mut gprmap: PathToId = Default::default();
+        let mut rawfiles = HashMap::new();
 
         // Find all GPR files we will have to parse
         // Insert dummy nodes in the graph, so that we have an index
         for gpr in crate::findfile::FileFind::new(path) {
             let gprfile = GPR::new(gpr.to_path_buf());
-            let idx = self.graph.add_node(Node::Project(gprfile));
+            let idx = self.graph.add_node(Node::Project(Box::new(gprfile)));
             gprmap.insert(gpr.to_path_buf(), idx);
         }
 
@@ -107,7 +109,8 @@ impl Environment {
                 edges.push((*idx, *ext));
             }
 
-            p.set_raw(raw, *idx);
+            p.set_raw(&raw.name, *idx);
+            rawfiles.insert(idx, raw);
         }
         for (from, to) in edges {
             self.graph.add_edge(from, to, Edge::Imports);
@@ -119,9 +122,9 @@ impl Environment {
         println!("Parsed {} gpr files", gprmap.len());
 
         for idx in self.graph.toposort().iter().rev() {
-            self.graph
-                .get_project(*idx)
-                .process(&self.graph, &mut self.scenarios)?;
+            let deps = self.graph.gpr_dependencies(*idx);
+            let gpr = self.graph.get_project(*idx);
+            gpr.process(&rawfiles[idx], &deps, &mut self.scenarios)?;
         }
 
         //    let pool = threadpool::ThreadPool::new(1);

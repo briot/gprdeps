@@ -313,7 +313,7 @@ impl<'a> Scanner<'a> {
         self.expect(TokenKind::Semicolon)?;
         Ok(Statement::TypeDecl {
             typename: typename.to_string(),
-            valid: expr.to_static_set(&self.lex)?,
+            valid: expr,
         })
     }
 
@@ -646,6 +646,7 @@ impl<'a> Scanner<'a> {
 #[cfg(test)]
 mod tests {
     use crate::environment::PathToId;
+    use crate::rawexpr::tests::build_expr_list;
     use crate::rawexpr::{
         AttributeOrVarName, PackageName, QualifiedName, RawExpr, Statement,
         StringOrOthers,
@@ -740,10 +741,7 @@ mod tests {
             vec![
                 Statement::TypeDecl {
                     typename: "mode_type".to_string(),
-                    valid: ["Debug", "Optimize", "lto"]
-                        .iter()
-                        .map(|s| s.to_string())
-                        .collect(),
+                    valid: build_expr_list(&["Debug", "Optimize", "lto"]),
                 },
                 Statement::VariableDecl {
                     name: "mode".to_string(),

@@ -120,7 +120,7 @@ pub enum Statement {
     },
     TypeDecl {
         typename: String,
-        valid: HashSet<String>,
+        valid: RawExpr,
     },
     AttributeDecl {
         name: AttributeOrVarName,
@@ -217,5 +217,22 @@ impl RawExpr {
                 .collect::<crate::errors::Result<HashSet<String>>>()?),
             _ => Err(lex.error("not a list of static strings".into())),
         }
+    }
+}
+
+#[cfg(test)]
+pub mod tests {
+    use crate::rawexpr::RawExpr;
+
+    pub fn build_expr_str(s: &str) -> RawExpr {
+        RawExpr::StaticString(s.to_string())
+    }
+
+    pub fn build_expr_list(s: &[&str]) -> RawExpr {
+        let v = s
+            .iter()
+            .map(|st| Box::new(build_expr_str(st)))
+            .collect::<Vec<_>>();
+        RawExpr::List(v)
     }
 }

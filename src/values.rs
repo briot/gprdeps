@@ -1,4 +1,3 @@
-use crate::environment::DepGraph;
 use crate::gpr::GPR;
 use crate::rawexpr::RawExpr;
 use crate::scenarios::{AllScenarios, Scenario};
@@ -23,7 +22,7 @@ impl ExprValue {
     pub fn eval(
         expr: &RawExpr,
         gpr: &GPR, //  what project what this expression read in ?
-        graph: &DepGraph,
+        gpr_deps: &[&GPR],
         scenars: &mut AllScenarios,
         scenar: Scenario,
     ) -> Result<Self, String> {
@@ -34,7 +33,7 @@ impl ExprValue {
             RawExpr::Others => {
                 Err(format!("{}: cannot evaluate `others` expr", gpr))
             }
-            RawExpr::Name(q) => Ok(gpr.lookup(q, graph)?.clone()),
+            RawExpr::Name(q) => Ok(gpr.lookup(q, gpr_deps)?.clone()),
             RawExpr::StaticString(s) => {
                 let mut m = HashMap::new();
                 m.insert(scenar, OneScenario::StaticString(s.clone()));
@@ -45,7 +44,8 @@ impl ExprValue {
                 m.insert(Scenario::default(), OneScenario::List(vec![]));
 
                 for expr in ls {
-                    let s = ExprValue::eval(expr, gpr, graph, scenars, scenar)?;
+                    let s = ExprValue::eval(
+                        expr, gpr, gpr_deps, scenars, scenar)?;
                     let mut new_m = HashMap::new();
                     for (s2, v2) in s.0 {
                         match v2 {
@@ -74,9 +74,9 @@ impl ExprValue {
             RawExpr::Ampersand((left, right)) => {
                 let mut m = HashMap::new();
                 let l_eval =
-                    ExprValue::eval(left, gpr, graph, scenars, scenar)?;
+                    ExprValue::eval(left, gpr, gpr_deps, scenars, scenar)?;
                 let r_eval =
-                    ExprValue::eval(right, gpr, graph, scenars, scenar)?;
+                    ExprValue::eval(right, gpr, gpr_deps, scenars, scenar)?;
 
                 for (s1, v1) in l_eval.0 {
                     match v1 {
@@ -182,8 +182,8 @@ impl ExprValue {
 
 #[cfg(test)]
 mod tests {
-    use crate::environment::DepGraph;
     use crate::gpr::GPR;
+    use crate::rawexpr::tests::{build_expr_list, build_expr_str};
     use crate::rawexpr::{
         AttributeOrVarName, PackageName, QualifiedName, RawExpr,
     };
@@ -192,10 +192,6 @@ mod tests {
     use crate::values::{ExprValue, OneScenario};
     use std::collections::HashMap;
 
-    fn build_str(s: &str) -> RawExpr {
-        RawExpr::StaticString(s.to_string())
-    }
-
     fn build_value_str(s: &str) -> ExprValue {
         let mut m = HashMap::new();
         m.insert(
@@ -203,14 +199,6 @@ mod tests {
             OneScenario::StaticString(s.to_string()),
         );
         ExprValue(m)
-    }
-
-    fn build_list(s: &[&str]) -> RawExpr {
-        let v = s
-            .iter()
-            .map(|st| Box::new(build_str(st)))
-            .collect::<Vec<_>>();
-        RawExpr::List(v)
     }
 
     fn build_value_list(s: &[&str]) -> ExprValue {
@@ -225,53 +213,55 @@ mod tests {
     #[test]
     fn test_eval() -> Result<(), String> {
         let mut gpr = GPR::new(std::path::PathBuf::new());
-        let graph = DepGraph::default();
         let mut scenars = AllScenarios::default();
         let scenar = Scenario::default();
 
         // Evaluate a string
-        let expr1 = build_str("value");
+        let expr1 = build_expr_str("value");
         assert_eq!(
-            ExprValue::eval(&expr1, &gpr, &graph, &mut scenars, scenar)?,
+            ExprValue::eval(&expr1, &gpr, &[], &mut scenars, scenar)?,
             build_value_str("value"),
         );
 
         // Concatenate two strings
-        let expr2 = build_str("value").ampersand(build_str("suffix"));
+        let expr2 = build_expr_str("value").ampersand(build_expr_str("suffix"));
         assert_eq!(
-            ExprValue::eval(&expr2, &gpr, &graph, &mut scenars, scenar)?,
+            ExprValue::eval(&expr2, &gpr, &[], &mut scenars, scenar)?,
             build_value_str("valuesuffix"),
         );
 
         // Evaluate a list of strings
-        let expr3 = build_list(&["val1", "val2"]);
+        let expr3 = build_expr_list(&["val1", "val2"]);
         assert_eq!(
-            ExprValue::eval(&expr3, &gpr, &graph, &mut scenars, scenar)?,
+            ExprValue::eval(&expr3, &gpr, &[], &mut scenars, scenar)?,
             build_value_list(&["val1", "val2"])
         );
 
         // Evaluate a list of expressions
         let expr4 = RawExpr::List(vec![
-            Box::new(build_str("value").ampersand(build_str("suffix"))),
-            Box::new(build_str("val2")),
+            Box::new(
+                build_expr_str("value").ampersand(build_expr_str("suffix")),
+            ),
+            Box::new(build_expr_str("val2")),
         ]);
         assert_eq!(
-            ExprValue::eval(&expr4, &gpr, &graph, &mut scenars, scenar)?,
+            ExprValue::eval(&expr4, &gpr, &[], &mut scenars, scenar)?,
             build_value_list(&["valuesuffix", "val2"]),
         );
 
         // Concatenate list and string
-        let expr4 = build_list(&["val1", "val2"]).ampersand(build_str("value"));
+        let expr4 = build_expr_list(&["val1", "val2"])
+            .ampersand(build_expr_str("value"));
         assert_eq!(
-            ExprValue::eval(&expr4, &gpr, &graph, &mut scenars, scenar)?,
+            ExprValue::eval(&expr4, &gpr, &[], &mut scenars, scenar)?,
             build_value_list(&["val1", "val2", "value"]),
         );
 
         // Concatenate two lists
-        let expr5 = build_list(&["val1", "val2"])
-            .ampersand(build_list(&["val3", "val4"]));
+        let expr5 = build_expr_list(&["val1", "val2"])
+            .ampersand(build_expr_list(&["val3", "val4"]));
         assert_eq!(
-            ExprValue::eval(&expr5, &gpr, &graph, &mut scenars, scenar)?,
+            ExprValue::eval(&expr5, &gpr, &[], &mut scenars, scenar)?,
             build_value_list(&["val1", "val2", "val3", "val4"]),
         );
 
@@ -280,16 +270,18 @@ mod tests {
         gpr.declare(
             PackageName::None,
             AttributeOrVarName::Name("var1".to_string()),
-            build_value_str("val1"))?;
+            build_value_str("val1"),
+        )?;
 
-        let expr = build_str("value").ampersand(RawExpr::Name(QualifiedName {
-            project: None,
-            package: PackageName::None,
-            name: AttributeOrVarName::Name("var1".to_string()),
-            index: None,
-        }));
+        let expr =
+            build_expr_str("value").ampersand(RawExpr::Name(QualifiedName {
+                project: None,
+                package: PackageName::None,
+                name: AttributeOrVarName::Name("var1".to_string()),
+                index: None,
+            }));
         assert_eq!(
-            ExprValue::eval(&expr, &gpr, &graph, &mut scenars, scenar)?,
+            ExprValue::eval(&expr, &gpr, &[], &mut scenars, scenar)?,
             build_value_str("valueval1"),
         );
 
@@ -299,7 +291,6 @@ mod tests {
     #[test]
     fn test_eval_scenario() -> Result<(), String> {
         let mut gpr = GPR::new(std::path::PathBuf::new());
-        let graph = DepGraph::default();
         let mut scenars = AllScenarios::default();
         scenars
             .try_add_variable("MODE", &build_set(&["debug", "optimize", "lto"]))
@@ -317,17 +308,17 @@ mod tests {
         //     s2=[MODE=debug|optimize]      => "val2"
         //     s3=[MODE=lto]                 => "val3"
         let mut var1 = ExprValue::eval(
-            &build_str("val2"),
+            &build_expr_str("val2"),
             &gpr,
-            &graph,
+            &[],
             &mut scenars,
             s2,
         )?;
         var1.merge(
             ExprValue::eval(
-                &build_str("val3"),
+                &build_expr_str("val3"),
                 &gpr,
-                &graph,
+                &[],
                 &mut scenars,
                 s3,
             )?,
@@ -336,23 +327,24 @@ mod tests {
         gpr.declare(
             PackageName::None,
             AttributeOrVarName::Name("var1".to_string()),
-            var1)?;
+            var1,
+        )?;
 
         // Another variable has different values in two modes
         //     s4=[CHECK=some]      => "val4"
         //     s5=[CHECK=most|none] => "val5"
         let mut var2 = ExprValue::eval(
-            &build_str("val4"),
+            &build_expr_str("val4"),
             &gpr,
-            &graph,
+            &[],
             &mut scenars,
             s4,
         )?;
         var2.merge(
             ExprValue::eval(
-                &build_str("val5"),
+                &build_expr_str("val5"),
                 &gpr,
-                &graph,
+                &[],
                 &mut scenars,
                 s5,
             )?,
@@ -362,7 +354,8 @@ mod tests {
         gpr.declare(
             PackageName::None,
             AttributeOrVarName::Name("var2".to_string()),
-            var2)?;
+            var2,
+        )?;
 
         // Computing the concatenation results in multiple possible values
         //   s2*s4=s7=[MODE=debug|optimize, CHECK=some]      => "val2val4"
@@ -388,7 +381,7 @@ mod tests {
         });
         let concat = var1_ref.ampersand(var2_ref);
         let concat_expr =
-            ExprValue::eval(&concat, &gpr, &graph, &mut scenars, s0)?;
+            ExprValue::eval(&concat, &gpr, &[], &mut scenars, s0)?;
 
         let mut expected = HashMap::new();
         expected.insert(s7, OneScenario::StaticString("val2val4".to_string()));
