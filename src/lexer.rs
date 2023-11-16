@@ -27,6 +27,10 @@ impl<'a> Lexer<'a> {
         s
     }
 
+    pub fn decorate_error(&self, error: Error) -> Error {
+        error.decorate(self.path, self.line)
+    }
+
     pub fn error(&self, msg: String) -> Error {
         Error::new(self.path, self.line, msg)
     }

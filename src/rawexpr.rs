@@ -1,6 +1,5 @@
 /// The un-interpreted tree, as parsed from a GPR file
 use crate::lexer::Lexer;
-use std::collections::HashSet;
 use std::fmt::Debug;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -17,6 +16,20 @@ pub enum PackageName {
 // In rust nightly, we can use std::mem::variant_count::<PackageName>()
 pub const PACKAGE_NAME_VARIANTS: usize = 7;
 
+impl PackageName {
+    pub fn new(lower: &String) -> Result<Self, String> {
+        match lower.as_str() {
+            "binder" => Ok(PackageName::Binder),
+            "builder" => Ok(PackageName::Builder),
+            "compiler" => Ok(PackageName::Compiler),
+            "ide" => Ok(PackageName::IDE),
+            "linker" => Ok(PackageName::Linker),
+            "naming" => Ok(PackageName::Naming),
+            _ => Err(format!("Invalid package name {}", lower)),
+        }
+    }
+}
+
 impl std::fmt::Display for PackageName {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -31,46 +44,101 @@ impl std::fmt::Display for PackageName {
     }
 }
 
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub enum StringOrOthers {
+    Str(String),
+    Others,
+}
+impl std::fmt::Display for StringOrOthers {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            StringOrOthers::Others => write!(f, "others"),
+            StringOrOthers::Str(s) => write!(f, "{}", s),
+        }
+    }
+}
+
+/// An unqualified name, which could be either an attribute or variable
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub enum AttributeOrVarName {
+pub enum SimpleName {
     Name(String), // Either variable or attribute name, lower-cased
+    BodySuffix(String),
+    Body(String),
+    DefaultSwitches(StringOrOthers),
     ExecDir,
+    Executable(String),
     LinkerOptions,
     Main,
     ObjectDir,
     SourceDirs,
     SourceFiles,
-    Switches,
+    Spec(String),
+    SpecSuffix(String),
+    Switches(StringOrOthers),
     Target,
 }
-impl AttributeOrVarName {
-    pub fn new(lower: String) -> Self {
-        match lower.as_str() {
-            "exec_dir" => AttributeOrVarName::ExecDir,
-            "linker_options" => AttributeOrVarName::LinkerOptions,
-            "main" => AttributeOrVarName::Main,
-            "object_dir" => AttributeOrVarName::ObjectDir,
-            "source_dirs" => AttributeOrVarName::SourceDirs,
-            "source_files" => AttributeOrVarName::SourceFiles,
-            "switches" => AttributeOrVarName::Switches,
-            "target" => AttributeOrVarName::Target,
-            _ => AttributeOrVarName::Name(lower),
+impl SimpleName {
+    /// Builds an attribute or variable name.
+    /// Properly detects whether an index was needed or not
+    pub fn new(
+        lower: String,
+        index: Option<StringOrOthers>,
+    ) -> Result<Self, String> {
+        match (lower.as_str(), index) {
+            ("body_suffix", Some(StringOrOthers::Str(idx))) => {
+                Ok(SimpleName::BodySuffix(idx))
+            }
+            ("body", Some(StringOrOthers::Str(idx))) => {
+                Ok(SimpleName::Body(idx))
+            }
+            ("default_switches", Some(idx)) => {
+                Ok(SimpleName::DefaultSwitches(idx))
+            }
+            ("exec_dir", None) => Ok(SimpleName::ExecDir),
+            ("executable", Some(StringOrOthers::Str(idx))) => {
+                Ok(SimpleName::Executable(idx))
+            }
+            ("linker_options", None) => Ok(SimpleName::LinkerOptions),
+            ("main", None) => Ok(SimpleName::Main),
+            ("object_dir", None) => Ok(SimpleName::ObjectDir),
+            ("source_dirs", None) => Ok(SimpleName::SourceDirs),
+            ("source_files", None) => Ok(SimpleName::SourceFiles),
+            ("spec", Some(StringOrOthers::Str(idx))) => {
+                Ok(SimpleName::Spec(idx))
+            }
+            ("spec_suffix", Some(StringOrOthers::Str(idx))) => {
+                Ok(SimpleName::SpecSuffix(idx))
+            }
+            ("switches", Some(idx)) => Ok(SimpleName::Switches(idx)),
+            ("target", None) => Ok(SimpleName::Target),
+            (_, None) => Ok(SimpleName::Name(lower)),
+            (_, Some(idx)) => {
+                Err(format!("Unexpected index given to {}({})", lower, idx))
+            }
         }
     }
 }
 
-impl std::fmt::Display for AttributeOrVarName {
+impl std::fmt::Display for SimpleName {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            AttributeOrVarName::Name(s) => write!(f, ".{}", s),
-            AttributeOrVarName::ExecDir => write!(f, "'exec_dir"),
-            AttributeOrVarName::LinkerOptions => write!(f, "'linker_options"),
-            AttributeOrVarName::Main => write!(f, "'main"),
-            AttributeOrVarName::ObjectDir => write!(f, "'object_dir"),
-            AttributeOrVarName::SourceDirs => write!(f, "'source_dirs"),
-            AttributeOrVarName::SourceFiles => write!(f, "'source_files"),
-            AttributeOrVarName::Switches => write!(f, "'switches"),
-            AttributeOrVarName::Target => write!(f, "'target"),
+            SimpleName::Name(s) => write!(f, ".{}", s),
+            SimpleName::BodySuffix(idx) => write!(f, "'body_suffix({})", idx),
+            SimpleName::Body(idx) => write!(f, "'body({})", idx),
+            SimpleName::DefaultSwitches(idx) => {
+                write!(f, "'default_switches({})", idx)
+            }
+            SimpleName::ExecDir => write!(f, "'exec_dir"),
+            SimpleName::Executable(idx) => write!(f, "'executable({})", idx),
+            SimpleName::LinkerOptions => write!(f, "'linker_options"),
+            SimpleName::Main => write!(f, "'main"),
+            SimpleName::ObjectDir => write!(f, "'object_dir"),
+            SimpleName::SourceDirs => write!(f, "'source_dirs"),
+            SimpleName::SourceFiles => write!(f, "'source_files"),
+            SimpleName::Spec(idx) => write!(f, "'spec({})", idx),
+            SimpleName::SpecSuffix(idx) => write!(f, "'spec_suffix({})", idx),
+            SimpleName::Switches(idx) => write!(f, "'switches({})", idx),
+            SimpleName::Target => write!(f, "'target"),
         }
     }
 }
@@ -99,8 +167,34 @@ impl std::fmt::Display for AttributeOrVarName {
 pub struct QualifiedName {
     pub project: Option<String>, // None for current project or "Project'"
     pub package: PackageName,
-    pub name: AttributeOrVarName,
-    pub index: Option<Vec<RawExpr>>,
+    pub name: SimpleName,
+}
+
+impl QualifiedName {
+    /// When we find a name in the source which an optional leading identifier,
+    /// the latter could be either a project or a package.  This function will
+    /// guess as needed.
+    pub fn from_two(prj_or_pkg: Option<String>, name: SimpleName) -> Self {
+        match prj_or_pkg {
+            None => QualifiedName {
+                project: prj_or_pkg,
+                package: PackageName::None,
+                name,
+            },
+            Some(n1) => match PackageName::new(&n1) {
+                Ok(p) => QualifiedName {
+                    project: None,
+                    package: p,
+                    name,
+                },
+                Err(_) => QualifiedName {
+                    project: Some(n1),
+                    package: PackageName::None,
+                    name,
+                },
+            },
+        }
+    }
 }
 
 impl std::fmt::Display for QualifiedName {
@@ -109,17 +203,8 @@ impl std::fmt::Display for QualifiedName {
             write!(f, "{}.", p)?;
         }
         write!(f, "{}{}", self.package, self.name)?;
-        if self.index.is_some() {
-            write!(f, "(..)")?;
-        }
         Ok(())
     }
-}
-
-#[derive(Debug, PartialEq)]
-pub enum StringOrOthers {
-    Str(String),
-    Others,
 }
 
 #[derive(Debug, PartialEq)]
@@ -141,8 +226,7 @@ pub enum Statement {
         valid: RawExpr,
     },
     AttributeDecl {
-        name: AttributeOrVarName,
-        index: Option<StringOrOthers>,
+        name: SimpleName,
         value: RawExpr,
     },
     VariableDecl {
@@ -162,6 +246,7 @@ pub enum RawExpr {
     Others,
     StaticString(String), //  doesn't include surrounding quotes
     Name(QualifiedName),
+    FuncCall((QualifiedName, Vec<RawExpr>)),
     Ampersand((Box<RawExpr>, Box<RawExpr>)),
     List(Vec<Box<RawExpr>>),
 }
@@ -171,29 +256,31 @@ impl RawExpr {
     /// Returns the name of the scenario variable
     pub fn has_external(&self) -> Option<&String> {
         match self {
-            RawExpr::Empty | RawExpr::Others | RawExpr::StaticString(_) => None,
             RawExpr::Ampersand((left, right)) => {
                 left.has_external().or_else(|| right.has_external())
             }
             RawExpr::List(v) => v.iter().find_map(|e| e.has_external()),
-            RawExpr::Name(QualifiedName {
-                project: None,
-                package: PackageName::None,
-                name: n,
-                index: Some(idx),
-            }) => match n {
-                AttributeOrVarName::Name(n2) if n2 == "external" => {
-                    match &idx[0] {
+            RawExpr::FuncCall((
+                QualifiedName {
+                    project: None,
+                    package: PackageName::None,
+                    name: SimpleName::Name(n),
+                },
+                args,
+            )) => {
+                if n == "external" {
+                    match &args[0] {
                         RawExpr::StaticString(s) => Some(s),
                         _ => panic!(
                             "First argument to external must \
                                  be static string"
                         ),
                     }
+                } else {
+                    None
                 }
-                _ => None,
-            },
-            RawExpr::Name(_) => None,
+            }
+            _ => None,
         }
     }
 
@@ -205,35 +292,12 @@ impl RawExpr {
         }
     }
 
-    /// Append an element to a list
-    pub fn append(&mut self, right: RawExpr) {
-        match self {
-            RawExpr::List(list) => list.push(Box::new(right)),
-            _ => panic!("Can only append to a list expression"),
-        }
-    }
-
     /// Convert to a static string
     /// ??? Should use values.rs
-    pub fn to_static_str(self, lex: &Lexer) -> crate::errors::Result<String> {
+    pub fn as_static_str(self, lex: &Lexer) -> crate::errors::Result<String> {
         match self {
             RawExpr::StaticString(s) => Ok(s),
             _ => Err(lex.error("not a static string".into())),
-        }
-    }
-
-    /// Convert to a list of static strings
-    /// ??? Should use values.rs
-    pub fn to_static_set(
-        self,
-        lex: &Lexer,
-    ) -> crate::errors::Result<HashSet<String>> {
-        match self {
-            RawExpr::List(list) => Ok(list
-                .into_iter()
-                .map(|e| e.to_static_str(lex))
-                .collect::<crate::errors::Result<HashSet<String>>>()?),
-            _ => Err(lex.error("not a list of static strings".into())),
         }
     }
 }

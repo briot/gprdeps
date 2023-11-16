@@ -1,7 +1,6 @@
 use crate::graph::NodeIndex;
 use crate::rawexpr::{
-    AttributeOrVarName, PackageName, QualifiedName, Statement,
-    PACKAGE_NAME_VARIANTS,
+    PackageName, QualifiedName, SimpleName, Statement, PACKAGE_NAME_VARIANTS,
 };
 use crate::rawgpr::RawGPR;
 use crate::scenarios::{AllScenarios, Scenario};
@@ -16,17 +15,13 @@ pub struct GPR {
     name: String,
     path: std::path::PathBuf,
     values: [HashMap<
-        AttributeOrVarName, // variable or attribute name
-        ExprValue,          // value for each scenario
+        SimpleName, // variable or attribute name
+        ExprValue,  // value for each scenario
     >; PACKAGE_NAME_VARIANTS],
 }
 
 impl GPR {
-    pub fn new(
-        path: &std::path::Path,
-        index: NodeIndex,
-        name: &str,
-    ) -> Self {
+    pub fn new(path: &std::path::Path, index: NodeIndex, name: &str) -> Self {
         let mut s = Self {
             path: path.into(),
             name: name.to_lowercase(),
@@ -36,7 +31,7 @@ impl GPR {
 
         // Declare the fallback value for "project'Target" attribute.
         s.values[PackageName::None as usize].insert(
-            AttributeOrVarName::Target,
+            SimpleName::Target,
             ExprValue::new_static_str("unknown_target"),
         );
 
@@ -48,13 +43,10 @@ impl GPR {
     pub fn declare(
         &mut self,
         package: PackageName,
-        name: AttributeOrVarName,
+        name: SimpleName,
         value: ExprValue,
     ) -> Result<(), String> {
-        println!(
-            "MANU {}: declared {}{} as {:?}",
-            self, package, name, value
-        );
+        println!("MANU {}: declared {}{} as {:?}", self, package, name, value);
         let pkg = &mut self.values[package as usize];
         if pkg.contains_key(&name) {
             return Err(format!(
@@ -73,28 +65,42 @@ impl GPR {
         &'a self,
         name: &QualifiedName,
         dependencies: &'a [&GPR],
+        current_pkg: PackageName,
     ) -> Result<&'a ExprValue, String> {
         let project = match &name.project {
             None => Some(self),
             Some(c) if c == self.name.as_str() => Some(self),
             Some(n) => dependencies.iter().copied().find(|gpr| gpr.name == *n),
         };
-        project
-            .and_then(|p| p.values[name.package as usize].get(&name.name))
-            .ok_or_else(|| format!("{}: {} not found", self, name))
+
+        let mut r1 = None;
+
+        // An unqualified name is first searched in the current package
+        if name.package == PackageName::None && current_pkg != PackageName::None
+        {
+            r1 = project
+                .and_then(|p| p.values[current_pkg as usize].get(&name.name));
+        }
+
+        if r1.is_none() {
+            r1 = project
+                .and_then(|p| p.values[name.package as usize].get(&name.name));
+        }
+
+        r1.ok_or_else(|| format!("{}: {} not found", self, name))
     }
 
-    /// Process the raw gpr file into the final list of attributes
-    pub fn process(
+    /// Process a set of statements
+    pub fn process_body(
         &mut self,
-        raw: &RawGPR,
         dependencies: &[&GPR],
         scenarios: &mut AllScenarios,
+        current_pkg: PackageName,
+        body: &Vec<Statement>,
     ) -> std::result::Result<(), String> {
+        println!("MANU {} process package {}", self, current_pkg);
         let current_scenario = Scenario::default();
-        let current_pkg = PackageName::None;
-
-        for s in &raw.body {
+        for s in body {
             match s {
                 Statement::TypeDecl { typename, valid } => {
                     let e = ExprValue::eval(
@@ -103,10 +109,11 @@ impl GPR {
                         dependencies,
                         scenarios,
                         current_scenario,
+                        current_pkg,
                     )?;
                     self.declare(
                         current_pkg,
-                        AttributeOrVarName::Name(typename.clone()),
+                        SimpleName::Name(typename.clone()),
                         e,
                     )?;
                 }
@@ -123,7 +130,8 @@ impl GPR {
                     // value for each scenario
                     let ext = expr.has_external();
                     if let (Some(typename), Some(ext)) = (typename, ext) {
-                        let valid = self.lookup(typename, dependencies)?;
+                        let valid =
+                            self.lookup(typename, dependencies, current_pkg)?;
 
                         // Check that this variable wasn't already declared
                         // with a different set of values.
@@ -138,11 +146,9 @@ impl GPR {
 
                         self.declare(
                             current_pkg,
-                            AttributeOrVarName::Name(name.clone()),
+                            SimpleName::Name(name.clone()),
                             ExprValue::from_scenario_variable(
-                                scenarios,
-                                ext,
-                                valid,
+                                scenarios, ext, valid,
                             ),
                         )?;
 
@@ -151,31 +157,69 @@ impl GPR {
                     } else {
                         self.declare(
                             current_pkg,
-                            AttributeOrVarName::Name(name.clone()),
+                            SimpleName::Name(name.clone()),
                             ExprValue::eval(
                                 expr,
                                 self,
                                 dependencies,
                                 scenarios,
                                 current_scenario,
+                                current_pkg,
                             )?,
                         )?;
                     }
                 }
 
-//                Statement::AttributeDecl {
-//                    name,
-//                    index: _index,
-//                    ..
-//                } => {
-//                    println!("{}: attribute {}", self, name);
-//                }
+                Statement::AttributeDecl { name, value } => {
+                    self.declare(
+                        current_pkg,
+                        name.clone(),
+                        ExprValue::eval(
+                            value,
+                            self,
+                            dependencies,
+                            scenarios,
+                            current_scenario,
+                            current_pkg,
+                        )?,
+                    )?;
+                }
+
+                Statement::Package {
+                    name,
+                    renames,
+                    extends,
+                    body,
+                } => {
+                    if let Some(r) = renames {
+                        let _orig =
+                            self.lookup(r, dependencies, current_pkg)?;
+                    }
+                    if let Some(e) = extends {
+                        let _orig =
+                            self.lookup(e, dependencies, current_pkg)?;
+                    }
+
+                    self.process_body(dependencies, scenarios, *name, body)?;
+                }
+
                 _ => {
                     panic!("{}: Unhandled statement {:?}", self, s);
                 }
             }
         }
+        println!("MANU {} done process package {}", self, current_pkg);
         Ok(())
+    }
+
+    /// Process the raw gpr file into the final list of attributes
+    pub fn process(
+        &mut self,
+        raw: &RawGPR,
+        dependencies: &[&GPR],
+        scenarios: &mut AllScenarios,
+    ) -> std::result::Result<(), String> {
+        self.process_body(dependencies, scenarios, PackageName::None, &raw.body)
     }
 }
 

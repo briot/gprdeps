@@ -3,8 +3,8 @@ use crate::files::File;
 use crate::graph::PathToIndexes;
 use crate::lexer::Lexer;
 use crate::rawexpr::{
-    AttributeOrVarName, PackageName, QualifiedName, RawExpr, Statement,
-    StringOrOthers, WhenClause,
+    PackageName, QualifiedName, RawExpr, SimpleName, Statement, StringOrOthers,
+    WhenClause,
 };
 use crate::rawgpr::RawGPR;
 use crate::tokens::{Token, TokenKind};
@@ -12,6 +12,7 @@ use crate::tokens::{Token, TokenKind};
 pub struct Scanner<'a> {
     lex: Lexer<'a>,
     gpr: RawGPR,
+    current_pkg: PackageName, //  What are we parsing
 }
 
 impl<'a> Scanner<'a> {
@@ -19,12 +20,16 @@ impl<'a> Scanner<'a> {
         Self {
             gpr: RawGPR::new(file.path()),
             lex: Lexer::new(file),
+            current_pkg: PackageName::None,
         }
     }
 
     pub fn parse(mut self, path_to_id: &PathToIndexes) -> Result<RawGPR> {
-        self.parse_file(path_to_id)?;
-        Ok(self.gpr)
+        let res = self.parse_file(path_to_id);
+        match res {
+            Err(err) => Err(self.lex.decorate_error(err)),
+            Ok(()) => Ok(self.gpr),
+        }
     }
 
     /// Get the next token, failing with error on end of file
@@ -92,66 +97,26 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    /// Check whether we have a valid package name.
-    /// When we do not have a package name, the Err returns the string itself,
-    /// so that further processing can be done
-    fn as_package(
-        &self,
-        lower: String,
-    ) -> std::result::Result<PackageName, String> {
-        match lower.as_str() {
-            "binder" => Ok(PackageName::Binder),
-            "builder" => Ok(PackageName::Builder),
-            "compiler" => Ok(PackageName::Compiler),
-            "ide" => Ok(PackageName::IDE),
-            "linker" => Ok(PackageName::Linker),
-            "naming" => Ok(PackageName::Naming),
-            _ => Err(lower),
+    /// Expects an unqualified attribute name (and optional index)
+    fn expect_unqualified_attrname(&mut self) -> Result<SimpleName> {
+        let name3 = self.expect_identifier()?;
+        let args = self.parse_opt_arg_list()?;
+        match args {
+            None => Ok(SimpleName::new(name3, None)?),
+            Some(mut args) if args.len() == 1 => Ok(SimpleName::new(
+                name3,
+                Some(StringOrOthers::Str(
+                    args.remove(0).as_static_str(&self.lex)?,
+                )),
+            )?),
+            Some(args) => {
+                self.error(format!("Wrong number of indexes for {:?}", args))
+            }
         }
     }
 
-    /// Similar to as_package(), but returns an actual error message if the
-    /// parameter is not a valid package name
-    fn as_mandatory_package(&self, lower: String) -> Result<PackageName> {
-        let p = self.as_package(lower);
-        match p {
-            Ok(p) => Ok(p),
-            Err(p) => self.error(format!("Invalid package name {}", p))?,
-        }
-    }
-
-    /// Parse of expect_qname.
-    /// Should be called after we parsed a first identifier, and the final one.
-    /// name1 should be None if we had parsed "Project'"
-    fn expect_qname2(
-        &mut self,
-        name1: Option<String>,
-        name2: String,
-    ) -> Result<QualifiedName> {
-        match name1 {
-            None => Ok(QualifiedName {
-                project: name1,
-                package: PackageName::None,
-                name: AttributeOrVarName::new(name2),
-                index: self.parse_opt_arg_list()?,
-            }),
-            Some(n1) => match self.as_package(n1) {
-                Ok(p) => Ok(QualifiedName {
-                    project: None,
-                    package: p,
-                    name: AttributeOrVarName::new(name2),
-                    index: self.parse_opt_arg_list()?,
-                }),
-                Err(n) => Ok(QualifiedName {
-                    project: Some(n),
-                    package: PackageName::None,
-                    name: AttributeOrVarName::new(name2),
-                    index: self.parse_opt_arg_list()?,
-                }),
-            },
-        }
-    }
-
+    /// Expect a qualified name (variable or attribute).
+    /// When we have an attribute, this also parses the index.
     fn expect_qname(&mut self) -> Result<QualifiedName> {
         let name1 = self.expect_project_name()?;
         match self.lex.peek() {
@@ -159,24 +124,35 @@ impl<'a> Scanner<'a> {
                 let _ = self.lex.next(); //  consume the dot
                 let name2 = self.expect_identifier()?;
                 match self.lex.peek() {
-                    TokenKind::Dot | TokenKind::Tick => {
+                    TokenKind::Dot => {
                         let _ = self.lex.next(); //  consume the dot
                         let name3 = self.expect_identifier()?;
-                        let p = self.as_mandatory_package(name2)?;
                         Ok(QualifiedName {
                             project: name1,
-                            package: p,
-                            name: AttributeOrVarName::new(name3),
-                            index: self.parse_opt_arg_list()?,
+                            package: PackageName::new(&name2)?,
+                            name: SimpleName::new(name3, None)?,
                         })
                     }
-                    _ => self.expect_qname2(name1, name2),
+                    TokenKind::Tick => {
+                        let _ = self.lex.next(); //  consume the tick
+                        Ok(QualifiedName {
+                            project: name1,
+                            package: PackageName::new(&name2)?,
+                            name: self.expect_unqualified_attrname()?,
+                        })
+                    }
+                    _ => Ok(QualifiedName::from_two(
+                        name1,
+                        SimpleName::new(
+                            name2, None, //  This cannot be an attribute
+                        )?,
+                    )),
                 }
             }
             TokenKind::Tick => {
                 let _ = self.lex.next(); //  consume the dot
-                let name2 = self.expect_identifier()?;
-                self.expect_qname2(name1, name2)
+                let attrname = self.expect_unqualified_attrname()?;
+                Ok(QualifiedName::from_two(name1, attrname))
             }
             _ => match name1 {
                 None => self.error(
@@ -185,8 +161,7 @@ impl<'a> Scanner<'a> {
                 Some(n1) => Ok(QualifiedName {
                     project: None,
                     package: PackageName::None,
-                    name: AttributeOrVarName::new(n1),
-                    index: self.parse_opt_arg_list()?,
+                    name: SimpleName::new(n1, None)?,
                 }),
             },
         }
@@ -305,64 +280,76 @@ impl<'a> Scanner<'a> {
 
     fn parse_package_declaration(&mut self) -> Result<Statement> {
         self.expect(TokenKind::Package)?;
-        let startname = self.expect_identifier()?;
-        let extends = if self.lex.peek() == TokenKind::Extends {
-            let _ = self.lex.next(); //  consume extends
-            Some(self.expect_qname()?)
-        } else {
-            None
-        };
-
+        let name = PackageName::new(&self.expect_identifier()?)?;
+        let mut extends: Option<QualifiedName> = None;
         let mut renames: Option<QualifiedName> = None;
         let mut body = Vec::new();
 
-        match self.lex.next() {
-            None => self.error("Unexpected end of file".into())?,
-            Some(Token {
-                kind: TokenKind::Is,
-                ..
-            }) => {
-                loop {
-                    match self.lex.peek() {
-                        TokenKind::EOF => {
-                            self.error("Unexpected end of file".into())?
-                        }
-                        TokenKind::End => {
-                            let _ = self.lex.next(); //  consume
-                            let endname = self.expect_identifier()?;
-                            if startname != endname {
-                                self.error(format!(
-                                    "Expected endname {:?}, got {:?}",
-                                    startname, endname
-                                ))?;
+        self.current_pkg = name;
+
+        loop {
+            match self.lex.next() {
+                None => self.error("Unexpected end of file".into())?,
+                Some(Token {
+                    kind: TokenKind::Is,
+                    ..
+                }) => {
+                    loop {
+                        match self.lex.peek() {
+                            TokenKind::EOF => {
+                                self.error("Unexpected end of file".into())?
                             }
-                            break;
+                            TokenKind::End => {
+                                let _ = self.lex.next(); //  consume
+                                let endname = PackageName::new(
+                                    &self.expect_identifier()?,
+                                )?;
+                                if name != endname {
+                                    self.error(format!(
+                                        "Expected endname {:?}, got {:?}",
+                                        name, endname
+                                    ))?;
+                                }
+                                break;
+                            }
+                            TokenKind::Null => {}
+                            TokenKind::For => {
+                                body.push(self.parse_attribute_declaration()?)
+                            }
+                            TokenKind::Case => {
+                                body.push(self.parse_case_statement()?)
+                            }
+                            TokenKind::Identifier(_) => {
+                                body.push(self.parse_variable_definition()?)
+                            }
+                            t => {
+                                self.error(format!("Unexpected token {}", t))?
+                            }
                         }
-                        TokenKind::Null => {}
-                        TokenKind::For => {
-                            body.push(self.parse_attribute_declaration()?)
-                        }
-                        TokenKind::Case => {
-                            body.push(self.parse_case_statement()?)
-                        }
-                        TokenKind::Identifier(_) => {
-                            body.push(self.parse_variable_definition()?)
-                        }
-                        t => self.error(format!("Unexpected token {}", t))?,
                     }
+                    self.expect(TokenKind::Semicolon)?;
+                    break;
                 }
+                Some(Token {
+                    kind: TokenKind::Renames,
+                    ..
+                }) => {
+                    renames = Some(self.expect_qname()?);
+                    self.expect(TokenKind::Semicolon)?;
+                    break;
+                }
+                Some(Token {
+                    kind: TokenKind::Extends,
+                    ..
+                }) => extends = Some(self.expect_qname()?),
+                Some(t) => self.error(format!("Unexpected {}", t))?,
             }
-            Some(Token {
-                kind: TokenKind::Renames,
-                ..
-            }) => renames = Some(self.expect_qname()?),
-            Some(t) => self.error(format!("Unexpected {}", t))?,
         }
 
-        self.expect(TokenKind::Semicolon)?;
+        self.current_pkg = PackageName::None;
 
         Ok(Statement::Package {
-            name: self.as_mandatory_package(startname)?,
+            name,
             renames,
             extends,
             body,
@@ -496,7 +483,7 @@ impl<'a> Scanner<'a> {
                     result.push(RawExpr::Others);
                 }
                 TokenKind::String(_) | TokenKind::Identifier(_) => {
-                    result.push(self.parse_string_expression()?);
+                    result.push(self.parse_expression()?);
                 }
                 _ => {
                     let n = self.safe_next()?;
@@ -514,43 +501,25 @@ impl<'a> Scanner<'a> {
         Ok(Some(result))
     }
 
-    /// Parse a string expression.  This could either be a static string,
-    ///     "value"
-    /// or an actual expression to build a string
-    ///     "value" & variable
-    fn parse_string_expression(&mut self) -> Result<RawExpr> {
-        let mut result = RawExpr::Empty;
-        loop {
-            match self.lex.peek() {
-                TokenKind::EOF => {
-                    self.error("Unexpected end of file".into())?
-                }
-                TokenKind::String(_) => {
-                    let s = self.expect_str()?.to_string();
-                    result = result.ampersand(RawExpr::StaticString(s));
-                }
-                TokenKind::Identifier(_) => {
-                    // e.g.  for object_dir use "../" & shared'object_dir
-                    let att = RawExpr::Name(self.expect_qname()?);
-                    result = result.ampersand(att);
-                }
-                _ => {
-                    let n = self.safe_next()?;
-                    self.error(format!(
-                        "Unexpected token in string expression {}",
-                        n
-                    ))?;
+    // The next symbol is an identifier.  It could be an attribute name with
+    // optional index, a variable name, or a function call.
+    fn expect_qname_or_func(&mut self) -> Result<RawExpr> {
+        let qname = self.expect_qname()?;
+        match qname {
+            QualifiedName {
+                project: None,
+                package: PackageName::None,
+                name: SimpleName::Name(_),
+            } => {
+                let args = self.parse_opt_arg_list()?;
+                if let Some(args) = args {
+                    Ok(RawExpr::FuncCall((qname, args)))
+                } else {
+                    Ok(RawExpr::Name(qname))
                 }
             }
-
-            match self.lex.peek() {
-                TokenKind::Ampersand => {
-                    let _ = self.lex.next(); // consume "&"
-                }
-                _ => break,
-            }
+            _ => Ok(RawExpr::Name(qname)),
         }
-        Ok(result)
     }
 
     fn parse_expression(&mut self) -> Result<RawExpr> {
@@ -561,18 +530,21 @@ impl<'a> Scanner<'a> {
                     self.error("Unexpected end of file".into())?
                 }
                 TokenKind::String(_) => {
-                    let r = self.parse_string_expression()?;
-                    result = result.ampersand(r);
+                    let s = self.expect_str()?.to_string();
+                    result = result.ampersand(RawExpr::StaticString(s));
+                }
+                TokenKind::Identifier(_) | TokenKind::Project => {
+                    let s = self.expect_qname_or_func()?;
+                    result = result.ampersand(s);
                 }
                 TokenKind::OpenParenthesis => {
-                    let mut list = RawExpr::List(vec![]);
                     let _ = self.lex.next(); // consume "("
+                    let mut list = Vec::new();
                     if self.lex.peek() == TokenKind::CloseParenthesis {
                         let _ = self.lex.next(); //  consume ")",  empty list
                     } else {
                         loop {
-                            let s = self.parse_string_expression()?;
-                            list.append(s);
+                            list.push(Box::new(self.parse_expression()?));
 
                             let n = self.safe_next()?;
                             match n.kind {
@@ -583,11 +555,7 @@ impl<'a> Scanner<'a> {
                             }
                         }
                     }
-                    result = result.ampersand(list);
-                }
-                TokenKind::Identifier(_) | TokenKind::Project => {
-                    let att = RawExpr::Name(self.expect_qname()?);
-                    result = result.ampersand(att);
+                    result = result.ampersand(RawExpr::List(list));
                 }
                 _ => {
                     let n = self.safe_next()?;
@@ -602,7 +570,6 @@ impl<'a> Scanner<'a> {
                 _ => break,
             }
         }
-
         Ok(result)
     }
 
@@ -622,8 +589,7 @@ impl<'a> Scanner<'a> {
         let value = self.parse_expression()?;
         self.expect(TokenKind::Semicolon)?;
         Ok(Statement::AttributeDecl {
-            name: AttributeOrVarName::new(name),
-            index,
+            name: SimpleName::new(name, index)?,
             value,
         })
     }
@@ -634,7 +600,7 @@ mod tests {
     use crate::graph::PathToIndexes;
     use crate::rawexpr::tests::build_expr_list;
     use crate::rawexpr::{
-        AttributeOrVarName, PackageName, QualifiedName, RawExpr, Statement,
+        PackageName, QualifiedName, RawExpr, SimpleName, Statement,
         StringOrOthers,
     };
 
@@ -681,8 +647,7 @@ mod tests {
              end A;",
             vec![
                 Statement::AttributeDecl {
-                    name: AttributeOrVarName::SourceFiles,
-                    index: None,
+                    name: SimpleName::SourceFiles,
                     value: RawExpr::List(vec![Box::new(
                         RawExpr::StaticString("a.adb".to_string()),
                     )]),
@@ -692,8 +657,7 @@ mod tests {
                     renames: None,
                     extends: None,
                     body: vec![Statement::AttributeDecl {
-                        name: AttributeOrVarName::Switches,
-                        index: Some(StringOrOthers::Others),
+                        name: SimpleName::Switches(StringOrOthers::Others),
                         value: RawExpr::List(vec![]),
                     }],
                 },
@@ -705,13 +669,11 @@ mod tests {
                 for Source_Files use Project'Source_Files;
              end A;",
             vec![Statement::AttributeDecl {
-                name: AttributeOrVarName::SourceFiles,
-                index: None,
+                name: SimpleName::SourceFiles,
                 value: RawExpr::Name(QualifiedName {
                     project: None,
                     package: PackageName::None,
-                    name: AttributeOrVarName::SourceFiles,
-                    index: None,
+                    name: SimpleName::SourceFiles,
                 }),
             }],
         );
@@ -734,17 +696,16 @@ mod tests {
                     typename: Some(QualifiedName {
                         project: None,
                         package: PackageName::None,
-                        name: AttributeOrVarName::Name("mode_type".to_string()),
-                        index: None,
+                        name: SimpleName::Name("mode_type".to_string()),
                     }),
-                    expr: RawExpr::Name(QualifiedName {
-                        project: None,
-                        package: PackageName::None,
-                        name: AttributeOrVarName::Name("external".to_string()),
-                        index: Some(vec![RawExpr::StaticString(
-                            "MODE".to_string(),
-                        )]),
-                    }),
+                    expr: RawExpr::FuncCall((
+                        QualifiedName {
+                            project: None,
+                            package: PackageName::None,
+                            name: SimpleName::Name("external".to_string()),
+                        },
+                        vec![RawExpr::StaticString("MODE".to_string())],
+                    )),
                 },
             ],
         );
