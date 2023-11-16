@@ -1,6 +1,5 @@
 pub mod environment;
 pub mod errors;
-pub mod expressions;
 pub mod files;
 pub mod findfile;
 pub mod gpr;

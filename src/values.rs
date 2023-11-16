@@ -1,5 +1,5 @@
 use crate::gpr::GPR;
-use crate::rawexpr::RawExpr;
+use crate::rawexpr::{PackageName, AttributeOrVarName, RawExpr, QualifiedName};
 use crate::scenarios::{AllScenarios, Scenario};
 use std::collections::HashMap;
 
@@ -15,6 +15,13 @@ pub enum OneScenario {
 pub struct ExprValue(HashMap<Scenario, OneScenario>);
 
 impl ExprValue {
+    /// An expression that always has the same static value for all scenarios
+    pub fn new_static_str(s: &str) -> Self {
+        let mut m = HashMap::new();
+        m.insert(Scenario::default(), OneScenario::StaticString(s.to_string()));
+        ExprValue(m)
+    }
+
     /// The expression is assumed to have a single value, for the default
     /// scenario (think of types).  Return that value.
     /// Otherwise panic
@@ -47,7 +54,22 @@ impl ExprValue {
             RawExpr::Others => {
                 Err(format!("{}: cannot evaluate `others` expr", gpr))
             }
-            RawExpr::Name(q) => Ok(gpr.lookup(q, gpr_deps)?.clone()),
+            RawExpr::Name(q) => {
+                match q {
+                    QualifiedName {
+                        project: None,
+                        package: PackageName::None,
+                        name: AttributeOrVarName::Name(n),
+                        index: Some(idx),
+                    } if n == "external" => {
+                        Ok(ExprValue::new_static_str(
+                            &std::env::var(idx[0])
+                                .unwrap_or(idx.get(1).or("").to_string())
+                        ))
+                    }
+                    _ => Ok(gpr.lookup(q, gpr_deps)?.clone())
+                }
+            }
             RawExpr::StaticString(s) => {
                 let mut m = HashMap::new();
                 m.insert(scenar, OneScenario::StaticString(s.clone()));

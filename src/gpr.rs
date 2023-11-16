@@ -115,6 +115,8 @@ impl GPR {
                         )?;
                     }
 
+                    // ??? We lose the relationship to the type and the set of
+                    // possible values, we'll need those in case statements
                     self.declare(
                         current_pkg,
                         AttributeOrVarName::Name(name.clone()),
