@@ -1,6 +1,6 @@
-use crate::environment::PathToId;
 use crate::errors::Result;
 use crate::files::File;
+use crate::graph::PathToIndexes;
 use crate::lexer::Lexer;
 use crate::rawexpr::{
     AttributeOrVarName, PackageName, QualifiedName, RawExpr, Statement,
@@ -22,7 +22,7 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    pub fn parse(mut self, path_to_id: &PathToId) -> Result<RawGPR> {
+    pub fn parse(mut self, path_to_id: &PathToIndexes) -> Result<RawGPR> {
         self.parse_file(path_to_id)?;
         Ok(self.gpr)
     }
@@ -207,7 +207,7 @@ impl<'a> Scanner<'a> {
     }
 
     /// Parse a whole file
-    fn parse_file(&mut self, path_to_id: &PathToId) -> Result<()> {
+    fn parse_file(&mut self, path_to_id: &PathToIndexes) -> Result<()> {
         loop {
             match self.lex.peek() {
                 TokenKind::EOF => return Ok(()),
@@ -218,13 +218,13 @@ impl<'a> Scanner<'a> {
     }
 
     /// Expect a with_clause
-    fn parse_with_clause(&mut self, path_to_id: &PathToId) -> Result<()> {
+    fn parse_with_clause(&mut self, path_to_id: &PathToIndexes) -> Result<()> {
         self.expect(TokenKind::With)?;
 
         let path = self.expect_str()?;
         let normalized = self.gpr.normalize_path(path);
         let idx = path_to_id[&normalized];
-        self.gpr.imported.push(idx);
+        self.gpr.imported.push(idx.1);
 
         self.expect(TokenKind::Semicolon)?;
         Ok(())
@@ -233,7 +233,7 @@ impl<'a> Scanner<'a> {
     /// Parses the declaration of the project, directly into self.gpr
     fn parse_project_declaration(
         &mut self,
-        path_to_id: &PathToId,
+        path_to_id: &PathToIndexes,
     ) -> Result<()> {
         loop {
             let n = self.safe_next()?;
@@ -250,7 +250,7 @@ impl<'a> Scanner<'a> {
         self.gpr.extends = if self.lex.peek() == TokenKind::Extends {
             let ext = self.parse_project_extension()?;
             let normalized = self.gpr.normalize_path(ext);
-            Some(path_to_id[&normalized])
+            Some(path_to_id[&normalized].1)
         } else {
             None
         };
@@ -645,7 +645,7 @@ impl<'a> Scanner<'a> {
 
 #[cfg(test)]
 mod tests {
-    use crate::environment::PathToId;
+    use crate::graph::PathToIndexes;
     use crate::rawexpr::tests::build_expr_list;
     use crate::rawexpr::{
         AttributeOrVarName, PackageName, QualifiedName, RawExpr, Statement,
@@ -658,7 +658,7 @@ mod tests {
     {
         let file = crate::files::File::new_from_str(s);
         let scan = crate::scanner::Scanner::new(&file);
-        let path_to_id: PathToId = Default::default();
+        let path_to_id: PathToIndexes = Default::default();
         let gpr = scan.parse(&path_to_id);
         check(gpr);
     }

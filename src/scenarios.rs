@@ -308,7 +308,7 @@ impl AllScenarios {
     pub fn try_add_variable(
         &mut self,
         name: &str,
-        valid: &HashSet<String>,
+        valid: &[&str],
     ) -> Result<(), String> {
         match self.variables.get(name) {
             None => {
@@ -322,6 +322,14 @@ impl AllScenarios {
                 if oldvar.has_same_valid(valid) {
                     Ok(())
                 } else {
+                    let mut v = String::new();
+                    for s in valid {
+                        if !v.is_empty() {
+                            v.push_str(", ");
+                        }
+                        v.push_str(s);
+                    }
+
                     Err(format!(
                         "Scenario variable `{}` already defined with another \
                           set of values (was `{:?}`, now `{:?}`)",
@@ -332,11 +340,7 @@ impl AllScenarios {
                             .map(|s| s.as_str())
                             .collect::<Vec<_>>()
                             .join(", "),
-                        valid
-                            .iter()
-                            .map(|s| s.as_str())
-                            .collect::<Vec<_>>()
-                            .join(", ")
+                        v,
                     )
                     .to_owned())
                 }
@@ -347,18 +351,13 @@ impl AllScenarios {
 
 #[cfg(test)]
 mod tests {
-    use crate::scenario_variables::build_set;
     use crate::scenarios::{AllScenarios, Scenario};
 
     #[test]
-    fn create_scenario() {
+    fn create_scenario() -> Result<(), String> {
         let mut scenarios = AllScenarios::default();
-        scenarios
-            .try_add_variable("MODE", &build_set(&["debug", "optimize", "lto"]))
-            .unwrap();
-        scenarios
-            .try_add_variable("CHECK", &build_set(&["none", "some", "most"]))
-            .unwrap();
+        scenarios.try_add_variable("MODE", &["debug", "optimize", "lto"])?;
+        scenarios.try_add_variable("CHECK", &["none", "some", "most"])?;
 
         let s0 = Scenario::default();
         assert_eq!(scenarios.scenarios.get(s0.0).unwrap().to_string(), "");
@@ -414,17 +413,15 @@ mod tests {
             scenarios.scenarios.get(s6.0).unwrap().to_string(),
             "CHECK=most|some,"
         );
+
+        Ok(())
     }
 
     #[test]
-    fn test_union() {
+    fn test_union() -> Result<(), String> {
         let mut scenarios = AllScenarios::default();
-        scenarios
-            .try_add_variable("MODE", &build_set(&["debug", "optimize", "lto"]))
-            .unwrap();
-        scenarios
-            .try_add_variable("CHECK", &build_set(&["none", "some", "most"]))
-            .unwrap();
+        scenarios.try_add_variable("MODE", &["debug", "optimize", "lto"])?;
+        scenarios.try_add_variable("CHECK", &["none", "some", "most"])?;
         let s0 = Scenario::default();
 
         //  s2=[mode=debug,    check=some]
@@ -478,17 +475,15 @@ mod tests {
             scenarios.scenarios.get(res.unwrap().0).unwrap().to_string(),
             "MODE=debug,"
         );
+
+        Ok(())
     }
 
     #[test]
-    fn test_intersection() {
+    fn test_intersection() -> Result<(), String> {
         let mut scenarios = AllScenarios::default();
-        scenarios
-            .try_add_variable("MODE", &build_set(&["debug", "optimize", "lto"]))
-            .unwrap();
-        scenarios
-            .try_add_variable("CHECK", &build_set(&["none", "some", "most"]))
-            .unwrap();
+        scenarios.try_add_variable("MODE", &["debug", "optimize", "lto"])?;
+        scenarios.try_add_variable("CHECK", &["none", "some", "most"])?;
         let s0 = Scenario::default();
 
         // s0=everything
@@ -531,5 +526,7 @@ mod tests {
         assert_eq!(res, s6);
         let res = scenarios.intersection(s5, s4); // reverse order
         assert_eq!(res, s6);
+
+        Ok(())
     }
 }

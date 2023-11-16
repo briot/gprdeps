@@ -1,72 +1,7 @@
 use crate::gpr::GPR;
+use crate::graph::{DepGraph, Edge, GPRIndex, Node};
 use crate::scenarios::AllScenarios;
-use petgraph::algo::toposort;
-use petgraph::graph::Graph;
-use petgraph::visit::Bfs;
-use petgraph::Directed;
 use std::collections::HashMap;
-
-pub enum Node {
-    Project(Box<GPR>),
-    Source,
-}
-
-#[derive(Debug)]
-pub enum Edge {
-    Imports,
-}
-
-pub type NodeIndex = petgraph::graph::NodeIndex<u32>;
-pub type PathToId = std::collections::HashMap<std::path::PathBuf, NodeIndex>;
-
-pub struct DepGraph(Graph<Node, Edge, Directed, u32>);
-impl DepGraph {
-    pub fn get_project(&self, idx: NodeIndex) -> &GPR {
-        match &self.0[idx] {
-            Node::Project(gpr) => gpr,
-            _ => panic!("Invalid project reference {:?}", idx),
-        }
-    }
-
-    pub fn get_project_mut(&mut self, idx: NodeIndex) -> &mut GPR {
-        match &mut self.0[idx] {
-            Node::Project(ref mut gpr) => gpr,
-            _ => panic!("Invalid project reference {:?}", idx),
-        }
-    }
-
-    pub fn add_node(&mut self, node: Node) -> NodeIndex {
-        self.0.add_node(node)
-    }
-
-    pub fn add_edge(&mut self, from: NodeIndex, to: NodeIndex, data: Edge) {
-        self.0.add_edge(from, to, data);
-    }
-
-    /// Return all nodes in the graph, sorted topological (a node appears after
-    /// all the ones that import it)
-    pub fn toposort(&self) -> Vec<NodeIndex> {
-        toposort(&self.0, None).unwrap()
-    }
-
-    /// Return the list of dependencies for a node.
-    /// Each dependency is reported only once (so if a project import both A and
-    /// B, which both import a common C, then C is only returned once)
-    pub fn gpr_dependencies(&self, start: NodeIndex) -> Vec<&GPR> {
-        let mut bfs = Bfs::new(&self.0, start);
-        let mut result = Vec::new();
-        while let Some(node) = bfs.next(&self.0) {
-            result.push(self.get_project(node));
-        }
-        result
-    }
-}
-
-impl Default for DepGraph {
-    fn default() -> Self {
-        Self(Graph::new())
-    }
-}
 
 /// The whole set of gpr files
 #[derive(Default)]
@@ -82,49 +17,52 @@ impl Environment {
         &mut self,
         path: &std::path::Path,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let mut gprmap: PathToId = Default::default();
-        let mut rawfiles = HashMap::new();
+        let mut path_to_indexes = HashMap::new();
 
         // Find all GPR files we will have to parse
         // Insert dummy nodes in the graph, so that we have an index
-        for gpr in crate::findfile::FileFind::new(path) {
-            let gprfile = GPR::new(gpr.to_path_buf());
-            let idx = self.graph.add_node(Node::Project(Box::new(gprfile)));
-            gprmap.insert(gpr.to_path_buf(), idx);
+        for (gpridx, gpr) in crate::findfile::FileFind::new(path).enumerate() {
+            let gpridx = GPRIndex::new(gpridx);
+            let nodeidx = self.graph.add_node(Node::Project(gpridx));
+            path_to_indexes.insert(gpr.to_path_buf(), (gpridx, nodeidx));
         }
 
-        // Parse the GPR files, but do not analyze them yet.
+        // Parse the raw GPR files, but do not analyze them yet.
         // We can however setup dependencies in the graph already.
 
-        let mut edges = Vec::new();
-        for (path, idx) in &gprmap {
+        let mut rawfiles = HashMap::new();
+        for (path, (gpridx, nodeidx)) in &path_to_indexes {
             let file = crate::files::File::new(path)?;
             let scan = crate::scanner::Scanner::new(&file);
-            let raw = scan.parse(&gprmap)?;
-            let p = self.graph.get_project_mut(*idx);
+            let raw = scan.parse(&path_to_indexes)?;
+
             for dep in &raw.imported {
-                edges.push((*idx, *dep));
+                self.graph.add_edge(*nodeidx, *dep, Edge::Imports);
             }
-            if let Some(ext) = &raw.extends {
-                edges.push((*idx, *ext));
+            if let Some(ext) = raw.extends {
+                self.graph.add_edge(*nodeidx, ext, Edge::Extends);
             }
 
-            p.set_raw(&raw.name, *idx);
-            rawfiles.insert(idx, raw);
-        }
-        for (from, to) in edges {
-            self.graph.add_edge(from, to, Edge::Imports);
+            rawfiles.insert(*gpridx, (path, raw));
         }
 
         // Process the projects in topological order, so that any reference to a
         // variable or attribute in another project is found.
 
-        println!("Parsed {} gpr files", gprmap.len());
-
-        for idx in self.graph.toposort().iter().rev() {
-            let deps = self.graph.gpr_dependencies(*idx);
-            let gpr = self.graph.get_project(*idx);
-            gpr.process(&rawfiles[idx], &deps, &mut self.scenarios)?;
+        let mut gprs = HashMap::new();
+        for nodeidx in self.graph.toposort().iter().rev() {
+            let gpridx = self.graph.get_project(*nodeidx);
+            let (path, raw) = &rawfiles[&gpridx];
+            let deps = self.graph.gpr_dependencies(*nodeidx);
+            println!("MANU parsing {:?} nodeidx={:?} gpridx={:?} deps={:?}",
+                path, nodeidx, gpridx, deps);
+            let gprdeps = deps
+                .iter()
+                .map(|i| &gprs[i])
+                .collect::<Vec<_>>();
+            let mut gpr = GPR::new(path, *nodeidx);
+            gpr.process(raw, &gprdeps, &mut self.scenarios)?;
+            gprs.insert(gpridx, gpr);
         }
 
         //    let pool = threadpool::ThreadPool::new(1);

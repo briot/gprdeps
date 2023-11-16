@@ -4,6 +4,7 @@ pub mod expressions;
 pub mod files;
 pub mod findfile;
 pub mod gpr;
+pub mod graph;
 pub mod lexer;
 pub mod rawexpr;
 pub mod rawgpr;

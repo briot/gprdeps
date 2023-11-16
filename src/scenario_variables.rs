@@ -32,23 +32,34 @@ impl<'a> VariableContext<'a> {
 #[derive(Eq, PartialEq)]
 pub struct ScenarioVariable {
     name: String,
-    valid: HashSet<String>, // always sorted
+    valid: HashSet<String>,
 }
 
 impl ScenarioVariable {
     /// Create a new scenario variable and its list of valid values.
     /// The list of values must be sorted.
-    pub fn new(name: &str, valid: &HashSet<String>) -> Self {
+    pub fn new(name: &str, valid: &[&str]) -> Self {
         ScenarioVariable {
             name: name.to_owned(),
-            valid: valid.to_owned(),
+            valid: valid
+                .iter()
+                .map(|s| s.to_string())
+                .collect()
         }
     }
 
     /// Check whether this variable has the exact same set of valid values.
     /// The list of values must be sorted.
-    pub fn has_same_valid(&self, valid: &HashSet<String>) -> bool {
-        *valid == self.valid
+    pub fn has_same_valid(&self, valid: &[&str]) -> bool {
+        if valid.len() != self.valid.len() {
+            return false;
+        }
+        for v in valid {
+            if !self.valid.contains(*v) {
+                return false;
+            }
+        }
+        true
     }
 
     /// Show the list of valid values (sorted alphabetically)
@@ -90,10 +101,10 @@ mod tests {
 
     #[test]
     fn when_clauses() {
-        let v = ScenarioVariable::new("MODE", &build_set(&["v1", "v2", "v3"]));
+        let v = ScenarioVariable::new("MODE", &["v1", "v2", "v3"]);
 
         assert_eq!(*v.list_valid(), build_set(&["v3", "v1", "v2"]));
-        assert!(!v.has_same_valid(&build_set(&["v1"])));
+        assert!(!v.has_same_valid(&["v1"]));
 
         let mut c = v.start_case_stmt();
         assert_eq!(*c.when_others(), build_str_set(&["v3", "v1", "v2"]));

@@ -15,6 +15,20 @@ pub enum OneScenario {
 pub struct ExprValue(HashMap<Scenario, OneScenario>);
 
 impl ExprValue {
+    /// The expression is assumed to have a single value, for the default
+    /// scenario (think of types).  Return that value.
+    /// Otherwise panic
+    pub fn get_type_value(&self) -> &Vec<String> {
+        if self.0.len() != 1 {
+            panic!("Types cannot have multiple variants {:?}", self.0);
+        }
+        match &self.0[&Scenario::default()] {
+            OneScenario::StaticString(_) =>
+                panic!("A type must be a list {:?}", self.0),
+            OneScenario::List(v) => v,
+        }
+    }
+
     /// Evaluate a raw expression into its final value.
     /// The expression is initially seen in the context of one scenario (matching
     /// the case and when clauses), but its final value might be split into
@@ -44,8 +58,8 @@ impl ExprValue {
                 m.insert(Scenario::default(), OneScenario::List(vec![]));
 
                 for expr in ls {
-                    let s = ExprValue::eval(
-                        expr, gpr, gpr_deps, scenars, scenar)?;
+                    let s =
+                        ExprValue::eval(expr, gpr, gpr_deps, scenars, scenar)?;
                     let mut new_m = HashMap::new();
                     for (s2, v2) in s.0 {
                         match v2 {
@@ -183,11 +197,11 @@ impl ExprValue {
 #[cfg(test)]
 mod tests {
     use crate::gpr::GPR;
+    use crate::graph::NodeIndex;
     use crate::rawexpr::tests::{build_expr_list, build_expr_str};
     use crate::rawexpr::{
         AttributeOrVarName, PackageName, QualifiedName, RawExpr,
     };
-    use crate::scenario_variables::build_set;
     use crate::scenarios::{AllScenarios, Scenario};
     use crate::values::{ExprValue, OneScenario};
     use std::collections::HashMap;
@@ -212,7 +226,7 @@ mod tests {
 
     #[test]
     fn test_eval() -> Result<(), String> {
-        let mut gpr = GPR::new(std::path::PathBuf::new());
+        let mut gpr = GPR::new(std::path::Path::new("/"), NodeIndex::default());
         let mut scenars = AllScenarios::default();
         let scenar = Scenario::default();
 
@@ -290,14 +304,10 @@ mod tests {
 
     #[test]
     fn test_eval_scenario() -> Result<(), String> {
-        let mut gpr = GPR::new(std::path::PathBuf::new());
+        let mut gpr = GPR::new(std::path::Path::new("/"), NodeIndex::default());
         let mut scenars = AllScenarios::default();
-        scenars
-            .try_add_variable("MODE", &build_set(&["debug", "optimize", "lto"]))
-            .unwrap();
-        scenars
-            .try_add_variable("CHECK", &build_set(&["none", "some", "most"]))
-            .unwrap();
+        scenars.try_add_variable("MODE", &["debug", "optimize", "lto"])?;
+        scenars.try_add_variable("CHECK", &["none", "some", "most"])?;
         let s0 = Scenario::default();
         let s2 = scenars.split(s0, "MODE", &["debug", "optimize"]);
         let s3 = scenars.split(s0, "MODE", &["lto"]);

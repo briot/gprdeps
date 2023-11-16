@@ -1,4 +1,4 @@
-use crate::environment::NodeIndex;
+use crate::graph::NodeIndex;
 /// A GPR file that hasn't been processed yet.  All we store here is the info we
 /// extracted from the file itself, but we did not resolve paths, for instance.
 /// Such an object is only valid as long as the scanner that generates it, since
