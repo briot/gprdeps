@@ -178,8 +178,11 @@ impl AllScenarios {
             }
         }
 
+        let details_str = format!("{}", details);
         self.scenarios.push(details);
-        Scenario(self.scenarios.len() - 1)
+        let s = self.scenarios.len() - 1;
+        println!("MANU create scenario {} as {}", s, details_str);
+        Scenario(s)
     }
 
     /// Restrict the scenario to a subset of values for the given variables.
@@ -266,9 +269,6 @@ impl AllScenarios {
                     // accepted all possible values of the variable.  To
                     // represent this, we remove the entry for the variable.
                     diffcount += 1;
-                    // for v in self.variables[name].list_valid() {
-                    //     value.insert(v.to_string());
-                    // }
                     to_remove = Some(name.clone());
                 }
                 Some(value2) if value != value2 => {

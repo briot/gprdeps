@@ -117,35 +117,50 @@ impl GPR {
                     expr,
                 } => {
                     // Is this a scenario variable ?
+                    // It has both a type and "external".  In this case, we do
+                    // not check its actual value from the environment or the
+                    // default, but instead create a ExprValue with a different
+                    // value for each scenario
                     let ext = expr.has_external();
                     if let (Some(typename), Some(ext)) = (typename, ext) {
-                        let t = self.lookup(typename, dependencies)?;
+                        let valid = self.lookup(typename, dependencies)?;
 
-                        // Types cannot be declared in case statements, so we
-                        // should have a single value for it
-                        let valid = t.as_static_list();
+                        // Check that this variable wasn't already declared
+                        // with a different set of values.
                         scenarios.try_add_variable(
                             ext,
                             &valid
+                                .as_static_list()
                                 .iter()
                                 .map(|s| s.as_ref())
                                 .collect::<Vec<_>>(),
                         )?;
-                    }
 
-                    // ??? We lose the relationship to the type and the set of
-                    // possible values, we'll need those in case statements
-                    self.declare(
-                        current_pkg,
-                        AttributeOrVarName::Name(name.clone()),
-                        ExprValue::eval(
-                            expr,
-                            self,
-                            dependencies,
-                            scenarios,
-                            current_scenario,
-                        )?,
-                    )?;
+                        self.declare(
+                            current_pkg,
+                            AttributeOrVarName::Name(name.clone()),
+                            ExprValue::from_scenario_variable(
+                                scenarios,
+                                ext,
+                                valid,
+                            ),
+                        )?;
+
+                    // Else we have a standard variable (either untyped or not
+                    // using external), and we get its value from the expression
+                    } else {
+                        self.declare(
+                            current_pkg,
+                            AttributeOrVarName::Name(name.clone()),
+                            ExprValue::eval(
+                                expr,
+                                self,
+                                dependencies,
+                                scenarios,
+                                current_scenario,
+                            )?,
+                        )?;
+                    }
                 }
 
 //                Statement::AttributeDecl {

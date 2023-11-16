@@ -25,6 +25,31 @@ impl ExprValue {
         ExprValue(m)
     }
 
+    /// Given a type declaration (which cannot be declared in case statements,
+    /// so has only one set of possible values), generate an expression where
+    /// each value is in its own scenario.
+    /// For instance, given:
+    ///     type Mode_Type is ("debug", "optimize")
+    /// and calling this function for the variable "MODE", we create the
+    /// following expression:
+    ///     MODE=debug    => "debug"
+    ///     MODE=optimize => "optimize"
+    /// This is used to get the possible values of scenario variables
+    pub fn from_scenario_variable(
+        scenarios: &mut AllScenarios,
+        varname: &str,
+        type_values: &ExprValue,
+    ) -> Self {
+        let valid = type_values.as_static_list();
+        let mut m = HashMap::new();
+        let s0 = Scenario::default();
+        for v in valid {
+            let s1 = scenarios.split(s0, varname, &[v]);
+            m.insert(s1, OneScenario::StaticString(v.clone()));
+        }
+        ExprValue(m)
+    }
+
     /// Assumes the expression is a static string valid for all scenarios and
     /// return it.
     pub fn as_static_str(&self) -> &String {
@@ -276,7 +301,11 @@ mod tests {
 
     #[test]
     fn test_eval() -> Result<(), String> {
-        let mut gpr = GPR::new(std::path::Path::new("/"), NodeIndex::default());
+        let mut gpr = GPR::new(
+            std::path::Path::new("/"),
+            NodeIndex::default(),
+            "dummy",
+        );
         let mut scenars = AllScenarios::default();
         let scenar = Scenario::default();
 
@@ -354,7 +383,11 @@ mod tests {
 
     #[test]
     fn test_eval_scenario() -> Result<(), String> {
-        let mut gpr = GPR::new(std::path::Path::new("/"), NodeIndex::default());
+        let mut gpr = GPR::new(
+            std::path::Path::new("/"),
+            NodeIndex::default(),
+            "dummy",
+        );
         let mut scenars = AllScenarios::default();
         scenars.try_add_variable("MODE", &["debug", "optimize", "lto"])?;
         scenars.try_add_variable("CHECK", &["none", "some", "most"])?;
