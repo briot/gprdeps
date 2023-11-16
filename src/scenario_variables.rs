@@ -41,10 +41,7 @@ impl ScenarioVariable {
     pub fn new(name: &str, valid: &[&str]) -> Self {
         ScenarioVariable {
             name: name.to_owned(),
-            valid: valid
-                .iter()
-                .map(|s| s.to_string())
-                .collect()
+            valid: valid.iter().map(|s| s.to_string()).collect(),
         }
     }
 

@@ -1,5 +1,5 @@
 use crate::gpr::GPR;
-use crate::rawexpr::{PackageName, AttributeOrVarName, RawExpr, QualifiedName};
+use crate::rawexpr::{AttributeOrVarName, PackageName, QualifiedName, RawExpr};
 use crate::scenarios::{AllScenarios, Scenario};
 use std::collections::HashMap;
 
@@ -18,20 +18,36 @@ impl ExprValue {
     /// An expression that always has the same static value for all scenarios
     pub fn new_static_str(s: &str) -> Self {
         let mut m = HashMap::new();
-        m.insert(Scenario::default(), OneScenario::StaticString(s.to_string()));
+        m.insert(
+            Scenario::default(),
+            OneScenario::StaticString(s.to_string()),
+        );
         ExprValue(m)
+    }
+
+    /// Assumes the expression is a static string valid for all scenarios and
+    /// return it.
+    pub fn as_static_str(&self) -> &String {
+        if self.0.len() != 1 {
+            panic!("Expected no variants {:?}", self.0);
+        }
+        match &self.0[&Scenario::default()] {
+            OneScenario::StaticString(s) => s,
+            OneScenario::List(_) => panic!("Expected a string {:?}", self.0),
+        }
     }
 
     /// The expression is assumed to have a single value, for the default
     /// scenario (think of types).  Return that value.
     /// Otherwise panic
-    pub fn get_type_value(&self) -> &Vec<String> {
+    pub fn as_static_list(&self) -> &Vec<String> {
         if self.0.len() != 1 {
-            panic!("Types cannot have multiple variants {:?}", self.0);
+            panic!("Expected no variants {:?}", self.0);
         }
         match &self.0[&Scenario::default()] {
-            OneScenario::StaticString(_) =>
-                panic!("A type must be a list {:?}", self.0),
+            OneScenario::StaticString(_) => {
+                panic!("Expected a list {:?}", self.0)
+            }
             OneScenario::List(v) => v,
         }
     }
@@ -54,22 +70,34 @@ impl ExprValue {
             RawExpr::Others => {
                 Err(format!("{}: cannot evaluate `others` expr", gpr))
             }
-            RawExpr::Name(q) => {
-                match q {
-                    QualifiedName {
-                        project: None,
-                        package: PackageName::None,
-                        name: AttributeOrVarName::Name(n),
-                        index: Some(idx),
-                    } if n == "external" => {
-                        Ok(ExprValue::new_static_str(
-                            &std::env::var(idx[0])
-                                .unwrap_or(idx.get(1).or("").to_string())
-                        ))
+            RawExpr::Name(q) => match q {
+                QualifiedName {
+                    project: None,
+                    package: PackageName::None,
+                    name: AttributeOrVarName::Name(n),
+                    index: Some(idx),
+                } if n == "external" => {
+                    let varname = match &idx[0] {
+                        RawExpr::StaticString(v) => v,
+                        _ => panic!(
+                            "Expected static string for variable \
+                                 name in {:?}",
+                            q
+                        ),
+                    };
+                    let default = match idx.get(1) {
+                        None => ExprValue::new_static_str(""),
+                        Some(expr) => ExprValue::eval(
+                            expr, gpr, gpr_deps, scenars, scenar,
+                        )?,
+                    };
+                    match &std::env::var(varname) {
+                        Ok(v) => Ok(ExprValue::new_static_str(v)),
+                        Err(_) => Ok(default),
                     }
-                    _ => Ok(gpr.lookup(q, gpr_deps)?.clone())
                 }
-            }
+                _ => Ok(gpr.lookup(q, gpr_deps)?.clone()),
+            },
             RawExpr::StaticString(s) => {
                 let mut m = HashMap::new();
                 m.insert(scenar, OneScenario::StaticString(s.clone()));

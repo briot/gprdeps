@@ -54,13 +54,8 @@ impl Environment {
             let gpridx = self.graph.get_project(*nodeidx);
             let (path, raw) = &rawfiles[&gpridx];
             let deps = self.graph.gpr_dependencies(*nodeidx);
-            println!("MANU parsing {:?} nodeidx={:?} gpridx={:?} deps={:?}",
-                path, nodeidx, gpridx, deps);
-            let gprdeps = deps
-                .iter()
-                .map(|i| &gprs[i])
-                .collect::<Vec<_>>();
-            let mut gpr = GPR::new(path, *nodeidx);
+            let gprdeps = deps.iter().map(|i| &gprs[i]).collect::<Vec<_>>();
+            let mut gpr = GPR::new(path, *nodeidx, &raw.name);
             gpr.process(raw, &gprdeps, &mut self.scenarios)?;
             gprs.insert(gpridx, gpr);
         }

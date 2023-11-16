@@ -22,17 +22,25 @@ pub struct GPR {
 }
 
 impl GPR {
-    pub fn new(path: &std::path::Path, index: NodeIndex) -> Self {
-        Self {
+    pub fn new(
+        path: &std::path::Path,
+        index: NodeIndex,
+        name: &str,
+    ) -> Self {
+        let mut s = Self {
             path: path.into(),
-            name: Default::default(),
+            name: name.to_lowercase(),
             index,
             values: Default::default(),
-        }
-    }
+        };
 
-    pub fn set_name(&mut self, name: &str) {
-        self.name = name.to_string();
+        // Declare the fallback value for "project'Target" attribute.
+        s.values[PackageName::None as usize].insert(
+            AttributeOrVarName::Target,
+            ExprValue::new_static_str("unknown_target"),
+        );
+
+        s
     }
 
     /// Declare a new named object.
@@ -43,11 +51,14 @@ impl GPR {
         name: AttributeOrVarName,
         value: ExprValue,
     ) -> Result<(), String> {
-        println!("MANU {}: declared {}.{} as {:?}", self, package, name, value);
+        println!(
+            "MANU {}: declared {}{} as {:?}",
+            self, package, name, value
+        );
         let pkg = &mut self.values[package as usize];
         if pkg.contains_key(&name) {
             return Err(format!(
-                "{}: object already declared {}.{}",
+                "{}: object already declared {}{}",
                 self, package, name
             ));
         }
@@ -100,7 +111,11 @@ impl GPR {
                     )?;
                 }
 
-                Statement::VariableDecl { name, typename, expr } => {
+                Statement::VariableDecl {
+                    name,
+                    typename,
+                    expr,
+                } => {
                     // Is this a scenario variable ?
                     let ext = expr.has_external();
                     if let (Some(typename), Some(ext)) = (typename, ext) {
@@ -108,10 +123,13 @@ impl GPR {
 
                         // Types cannot be declared in case statements, so we
                         // should have a single value for it
-                        let valid = t.get_type_value();
+                        let valid = t.as_static_list();
                         scenarios.try_add_variable(
                             ext,
-                            &valid.iter().map(|s| s.as_ref()).collect::<Vec<_>>()
+                            &valid
+                                .iter()
+                                .map(|s| s.as_ref())
+                                .collect::<Vec<_>>(),
                         )?;
                     }
 
@@ -126,23 +144,29 @@ impl GPR {
                             dependencies,
                             scenarios,
                             current_scenario,
-                        )?
+                        )?,
                     )?;
                 }
 
-                Statement::AttributeDecl {
-                    name,
-                    index: _index,
-                    ..
-                } => {
-                    println!("{}: attribute {}", self, name);
-                }
+//                Statement::AttributeDecl {
+//                    name,
+//                    index: _index,
+//                    ..
+//                } => {
+//                    println!("{}: attribute {}", self, name);
+//                }
                 _ => {
                     panic!("{}: Unhandled statement {:?}", self, s);
                 }
             }
         }
         Ok(())
+    }
+}
+
+impl std::fmt::Debug for GPR {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.path.display())
     }
 }
 

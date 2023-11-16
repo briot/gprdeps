@@ -41,18 +41,36 @@ pub enum AttributeOrVarName {
     SourceDirs,
     SourceFiles,
     Switches,
+    Target,
 }
+impl AttributeOrVarName {
+    pub fn new(lower: String) -> Self {
+        match lower.as_str() {
+            "exec_dir" => AttributeOrVarName::ExecDir,
+            "linker_options" => AttributeOrVarName::LinkerOptions,
+            "main" => AttributeOrVarName::Main,
+            "object_dir" => AttributeOrVarName::ObjectDir,
+            "source_dirs" => AttributeOrVarName::SourceDirs,
+            "source_files" => AttributeOrVarName::SourceFiles,
+            "switches" => AttributeOrVarName::Switches,
+            "target" => AttributeOrVarName::Target,
+            _ => AttributeOrVarName::Name(lower),
+        }
+    }
+}
+
 impl std::fmt::Display for AttributeOrVarName {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            AttributeOrVarName::Name(s) => write!(f, "{}", s),
-            AttributeOrVarName::ExecDir => write!(f, "exec_dir"),
-            AttributeOrVarName::LinkerOptions => write!(f, "linker_options"),
-            AttributeOrVarName::Main => write!(f, "main"),
-            AttributeOrVarName::ObjectDir => write!(f, "object_dir"),
-            AttributeOrVarName::SourceDirs => write!(f, "source_dirs"),
-            AttributeOrVarName::SourceFiles => write!(f, "source_files"),
-            AttributeOrVarName::Switches => write!(f, "switches"),
+            AttributeOrVarName::Name(s) => write!(f, ".{}", s),
+            AttributeOrVarName::ExecDir => write!(f, "'exec_dir"),
+            AttributeOrVarName::LinkerOptions => write!(f, "'linker_options"),
+            AttributeOrVarName::Main => write!(f, "'main"),
+            AttributeOrVarName::ObjectDir => write!(f, "'object_dir"),
+            AttributeOrVarName::SourceDirs => write!(f, "'source_dirs"),
+            AttributeOrVarName::SourceFiles => write!(f, "'source_files"),
+            AttributeOrVarName::Switches => write!(f, "'switches"),
+            AttributeOrVarName::Target => write!(f, "'target"),
         }
     }
 }
@@ -90,7 +108,7 @@ impl std::fmt::Display for QualifiedName {
         if let Some(p) = &self.project {
             write!(f, "{}.", p)?;
         }
-        write!(f, "{}.{}", self.package, self.name)?;
+        write!(f, "{}{}", self.package, self.name)?;
         if self.index.is_some() {
             write!(f, "(..)")?;
         }

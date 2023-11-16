@@ -120,20 +120,6 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    // Check whether we have a valid attribute name
-    fn as_attribute(&self, lower: String) -> AttributeOrVarName {
-        match lower.as_str() {
-            "exec_dir" => AttributeOrVarName::ExecDir,
-            "linker_options" => AttributeOrVarName::LinkerOptions,
-            "main" => AttributeOrVarName::Main,
-            "object_dir" => AttributeOrVarName::ObjectDir,
-            "source_dirs" => AttributeOrVarName::SourceDirs,
-            "source_files" => AttributeOrVarName::SourceFiles,
-            "switches" => AttributeOrVarName::Switches,
-            _ => AttributeOrVarName::Name(lower),
-        }
-    }
-
     /// Parse of expect_qname.
     /// Should be called after we parsed a first identifier, and the final one.
     /// name1 should be None if we had parsed "Project'"
@@ -146,20 +132,20 @@ impl<'a> Scanner<'a> {
             None => Ok(QualifiedName {
                 project: name1,
                 package: PackageName::None,
-                name: self.as_attribute(name2),
+                name: AttributeOrVarName::new(name2),
                 index: self.parse_opt_arg_list()?,
             }),
             Some(n1) => match self.as_package(n1) {
                 Ok(p) => Ok(QualifiedName {
                     project: None,
                     package: p,
-                    name: self.as_attribute(name2),
+                    name: AttributeOrVarName::new(name2),
                     index: self.parse_opt_arg_list()?,
                 }),
                 Err(n) => Ok(QualifiedName {
                     project: Some(n),
                     package: PackageName::None,
-                    name: self.as_attribute(name2),
+                    name: AttributeOrVarName::new(name2),
                     index: self.parse_opt_arg_list()?,
                 }),
             },
@@ -180,7 +166,7 @@ impl<'a> Scanner<'a> {
                         Ok(QualifiedName {
                             project: name1,
                             package: p,
-                            name: self.as_attribute(name3),
+                            name: AttributeOrVarName::new(name3),
                             index: self.parse_opt_arg_list()?,
                         })
                     }
@@ -199,7 +185,7 @@ impl<'a> Scanner<'a> {
                 Some(n1) => Ok(QualifiedName {
                     project: None,
                     package: PackageName::None,
-                    name: self.as_attribute(n1),
+                    name: AttributeOrVarName::new(n1),
                     index: self.parse_opt_arg_list()?,
                 }),
             },
@@ -636,7 +622,7 @@ impl<'a> Scanner<'a> {
         let value = self.parse_expression()?;
         self.expect(TokenKind::Semicolon)?;
         Ok(Statement::AttributeDecl {
-            name: self.as_attribute(name),
+            name: AttributeOrVarName::new(name),
             index,
             value,
         })
