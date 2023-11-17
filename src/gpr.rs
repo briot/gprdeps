@@ -200,20 +200,19 @@ impl GPR {
                     extends,
                     body,
                 } => {
-                    if let Some(r) = renames {
-                        let mut orig = self
-                            .lookup_gpr(r, dependencies)?
-                            .values[current_pkg as usize]
-                            .clone();
-                        for (n, expr) in orig.drain() {
-                            self.values[current_pkg as usize].insert(
-                                n.clone(), expr.clone()
-                            );
+                    match (renames, extends) {
+                        (Some(r), None) | (None, Some(r)) => {
+                            let mut orig = self
+                                .lookup_gpr(r, dependencies)?
+                                .values[current_pkg as usize]
+                                .clone();
+                            for (n, expr) in orig.drain() {
+                                self.values[current_pkg as usize].insert(
+                                    n.clone(), expr.clone()
+                                );
+                            }
                         }
-                    }
-                    if let Some(e) = extends {
-                        let _orig =
-                            self.lookup(e, dependencies, current_pkg)?;
+                        _ => {}
                     }
 
                     self.process_body(
