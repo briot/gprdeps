@@ -102,8 +102,8 @@ impl<'a> Scanner<'a> {
         let name3 = self.expect_identifier()?;
         let args = self.parse_opt_arg_list()?;
         match args {
-            None => Ok(SimpleName::new(name3, None)?),
-            Some(mut args) if args.len() == 1 => Ok(SimpleName::new(
+            None => Ok(SimpleName::new_attr(name3, None)?),
+            Some(mut args) if args.len() == 1 => Ok(SimpleName::new_attr(
                 name3,
                 Some(StringOrOthers::Str(
                     args.remove(0).as_static_str(&self.lex)?,
@@ -130,7 +130,7 @@ impl<'a> Scanner<'a> {
                         Ok(QualifiedName {
                             project: name1,
                             package: PackageName::new(&name2)?,
-                            name: SimpleName::new(name3, None)?,
+                            name: SimpleName::new_var(name3)?,
                         })
                     }
                     TokenKind::Tick => {
@@ -143,9 +143,7 @@ impl<'a> Scanner<'a> {
                     }
                     _ => Ok(QualifiedName::from_two(
                         name1,
-                        SimpleName::new(
-                            name2, None, //  This cannot be an attribute
-                        )?,
+                        SimpleName::new_var(name2)?,
                     )),
                 }
             }
@@ -161,7 +159,7 @@ impl<'a> Scanner<'a> {
                 Some(n1) => Ok(QualifiedName {
                     project: None,
                     package: PackageName::None,
-                    name: SimpleName::new(n1, None)?,
+                    name: SimpleName::new_var(n1)?,
                 }),
             },
         }
@@ -589,7 +587,7 @@ impl<'a> Scanner<'a> {
         let value = self.parse_expression()?;
         self.expect(TokenKind::Semicolon)?;
         Ok(Statement::AttributeDecl {
-            name: SimpleName::new(name, index)?,
+            name: SimpleName::new_attr(name, index)?,
             value,
         })
     }

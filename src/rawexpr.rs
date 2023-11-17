@@ -65,22 +65,47 @@ pub enum SimpleName {
     BodySuffix(String),
     Body(String),
     DefaultSwitches(StringOrOthers),
+    ExcludedSourceFiles,
     ExecDir,
     Executable(String),
+    ExternallyBuilt,
+    GlobalConfigurationPragmas,
+    Languages,
+    LibraryDir,
+    LibraryInterface,
+    LibraryKind,
+    LibraryName,
+    LibraryOptions,
+    LibraryStandalone,
+    LibraryVersion,
     LinkerOptions,
+    LocalConfigurationPragmas,
     Main,
     ObjectDir,
+    ProjectFiles,
+    SharedLibraryPrefix,
     SourceDirs,
     SourceFiles,
     Spec(String),
     SpecSuffix(String),
+    SourceListFile,
     Switches(StringOrOthers),
     Target,
+    VCSKind,
+    VCSRepositoryRoot,
 }
 impl SimpleName {
-    /// Builds an attribute or variable name.
+
+    /// Builds a variable name
+    pub fn new_var(
+        lower: String,
+    ) -> Result<Self, String> {
+        Ok(SimpleName::Name(lower))
+    }
+
+    /// Builds an attribute name
     /// Properly detects whether an index was needed or not
-    pub fn new(
+    pub fn new_attr(
         lower: String,
         index: Option<StringOrOthers>,
     ) -> Result<Self, String> {
@@ -94,15 +119,34 @@ impl SimpleName {
             ("default_switches", Some(idx)) => {
                 Ok(SimpleName::DefaultSwitches(idx))
             }
+            ("excluded_source_files", None) =>
+                Ok(SimpleName::ExcludedSourceFiles),
             ("exec_dir", None) => Ok(SimpleName::ExecDir),
             ("executable", Some(StringOrOthers::Str(idx))) => {
                 Ok(SimpleName::Executable(idx))
             }
+            ("externally_built", None) => Ok(SimpleName::ExternallyBuilt),
+            ("global_configuration_pragmas", None) =>
+                Ok(SimpleName::GlobalConfigurationPragmas),
+            ("languages", None) => Ok(SimpleName::Languages),
+            ("library_dir", None) => Ok(SimpleName::LibraryDir),
+            ("library_interface", None) => Ok(SimpleName::LibraryInterface),
+            ("library_kind", None) => Ok(SimpleName::LibraryKind),
+            ("library_name", None) => Ok(SimpleName::LibraryName),
+            ("library_options", None) => Ok(SimpleName::LibraryOptions),
+            ("library_standalone", None) => Ok(SimpleName::LibraryStandalone),
+            ("library_version", None) => Ok(SimpleName::LibraryVersion),
             ("linker_options", None) => Ok(SimpleName::LinkerOptions),
+            ("local_configuration_pragmas", None) =>
+                Ok(SimpleName::LocalConfigurationPragmas),
             ("main", None) => Ok(SimpleName::Main),
             ("object_dir", None) => Ok(SimpleName::ObjectDir),
+            ("project_files", None) => Ok(SimpleName::ProjectFiles),
+            ("shared_library_prefix", None) =>
+                Ok(SimpleName::SharedLibraryPrefix),
             ("source_dirs", None) => Ok(SimpleName::SourceDirs),
             ("source_files", None) => Ok(SimpleName::SourceFiles),
+            ("source_list_file", None) => Ok(SimpleName::SourceListFile),
             ("spec", Some(StringOrOthers::Str(idx))) => {
                 Ok(SimpleName::Spec(idx))
             }
@@ -111,10 +155,11 @@ impl SimpleName {
             }
             ("switches", Some(idx)) => Ok(SimpleName::Switches(idx)),
             ("target", None) => Ok(SimpleName::Target),
-            (_, None) => Ok(SimpleName::Name(lower)),
-            (_, Some(idx)) => {
-                Err(format!("Unexpected index given to {}({})", lower, idx))
-            }
+            ("vcs_kind", None) => Ok(SimpleName::VCSKind),
+            ("vcs_repository_root", None) => Ok(SimpleName::VCSRepositoryRoot),
+            (_, None) => Err(format!("Invalid attribute name {}", lower)),
+            (_, Some(idx)) =>
+                Err(format!("Invalid attribute name {}({})", lower, idx)),
         }
     }
 }
@@ -128,17 +173,38 @@ impl std::fmt::Display for SimpleName {
             SimpleName::DefaultSwitches(idx) => {
                 write!(f, "'default_switches({})", idx)
             }
+            SimpleName::ExcludedSourceFiles =>
+                write!(f, "'excluded_source_files"),
             SimpleName::ExecDir => write!(f, "'exec_dir"),
             SimpleName::Executable(idx) => write!(f, "'executable({})", idx),
+            SimpleName::ExternallyBuilt => write!(f, "'externally_build"),
+            SimpleName::GlobalConfigurationPragmas =>
+                write!(f, "'global_configuration_pragmas"),
+            SimpleName::Languages => write!(f, "'languages"),
+            SimpleName::LibraryDir => write!(f, "'library_dir"),
+            SimpleName::LibraryInterface => write!(f, "'library_interface"),
+            SimpleName::LibraryKind => write!(f, "'library_kind"),
+            SimpleName::LibraryName => write!(f, "'library_name"),
+            SimpleName::LibraryOptions => write!(f, "'library_options"),
+            SimpleName::LibraryStandalone => write!(f, "'library_standalone"),
+            SimpleName::LibraryVersion => write!(f, "'library_version"),
             SimpleName::LinkerOptions => write!(f, "'linker_options"),
+            SimpleName::LocalConfigurationPragmas =>
+                write!(f, "'local_configuration_pragmas"),
             SimpleName::Main => write!(f, "'main"),
             SimpleName::ObjectDir => write!(f, "'object_dir"),
+            SimpleName::ProjectFiles => write!(f, "'project_files"),
+            SimpleName::SharedLibraryPrefix =>
+                write!(f, "'shared_library_prefix"),
             SimpleName::SourceDirs => write!(f, "'source_dirs"),
             SimpleName::SourceFiles => write!(f, "'source_files"),
             SimpleName::Spec(idx) => write!(f, "'spec({})", idx),
             SimpleName::SpecSuffix(idx) => write!(f, "'spec_suffix({})", idx),
+            SimpleName::SourceListFile => write!(f, "'source_list_file"),
             SimpleName::Switches(idx) => write!(f, "'switches({})", idx),
             SimpleName::Target => write!(f, "'target"),
+            SimpleName::VCSKind => write!(f, "'vcs_kind"),
+            SimpleName::VCSRepositoryRoot => write!(f, "'vcs_repository_root"),
         }
     }
 }
