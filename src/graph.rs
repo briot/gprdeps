@@ -58,7 +58,10 @@ impl DepGraph {
     /// Each dependency is reported only once (so if a project imports both A and
     /// B, which both import a common C, then C is only returned once).
     /// The returned value does not include start itself.
-    pub fn gpr_dependencies(&self, start: NodeIndex) -> Vec<GPRIndex> {
+    pub fn gpr_dependencies(
+        &self,
+        start: NodeIndex,
+    ) -> Vec<GPRIndex> {
         let mut bfs = Bfs::new(&self.0, start);
         let mut result = Vec::new();
         while let Some(node) = bfs.next(&self.0) {

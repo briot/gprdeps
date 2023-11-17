@@ -56,7 +56,12 @@ impl Environment {
             let deps = self.graph.gpr_dependencies(*nodeidx);
             let gprdeps = deps.iter().map(|i| &gprs[i]).collect::<Vec<_>>();
             let mut gpr = GPR::new(path, *nodeidx, &raw.name);
-            gpr.process(raw, &gprdeps, &mut self.scenarios)?;
+            gpr.process(
+                raw,
+                raw.extends.map(|i| &gprs[&self.graph.get_project(i)]),
+                &gprdeps,
+                &mut self.scenarios,
+            )?;
             gprs.insert(gpridx, gpr);
         }
 

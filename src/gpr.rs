@@ -53,13 +53,6 @@ impl GPR {
     ) -> Result<(), String> {
         println!("MANU {}: declared {}{} as {:?}", self, package, name, value);
         let pkg = &mut self.values[package as usize];
-        if pkg.contains_key(&name) {
-            println!("MANU overriding");
-//            return Err(format!(
-//                "{}: object already declared {}{}",
-//                self, package, name
-//            ));
-        }
         pkg.insert(name, value);
         Ok(())
     }
@@ -295,9 +288,15 @@ impl GPR {
     pub fn process(
         &mut self,
         raw: &RawGPR,
+        extends: Option<&GPR>,
         dependencies: &[&GPR],
         scenarios: &mut AllScenarios,
     ) -> std::result::Result<(), String> {
+
+        if let Some(ext) = extends {
+            self.values = ext.values.clone();
+        }
+
         self.process_body(
             dependencies,
             scenarios,
