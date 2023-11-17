@@ -38,6 +38,8 @@ impl FileFind {
                     && !n.ends_with("Packaging")
                     && !n.ends_with("Compiler")
                     && !n.ends_with(".dbc")
+                    && !n.ends_with(".git")
+                    && !n.ends_with("objects")
             }
             _ => false,
         }
@@ -55,13 +57,22 @@ impl Iterator for FileFind {
                 }
                 Some(Ok(e)) => {
                     let path = e.path();
-                    match path.extension().and_then(OsStr::to_str) {
-                        Some("gpr") => {
-                            return Some(std::fs::canonicalize(path).unwrap())
-                        }
-                        _ => {
-                            if self.traverse_dir(&path) {
-                                self.pushdir(&path);
+                    match e.file_type() {
+                        Err(err) =>
+                            println!("Error reading {}: {}", path.display(), err),
+                        Ok(ft) => {
+                            if ft.is_dir() {
+                                if self.traverse_dir(&path) {
+                                    self.pushdir(&path);
+                                }
+                            } else if ft.is_file() {
+                                if let Some("gpr") = path
+                                    .extension()
+                                    .and_then(OsStr::to_str)
+                                {
+                                    return Some(std::fs::canonicalize(path)
+                                        .unwrap())
+                                }
                             }
                         }
                     }

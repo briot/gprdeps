@@ -51,7 +51,7 @@ impl GPR {
         name: SimpleName,
         value: ExprValue,
     ) -> Result<(), String> {
-        println!("MANU {}: declared {}{} as {:?}", self, package, name, value);
+//        println!("MANU {}: declared {}{} as {:?}", self, package, name, value);
         let pkg = &mut self.values[package as usize];
         pkg.insert(name, value);
         Ok(())
@@ -231,8 +231,6 @@ impl GPR {
                     let var = self.lookup(varname, dependencies, current_pkg)?;
                     let mut remaining = var.prepare_case_stmt()?;
 
-                    println!("MANU case {:?}", varname);
-
                     for w in when {
                         let mut combined = Scenario::default();
                         let mut is_first = true;
@@ -272,9 +270,6 @@ impl GPR {
 
                         let s = scenarios.intersection(
                             current_scenario, combined);
-                        println!("MANU   when {} => {}",
-                            scenarios.debug(combined),
-                            scenarios.debug(s));
                         self.process_body(
                             dependencies, scenarios,
                             s,

@@ -24,7 +24,13 @@ impl Environment {
         for (gpridx, gpr) in crate::findfile::FileFind::new(path).enumerate() {
             let gpridx = GPRIndex::new(gpridx);
             let nodeidx = self.graph.add_node(Node::Project(gpridx));
-            path_to_indexes.insert(gpr.to_path_buf(), (gpridx, nodeidx));
+            let path = gpr.to_path_buf();
+            if path_to_indexes.contains_key(&gpr) {
+                // ??? We could instead reuse the same gpridx and nodeidx, but
+                // this is unexpected.
+                panic!("Project file found multiple times: {}", path.display());
+            }
+            path_to_indexes.insert(gpr, (gpridx, nodeidx));
         }
 
         // Parse the raw GPR files, but do not analyze them yet.
