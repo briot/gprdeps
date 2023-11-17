@@ -25,6 +25,16 @@ impl ExprValue {
         ExprValue(m)
     }
 
+    // An expression value created as an empty list
+    pub fn new_empty_list() -> Self {
+        let mut m = HashMap::new();
+        m.insert(
+            Scenario::default(),
+            OneScenario::List(vec![]),
+            );
+        ExprValue(m)
+    }
+
     /// Given a type declaration (which cannot be declared in case statements,
     /// so has only one set of possible values), generate an expression where
     /// each value is in its own scenario.

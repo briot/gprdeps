@@ -35,6 +35,10 @@ impl GPR {
             SimpleName::Target,
             ExprValue::new_static_str("unknown_target"),
         );
+        s.values[PackageName::Linker as usize].insert(
+            SimpleName::LinkerOptions,
+            ExprValue::new_empty_list(),
+        );
 
         s
     }
@@ -60,6 +64,24 @@ impl GPR {
         Ok(())
     }
 
+    /// Lookup the project file referenced by the given name, in self or its
+    /// dependencies.
+    fn lookup_gpr<'a>(
+        &'a self,
+        name: &QualifiedName,
+        dependencies: &'a [&GPR],
+    ) -> Result<&'a GPR, String> {
+        match &name.project {
+            None => Ok(self),
+            Some(c) if c == self.name.as_str() => Ok(self),
+            Some(n) => dependencies
+                .iter()
+                .copied()
+                .find(|gpr| gpr.name == *n)
+                .ok_or_else(|| format!("{}: {} not found", self, name)),
+        }
+    }
+
     /// After a project has been processed, we can lookup values of variables
     /// and attributes directly, for each scenario.
     /// The lookup is also done in imported projects.
@@ -69,24 +91,17 @@ impl GPR {
         dependencies: &'a [&GPR],
         current_pkg: PackageName,
     ) -> Result<&'a ExprValue, String> {
-        let project = match &name.project {
-            None => Some(self),
-            Some(c) if c == self.name.as_str() => Some(self),
-            Some(n) => dependencies.iter().copied().find(|gpr| gpr.name == *n),
-        };
-
+        let project = self.lookup_gpr(name, dependencies)?;
         let mut r1 = None;
 
         // An unqualified name is first searched in the current package
         if name.package == PackageName::None && current_pkg != PackageName::None
         {
-            r1 = project
-                .and_then(|p| p.values[current_pkg as usize].get(&name.name));
+            r1 = project.values[current_pkg as usize].get(&name.name);
         }
 
         if r1.is_none() {
-            r1 = project
-                .and_then(|p| p.values[name.package as usize].get(&name.name));
+            r1 = project.values[name.package as usize].get(&name.name);
         }
 
         r1.ok_or_else(|| format!("{}: {} not found", self, name))
@@ -193,8 +208,15 @@ impl GPR {
                     body,
                 } => {
                     if let Some(r) = renames {
-                        let _orig =
-                            self.lookup(r, dependencies, current_pkg)?;
+                        let mut orig = self
+                            .lookup_gpr(r, dependencies)?
+                            .values[current_pkg as usize]
+                            .clone();
+                        for (n, expr) in orig.drain() {
+                            self.values[current_pkg as usize].insert(
+                                n.clone(), expr.clone()
+                            );
+                        }
                     }
                     if let Some(e) = extends {
                         let _orig =
