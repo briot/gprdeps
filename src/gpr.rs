@@ -1,6 +1,7 @@
 use crate::graph::NodeIndex;
 use crate::rawexpr::{
     PackageName, QualifiedName, SimpleName, Statement, PACKAGE_NAME_VARIANTS,
+    StringOrOthers,
 };
 use crate::rawgpr::RawGPR;
 use crate::scenarios::{AllScenarios, Scenario};
@@ -49,10 +50,11 @@ impl GPR {
         println!("MANU {}: declared {}{} as {:?}", self, package, name, value);
         let pkg = &mut self.values[package as usize];
         if pkg.contains_key(&name) {
-            return Err(format!(
-                "{}: object already declared {}{}",
-                self, package, name
-            ));
+            println!("MANU overriding");
+//            return Err(format!(
+//                "{}: object already declared {}{}",
+//                self, package, name
+//            ));
         }
         pkg.insert(name, value);
         Ok(())
@@ -95,11 +97,10 @@ impl GPR {
         &mut self,
         dependencies: &[&GPR],
         scenarios: &mut AllScenarios,
+        current_scenario: Scenario,
         current_pkg: PackageName,
         body: &Vec<Statement>,
     ) -> std::result::Result<(), String> {
-        println!("MANU {} process package {}", self, current_pkg);
-        let current_scenario = Scenario::default();
         for s in body {
             match s {
                 Statement::TypeDecl { typename, valid } => {
@@ -200,15 +201,71 @@ impl GPR {
                             self.lookup(e, dependencies, current_pkg)?;
                     }
 
-                    self.process_body(dependencies, scenarios, *name, body)?;
+                    self.process_body(
+                        dependencies, scenarios,
+                        current_scenario,
+                        *name,
+                        body
+                    )?;
                 }
 
-                _ => {
-                    panic!("{}: Unhandled statement {:?}", self, s);
+                Statement::Case { varname, when } => {
+                    // This is a scenario variable, so it's ExprValue is one
+                    // entry per scenario, with one static string every time.
+                    // We no longer have the link to the external name, so we use
+                    // the ExprValue itself.
+                    let var = self.lookup(varname, dependencies, current_pkg)?;
+                    let mut remaining = var.prepare_case_stmt()?;
+
+                    println!("MANU case {:?}", varname);
+
+                    for w in when {
+                        let mut combined = Scenario::default();
+                        let mut is_first = true;
+
+                        let mut combine = |s: Scenario| -> Result<(), String> {
+                            if is_first {
+                                combined = s;
+                                is_first = false;
+                            } else {
+                                combined = scenarios
+                                    .union(combined, s)
+                                    .ok_or("Could not combine scenarios")?;
+                            }
+                            Ok(())
+                        };
+
+                        for val in &w.values {
+                            match val {
+                                StringOrOthers::Str(s) => {
+                                    combine(remaining[s])?;
+                                    remaining.remove(s);
+                                }
+                                StringOrOthers::Others => {
+                                    for s in remaining.values() {
+                                        combine(*s)?;
+                                    }
+                                    remaining.clear();
+                                }
+                            }
+                        }
+
+                        let s = scenarios.intersection(
+                            current_scenario, combined);
+                        println!("MANU   when {} => {}",
+                            scenarios.debug(combined),
+                            scenarios.debug(s));
+                        self.process_body(
+                            dependencies, scenarios,
+                            s,
+                            current_pkg,
+                            &w.body
+                        )?;
+                    }
                 }
+
             }
         }
-        println!("MANU {} done process package {}", self, current_pkg);
         Ok(())
     }
 
@@ -219,7 +276,13 @@ impl GPR {
         dependencies: &[&GPR],
         scenarios: &mut AllScenarios,
     ) -> std::result::Result<(), String> {
-        self.process_body(dependencies, scenarios, PackageName::None, &raw.body)
+        self.process_body(
+            dependencies,
+            scenarios,
+            Scenario::default(),
+            PackageName::None,
+            &raw.body,
+        )
     }
 }
 

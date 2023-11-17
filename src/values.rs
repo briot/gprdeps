@@ -77,6 +77,26 @@ impl ExprValue {
         }
     }
 
+    /// Return a mapping from one string value to the corresponding scenario.
+    /// This is used for scenario variables used in a case statement.
+    pub fn prepare_case_stmt(
+        &self
+    ) -> Result<HashMap<String, Scenario>, String> {
+        let mut result = HashMap::new();
+        for (s, v) in &self.0 {
+            match v {
+                OneScenario::List(_) => {
+                    Err(format!("List cannot be used in a case statement: {:?}",
+                        self.0))?;
+                }
+                OneScenario::StaticString(v) => {
+                    result.insert(v.clone(), *s);
+                }
+            }
+        }
+        Ok(result)
+    }
+
     /// Evaluate a raw expression into its final value.
     /// The expression is initially seen in the context of one scenario (matching
     /// the case and when clauses), but its final value might be split into
