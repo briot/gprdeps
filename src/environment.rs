@@ -1,7 +1,7 @@
 use crate::gpr::GPR;
 use crate::graph::{DepGraph, Edge, GPRIndex, Node};
 use crate::scenarios::AllScenarios;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// The whole set of gpr files
 #[derive(Default)]
@@ -72,6 +72,20 @@ impl Environment {
                 Err(e.decorate(Some(path), 0))?;
             }
             gprs.insert(gpridx, gpr);
+        }
+
+        // Remove all attributes we do not actually need, which makes some
+        // scenarios useless too
+        for (_, gpr) in gprs.iter_mut() {
+            gpr.trim();
+        }
+        let mut useful = HashSet::new();
+        for gpr in gprs.values() {
+            gpr.find_used_scenarios(&mut useful);
+        }
+        println!("Actually used scenarios={}", useful.len());
+        for s in &useful {
+            println!("scenario {}", self.scenarios.debug(*s));
         }
 
         //    let pool = threadpool::ThreadPool::new(1);

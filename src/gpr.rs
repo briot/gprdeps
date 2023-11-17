@@ -7,7 +7,7 @@ use crate::rawexpr::{
 use crate::rawgpr::RawGPR;
 use crate::scenarios::{AllScenarios, Scenario};
 use crate::values::ExprValue;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// A specific GPR file
 /// Such an object is independent of the scanner that created it, though it
@@ -40,6 +40,36 @@ impl GPR {
             .insert(SimpleName::LinkerOptions, ExprValue::new_empty_list());
 
         s
+    }
+
+    /// Trim attributes and variables that will no longer be used
+    pub fn trim(&mut self) {
+        for pkg in 0..PACKAGE_NAME_VARIANTS {
+            self.values[pkg].retain(
+                |name, _| matches!(
+                    name,
+                    SimpleName::BodySuffix(_)
+                    | SimpleName::Body(_)
+                    | SimpleName::ExcludedSourceFiles
+                    | SimpleName::Languages
+                    | SimpleName::Main
+                    | SimpleName::ProjectFiles
+                    | SimpleName::SourceDirs
+                    | SimpleName::SourceFiles
+                    | SimpleName::Spec(_)
+                    | SimpleName::SpecSuffix(_)
+                    | SimpleName::SourceListFile)
+            );
+        }
+    }
+
+    /// Find which scenarios are actually useful for this project
+    pub fn find_used_scenarios(&self, useful: &mut HashSet<Scenario>) {
+        for pkg in 0..PACKAGE_NAME_VARIANTS {
+            for v in self.values[pkg].values() {
+                v.find_used_scenarios(useful);
+            }
+        }
     }
 
     /// Declare a new named object.

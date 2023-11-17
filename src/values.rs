@@ -1,7 +1,7 @@
 use crate::gpr::GPR;
 use crate::rawexpr::{PackageName, QualifiedName, RawExpr, SimpleName};
 use crate::scenarios::{AllScenarios, Scenario};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// The value of a variable or attribute, evaluated in one scenario
 #[derive(Clone, Debug, PartialEq)]
@@ -81,6 +81,13 @@ impl ExprValue {
                 panic!("Expected a list {:?}", self.0)
             }
             OneScenario::List(v) => v,
+        }
+    }
+
+    /// Find which scenarios are actually useful for this project
+    pub fn find_used_scenarios(&self, useful: &mut HashSet<Scenario>) {
+        for s in self.0.keys() {
+            useful.insert(*s);
         }
     }
 
