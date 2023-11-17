@@ -252,8 +252,14 @@ impl GPR {
                         for val in &w.values {
                             match val {
                                 StringOrOthers::Str(s) => {
-                                    combine(remaining[s])?;
-                                    remaining.remove(s);
+                                    // If the variable wasn't a scenario
+                                    // variable, we might not have all possible
+                                    // values (e.g. Target variable)
+                                    let c = remaining.get(s);
+                                    if let Some(c) = c {
+                                        combine(*c)?;
+                                        remaining.remove(s);
+                                    }
                                 }
                                 StringOrOthers::Others => {
                                     for s in remaining.values() {
