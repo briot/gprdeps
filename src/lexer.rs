@@ -31,14 +31,6 @@ impl<'a> Lexer<'a> {
         error.decorate(Some(self.path), self.line)
     }
 
-    pub fn error(&self, msg: String) -> Error {
-        Error::new(self.path, self.line, msg)
-    }
-
-    pub fn path(&self) -> &'a std::path::Path {
-        self.path
-    }
-
     /// Consumes one character
     #[inline]
     fn take(&mut self) {

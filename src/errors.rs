@@ -5,14 +5,6 @@ pub struct Error {
 }
 
 impl Error {
-    pub fn new(path: &std::path::Path, line: u32, msg: String) -> Self {
-        Self {
-            msg,
-            line,
-            path: Some(path.to_owned()),
-        }
-    }
-
     pub fn decorate(self, path: Option<&std::path::Path>, line: u32) -> Self {
         let p = match (&self.path, path) {
             (Some(_), _) => self.path,

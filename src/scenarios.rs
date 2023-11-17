@@ -100,6 +100,14 @@ struct ScenarioDetails {
     vars: HashMap<String, HashSet<String>>,
 }
 
+impl ScenarioDetails {
+    pub fn empty() -> Self {
+        let mut vars = HashMap::new();
+        vars.insert("-".to_string(), HashSet::new());
+        Self { vars }
+    }
+}
+
 impl PartialEq for ScenarioDetails {
     fn eq(&self, other: &Self) -> bool {
         self.vars == other.vars
@@ -141,6 +149,8 @@ impl std::fmt::Display for Scenario {
     }
 }
 
+const EMPTY_SCENARIO: Scenario = Scenario(1);
+
 /// The collection of all variants of scenarios needed to analyze the project
 /// tree.  Each scenario is unique.
 
@@ -164,7 +174,8 @@ impl Default for AllScenarios {
             variables: Default::default(),
             scenarios: Default::default(),
         };
-        s.scenarios.push(ScenarioDetails::default());
+        s.scenarios.push(ScenarioDetails::default()); //  Scenario::Default
+        s.scenarios.push(ScenarioDetails::empty()); //  EMPTY_SCENARIO
         s
     }
 }
@@ -178,10 +189,10 @@ impl AllScenarios {
             }
         }
 
-        let details_str = format!("{}", details);
+        //        let details_str = format!("{}", details);
         self.scenarios.push(details);
         let s = self.scenarios.len() - 1;
-        println!("MANU create scenario {} as {}", s, details_str);
+        //        println!("MANU create scenario {} as {}", s, details_str);
         Scenario(s)
     }
 
@@ -205,6 +216,9 @@ impl AllScenarios {
             }
             Some(ref mut v) => {
                 v.retain(|old| values.iter().any(|v| v == old));
+                if v.is_empty() {
+                    return EMPTY_SCENARIO;
+                }
             }
         }
 
@@ -217,6 +231,10 @@ impl AllScenarios {
         s1: Scenario,
         s2: Scenario,
     ) -> Result<Scenario, String> {
+        if s1 == EMPTY_SCENARIO {
+            return Ok(EMPTY_SCENARIO);
+        }
+
         let mut d1 = self.scenarios[s1.0].clone();
         for (name, vals) in &self.scenarios[s2.0].vars {
             let mut old = d1.vars.get_mut(name);
@@ -229,6 +247,19 @@ impl AllScenarios {
                 }
                 Some(ref mut v) => {
                     v.retain(|old| vals.iter().any(|v| v == old));
+
+                    // We sometimes end up with an empty set of possible values,
+                    // for instance:
+                    //    case Optimize is
+                    //       when "on" | "lto" =>
+                    //          case Optimize is
+                    //              when "off" => null,
+                    //              ...
+                    // This isn't illegal, since we use "null", but we should
+                    // merge those into the same empty state.
+                    if v.is_empty() {
+                        return Ok(EMPTY_SCENARIO);
+                    }
                 }
             }
         }
@@ -372,53 +403,53 @@ mod tests {
 
         //  case Mode is
         //     when "debug" => ...
-        let s1 = scenarios.split(s0, "MODE", &["debug"]);
-        assert_eq!(s1.0, 1);
+        let s2 = scenarios.split(s0, "MODE", &["debug"]);
+        assert_eq!(s2.0, 2);
         assert_eq!(
-            scenarios.scenarios.get(s1.0).unwrap().to_string(),
+            scenarios.scenarios.get(s2.0).unwrap().to_string(),
             "MODE=debug,"
         );
 
         //  when others  => for Source_Dirs use ("src1", "src3");
         //     case Check is
-        let s2 = scenarios.split(s0, "MODE", &["optimize", "lto"]);
-        assert_eq!(s2.0, 2);
+        let s3 = scenarios.split(s0, "MODE", &["optimize", "lto"]);
+        assert_eq!(s3.0, 3);
         assert_eq!(
-            scenarios.scenarios.get(s2.0).unwrap().to_string(),
+            scenarios.scenarios.get(s3.0).unwrap().to_string(),
             "MODE=lto|optimize,"
         );
 
         let same = scenarios.split(s0, "MODE", &["optimize", "lto"]);
-        assert_eq!(same.0, 2);
+        assert_eq!(same.0, 3);
 
-        let s3 = scenarios.split(s2, "CHECK", &["most"]);
-        assert_eq!(s3.0, 3);
-        assert_eq!(
-            scenarios.scenarios.get(s3.0).unwrap().to_string(),
-            "CHECK=most,MODE=lto|optimize,"
-        );
-
-        let s4 = scenarios.split(s2, "CHECK", &["none", "some"]);
+        let s4 = scenarios.split(s3, "CHECK", &["most"]);
         assert_eq!(s4.0, 4);
         assert_eq!(
             scenarios.scenarios.get(s4.0).unwrap().to_string(),
+            "CHECK=most,MODE=lto|optimize,"
+        );
+
+        let s5 = scenarios.split(s3, "CHECK", &["none", "some"]);
+        assert_eq!(s5.0, 5);
+        assert_eq!(
+            scenarios.scenarios.get(s5.0).unwrap().to_string(),
             "CHECK=none|some,MODE=lto|optimize,"
         );
 
         //   case Check is
         //      when "none" => for Excluded_Source_Files use ("a.ads");
-        let s5 = scenarios.split(s0, "CHECK", &["none"]);
-        assert_eq!(s5.0, 5);
+        let s6 = scenarios.split(s0, "CHECK", &["none"]);
+        assert_eq!(s6.0, 6);
         assert_eq!(
-            scenarios.scenarios.get(s5.0).unwrap().to_string(),
+            scenarios.scenarios.get(s6.0).unwrap().to_string(),
             "CHECK=none,"
         );
 
         //      when others => null;
-        let s6 = scenarios.split(s0, "CHECK", &["some", "most"]);
-        assert_eq!(s6.0, 6);
+        let s7 = scenarios.split(s0, "CHECK", &["some", "most"]);
+        assert_eq!(s7.0, 7);
         assert_eq!(
-            scenarios.scenarios.get(s6.0).unwrap().to_string(),
+            scenarios.scenarios.get(s7.0).unwrap().to_string(),
             "CHECK=most|some,"
         );
 
@@ -432,31 +463,31 @@ mod tests {
         scenarios.try_add_variable("CHECK", &["none", "some", "most"])?;
         let s0 = Scenario::default();
 
-        //  s2=[mode=debug,    check=some]
-        //  s4=[mode=optimize, check=some]
-        //     => s5=[mode=debug|optimize, check=some]
-        let s1 = scenarios.split(s0, "MODE", &["debug"]);
-        let s2 = scenarios.split(s1, "CHECK", &["some"]);
-        let s3 = scenarios.split(s0, "MODE", &["optimize"]);
-        let s4 = scenarios.split(s3, "CHECK", &["some"]);
-        let s5 = scenarios.union(s2, s4);
-        assert!(s5.is_some());
-        assert_eq!(s5.unwrap().0, 5);
+        //  s3=[mode=debug,    check=some]
+        //  s5=[mode=optimize, check=some]
+        //     => s6=[mode=debug|optimize, check=some]
+        let s2 = scenarios.split(s0, "MODE", &["debug"]);
+        let s3 = scenarios.split(s2, "CHECK", &["some"]);
+        let s4 = scenarios.split(s0, "MODE", &["optimize"]);
+        let s5 = scenarios.split(s4, "CHECK", &["some"]);
+        let s6 = scenarios.union(s3, s5);
+        assert!(s6.is_some());
+        assert_eq!(s6.unwrap().0, 6);
         assert_eq!(
-            scenarios.scenarios.get(s5.unwrap().0).unwrap().to_string(),
+            scenarios.scenarios.get(s6.unwrap().0).unwrap().to_string(),
             "CHECK=some,MODE=debug|optimize,"
         );
 
-        let s5 = scenarios.union(s4, s2); //  reverse order
-        assert!(s5.is_some());
-        assert_eq!(s5.unwrap().0, 5);
+        let s6 = scenarios.union(s5, s3); //  reverse order
+        assert!(s6.is_some());
+        assert_eq!(s6.unwrap().0, 6);
         assert_eq!(
-            scenarios.scenarios.get(s5.unwrap().0).unwrap().to_string(),
+            scenarios.scenarios.get(s6.unwrap().0).unwrap().to_string(),
             "CHECK=some,MODE=debug|optimize,"
         );
 
-        //  s2=[mode=debug, check=some]
-        //  s7=[mode=lto,   check=most]
+        //  s3=[mode=debug, check=some]
+        //  s8=[mode=lto,   check=most]
         //     => no merging, they differ on more than one variable
         let s6 = scenarios.split(s0, "MODE", &["lto"]);
         let s7 = scenarios.split(s6, "CHECK", &["most"]);
@@ -465,20 +496,20 @@ mod tests {
         let res = scenarios.union(s7, s2); // reverse order
         assert!(res.is_none());
 
-        //  s2=[mode=debug, check=some]
-        //  s1=[mode=debug]      valid for all values of check
-        //     => s1=[mode=debug]
-        let res = scenarios.union(s2, s1);
+        //  s3=[mode=debug, check=some]
+        //  s2=[mode=debug]      valid for all values of check
+        //     => s2=[mode=debug]
+        let res = scenarios.union(s3, s2);
         assert!(res.is_some());
-        assert_eq!(res.unwrap().0, 1);
+        assert_eq!(res.unwrap().0, 2);
         assert_eq!(
             scenarios.scenarios.get(res.unwrap().0).unwrap().to_string(),
             "MODE=debug,"
         );
 
-        let res = scenarios.union(s1, s2); //  reverse order
+        let res = scenarios.union(s2, s3); //  reverse order
         assert!(res.is_some());
-        assert_eq!(res.unwrap().0, 1);
+        assert_eq!(res.unwrap().0, 2);
         assert_eq!(
             scenarios.scenarios.get(res.unwrap().0).unwrap().to_string(),
             "MODE=debug,"
