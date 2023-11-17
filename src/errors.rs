@@ -1,13 +1,11 @@
-pub type Result<R> = std::result::Result<R, Error>;
-
 pub struct Error {
     pub msg: String,
     path: Option<std::path::PathBuf>,
-    line: i32,
+    line: u32,
 }
 
 impl Error {
-    pub fn new(path: &std::path::Path, line: i32, msg: String) -> Self {
+    pub fn new(path: &std::path::Path, line: u32, msg: String) -> Self {
         Self {
             msg,
             line,
@@ -15,15 +13,15 @@ impl Error {
         }
     }
 
-    pub fn decorate(self, path: &std::path::Path, line: i32) -> Self {
-        let p = if self.path.is_none() {
-            Some(path.to_owned())
-        } else {
-            self.path
+    pub fn decorate(self, path: Option<&std::path::Path>, line: u32) -> Self {
+        let p = match (&self.path, path) {
+            (Some(_), _) => self.path,
+            (None, None) => self.path,
+            (None, Some(p)) => Some(p.to_owned()),
         };
         Self {
             msg: self.msg,
-            line: if self.line <= 0 { line } else { self.line },
+            line: if self.line == 0 { line } else { self.line },
             path: p,
         }
     }

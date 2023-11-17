@@ -212,7 +212,11 @@ impl AllScenarios {
     }
 
     /// Similar to split, but passes an existing scenario
-    pub fn intersection(&mut self, s1: Scenario, s2: Scenario) -> Scenario {
+    pub fn intersection(
+        &mut self,
+        s1: Scenario,
+        s2: Scenario,
+    ) -> Result<Scenario, String> {
         let mut d1 = self.scenarios[s1.0].clone();
         for (name, vals) in &self.scenarios[s2.0].vars {
             let mut old = d1.vars.get_mut(name);
@@ -228,7 +232,7 @@ impl AllScenarios {
                 }
             }
         }
-        self.create_or_reuse(d1)
+        Ok(self.create_or_reuse(d1))
     }
 
     /// Union of two scenarios
@@ -494,27 +498,27 @@ mod tests {
         // s1=MODE=debug
         //    => s1
         let s1 = scenarios.split(s0, "MODE", &["debug"]);
-        let res = scenarios.intersection(s0, s1);
+        let res = scenarios.intersection(s0, s1)?;
         assert_eq!(res, s1);
-        let res = scenarios.intersection(s1, s0); // reverse order
+        let res = scenarios.intersection(s1, s0)?; // reverse order
         assert_eq!(res, s1);
 
         // s1=MODE=debug
         // s2=MODE=debug,CHECK=some
         //    => s2
         let s2 = scenarios.split(s1, "CHECK", &["some"]);
-        let res = scenarios.intersection(s1, s2);
+        let res = scenarios.intersection(s1, s2)?;
         assert_eq!(res, s2);
-        let res = scenarios.intersection(s2, s1); // reverse order
+        let res = scenarios.intersection(s2, s1)?; // reverse order
         assert_eq!(res, s2);
 
         // s2=MODE=debug,CHECK=some
         // s3=CHECK=none|some
         //    => s2=MODE=debug,CHECK=some
         let s3 = scenarios.split(s0, "CHECK", &["none", "some"]);
-        let res = scenarios.intersection(s2, s3);
+        let res = scenarios.intersection(s2, s3)?;
         assert_eq!(res, s2);
-        let res = scenarios.intersection(s3, s2); // reverse order
+        let res = scenarios.intersection(s3, s2)?; // reverse order
         assert_eq!(res, s2);
 
         // s4=MODE=debug|optimize,CHECK=some
@@ -526,9 +530,9 @@ mod tests {
         let s5 = scenarios.split(s5_step1, "CHECK", &["some", "most"]);
         let s6_step1 = scenarios.split(s0, "MODE", &["optimize"]);
         let s6 = scenarios.split(s6_step1, "CHECK", &["some"]);
-        let res = scenarios.intersection(s4, s5);
+        let res = scenarios.intersection(s4, s5)?;
         assert_eq!(res, s6);
-        let res = scenarios.intersection(s5, s4); // reverse order
+        let res = scenarios.intersection(s5, s4)?; // reverse order
         assert_eq!(res, s6);
 
         Ok(())

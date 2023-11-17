@@ -1,5 +1,4 @@
 /// The un-interpreted tree, as parsed from a GPR file
-use crate::lexer::Lexer;
 use std::fmt::Debug;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -95,11 +94,8 @@ pub enum SimpleName {
     VCSRepositoryRoot,
 }
 impl SimpleName {
-
     /// Builds a variable name
-    pub fn new_var(
-        lower: String,
-    ) -> Result<Self, String> {
+    pub fn new_var(lower: String) -> Result<Self, String> {
         Ok(SimpleName::Name(lower))
     }
 
@@ -119,15 +115,17 @@ impl SimpleName {
             ("default_switches", Some(idx)) => {
                 Ok(SimpleName::DefaultSwitches(idx))
             }
-            ("excluded_source_files", None) =>
-                Ok(SimpleName::ExcludedSourceFiles),
+            ("excluded_source_files", None) => {
+                Ok(SimpleName::ExcludedSourceFiles)
+            }
             ("exec_dir", None) => Ok(SimpleName::ExecDir),
             ("executable", Some(StringOrOthers::Str(idx))) => {
                 Ok(SimpleName::Executable(idx))
             }
             ("externally_built", None) => Ok(SimpleName::ExternallyBuilt),
-            ("global_configuration_pragmas", None) =>
-                Ok(SimpleName::GlobalConfigurationPragmas),
+            ("global_configuration_pragmas", None) => {
+                Ok(SimpleName::GlobalConfigurationPragmas)
+            }
             ("languages", None) => Ok(SimpleName::Languages),
             ("library_dir", None) => Ok(SimpleName::LibraryDir),
             ("library_interface", None) => Ok(SimpleName::LibraryInterface),
@@ -137,13 +135,15 @@ impl SimpleName {
             ("library_standalone", None) => Ok(SimpleName::LibraryStandalone),
             ("library_version", None) => Ok(SimpleName::LibraryVersion),
             ("linker_options", None) => Ok(SimpleName::LinkerOptions),
-            ("local_configuration_pragmas", None) =>
-                Ok(SimpleName::LocalConfigurationPragmas),
+            ("local_configuration_pragmas", None) => {
+                Ok(SimpleName::LocalConfigurationPragmas)
+            }
             ("main", None) => Ok(SimpleName::Main),
             ("object_dir", None) => Ok(SimpleName::ObjectDir),
             ("project_files", None) => Ok(SimpleName::ProjectFiles),
-            ("shared_library_prefix", None) =>
-                Ok(SimpleName::SharedLibraryPrefix),
+            ("shared_library_prefix", None) => {
+                Ok(SimpleName::SharedLibraryPrefix)
+            }
             ("source_dirs", None) => Ok(SimpleName::SourceDirs),
             ("source_files", None) => Ok(SimpleName::SourceFiles),
             ("source_list_file", None) => Ok(SimpleName::SourceListFile),
@@ -158,8 +158,9 @@ impl SimpleName {
             ("vcs_kind", None) => Ok(SimpleName::VCSKind),
             ("vcs_repository_root", None) => Ok(SimpleName::VCSRepositoryRoot),
             (_, None) => Err(format!("Invalid attribute name {}", lower)),
-            (_, Some(idx)) =>
-                Err(format!("Invalid attribute name {}({})", lower, idx)),
+            (_, Some(idx)) => {
+                Err(format!("Invalid attribute name {}({})", lower, idx))
+            }
         }
     }
 }
@@ -173,13 +174,15 @@ impl std::fmt::Display for SimpleName {
             SimpleName::DefaultSwitches(idx) => {
                 write!(f, "'default_switches({})", idx)
             }
-            SimpleName::ExcludedSourceFiles =>
-                write!(f, "'excluded_source_files"),
+            SimpleName::ExcludedSourceFiles => {
+                write!(f, "'excluded_source_files")
+            }
             SimpleName::ExecDir => write!(f, "'exec_dir"),
             SimpleName::Executable(idx) => write!(f, "'executable({})", idx),
             SimpleName::ExternallyBuilt => write!(f, "'externally_build"),
-            SimpleName::GlobalConfigurationPragmas =>
-                write!(f, "'global_configuration_pragmas"),
+            SimpleName::GlobalConfigurationPragmas => {
+                write!(f, "'global_configuration_pragmas")
+            }
             SimpleName::Languages => write!(f, "'languages"),
             SimpleName::LibraryDir => write!(f, "'library_dir"),
             SimpleName::LibraryInterface => write!(f, "'library_interface"),
@@ -189,13 +192,15 @@ impl std::fmt::Display for SimpleName {
             SimpleName::LibraryStandalone => write!(f, "'library_standalone"),
             SimpleName::LibraryVersion => write!(f, "'library_version"),
             SimpleName::LinkerOptions => write!(f, "'linker_options"),
-            SimpleName::LocalConfigurationPragmas =>
-                write!(f, "'local_configuration_pragmas"),
+            SimpleName::LocalConfigurationPragmas => {
+                write!(f, "'local_configuration_pragmas")
+            }
             SimpleName::Main => write!(f, "'main"),
             SimpleName::ObjectDir => write!(f, "'object_dir"),
             SimpleName::ProjectFiles => write!(f, "'project_files"),
-            SimpleName::SharedLibraryPrefix =>
-                write!(f, "'shared_library_prefix"),
+            SimpleName::SharedLibraryPrefix => {
+                write!(f, "'shared_library_prefix")
+            }
             SimpleName::SourceDirs => write!(f, "'source_dirs"),
             SimpleName::SourceFiles => write!(f, "'source_files"),
             SimpleName::Spec(idx) => write!(f, "'spec({})", idx),
@@ -276,7 +281,7 @@ impl std::fmt::Display for QualifiedName {
 #[derive(Debug, PartialEq)]
 pub struct WhenClause {
     pub values: Vec<StringOrOthers>,
-    pub body: Vec<Statement>,
+    pub body: StatementList,
 }
 
 #[derive(Debug, PartialEq)]
@@ -285,7 +290,7 @@ pub enum Statement {
         name: PackageName,
         renames: Option<QualifiedName>,
         extends: Option<QualifiedName>,
-        body: Vec<Statement>,
+        body: StatementList,
     },
     TypeDecl {
         typename: String,
@@ -305,6 +310,9 @@ pub enum Statement {
         when: Vec<WhenClause>,
     },
 }
+
+/// Line + Statement
+pub type StatementList = Vec<(u32, Statement)>;
 
 #[derive(Debug, PartialEq)]
 pub enum RawExpr {
@@ -360,10 +368,10 @@ impl RawExpr {
 
     /// Convert to a static string
     /// ??? Should use values.rs
-    pub fn as_static_str(self, lex: &Lexer) -> crate::errors::Result<String> {
+    pub fn as_static_str(self) -> Result<String, String> {
         match self {
             RawExpr::StaticString(s) => Ok(s),
-            _ => Err(lex.error("not a static string".into())),
+            _ => Err("not a static string".into()),
         }
     }
 }

@@ -28,10 +28,7 @@ impl ExprValue {
     // An expression value created as an empty list
     pub fn new_empty_list() -> Self {
         let mut m = HashMap::new();
-        m.insert(
-            Scenario::default(),
-            OneScenario::List(vec![]),
-            );
+        m.insert(Scenario::default(), OneScenario::List(vec![]));
         ExprValue(m)
     }
 
@@ -90,14 +87,16 @@ impl ExprValue {
     /// Return a mapping from one string value to the corresponding scenario.
     /// This is used for scenario variables used in a case statement.
     pub fn prepare_case_stmt(
-        &self
+        &self,
     ) -> Result<HashMap<String, Scenario>, String> {
         let mut result = HashMap::new();
         for (s, v) in &self.0 {
             match v {
                 OneScenario::List(_) => {
-                    Err(format!("List cannot be used in a case statement: {:?}",
-                        self.0))?;
+                    Err(format!(
+                        "List cannot be used in a case statement: {:?}",
+                        self.0
+                    ))?;
                 }
                 OneScenario::StaticString(v) => {
                     result.insert(v.clone(), *s);
@@ -194,7 +193,7 @@ impl ExprValue {
                                         let mut v = ls.clone();
                                         v.push(st.clone());
                                         new_m.insert(
-                                            scenars.intersection(*s1, s2),
+                                            scenars.intersection(*s1, s2)?,
                                             OneScenario::List(v),
                                         );
                                     }
@@ -242,7 +241,7 @@ impl ExprValue {
                                         let mut res = ls.clone();
                                         res.push_str(rs);
                                         m.insert(
-                                            scenars.intersection(s1, *s2),
+                                            scenars.intersection(s1, *s2)?,
                                             OneScenario::StaticString(res),
                                         );
                                     },
@@ -260,7 +259,7 @@ impl ExprValue {
                                         let mut res = ls.clone();
                                         res.push(rs.clone());
                                         m.insert(
-                                            scenars.intersection(s1, *s2),
+                                            scenars.intersection(s1, *s2)?,
                                             OneScenario::List(res),
                                         );
                                     }
@@ -270,7 +269,7 @@ impl ExprValue {
                                             res.push(s.clone());
                                         }
                                         m.insert(
-                                            scenars.intersection(s1, *s2),
+                                            scenars.intersection(s1, *s2)?,
                                             OneScenario::List(res),
                                         );
                                     }

@@ -48,12 +48,12 @@ impl<'a> std::fmt::Display for TokenKind<'a> {
 
 #[derive(Clone)]
 pub struct Token<'a> {
-    line: i32,
+    pub line: u32,
     pub kind: TokenKind<'a>,
 }
 
 impl<'a> Token<'a> {
-    pub fn new(kind: TokenKind<'a>, line: i32) -> Self {
+    pub fn new(kind: TokenKind<'a>, line: u32) -> Self {
         Self { line, kind }
     }
 }

@@ -58,20 +58,23 @@ impl Iterator for FileFind {
                 Some(Ok(e)) => {
                     let path = e.path();
                     match e.file_type() {
-                        Err(err) =>
-                            println!("Error reading {}: {}", path.display(), err),
+                        Err(err) => println!(
+                            "Error reading {}: {}",
+                            path.display(),
+                            err
+                        ),
                         Ok(ft) => {
                             if ft.is_dir() {
                                 if self.traverse_dir(&path) {
                                     self.pushdir(&path);
                                 }
                             } else if ft.is_file() {
-                                if let Some("gpr") = path
-                                    .extension()
-                                    .and_then(OsStr::to_str)
+                                if let Some("gpr") =
+                                    path.extension().and_then(OsStr::to_str)
                                 {
-                                    return Some(std::fs::canonicalize(path)
-                                        .unwrap())
+                                    return Some(
+                                        std::fs::canonicalize(path).unwrap(),
+                                    );
                                 }
                             }
                         }

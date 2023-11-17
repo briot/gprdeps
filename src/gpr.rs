@@ -1,7 +1,8 @@
+use crate::errors::Error;
 use crate::graph::NodeIndex;
 use crate::rawexpr::{
-    PackageName, QualifiedName, SimpleName, Statement, PACKAGE_NAME_VARIANTS,
-    StringOrOthers,
+    PackageName, QualifiedName, SimpleName, Statement, StatementList,
+    StringOrOthers, PACKAGE_NAME_VARIANTS,
 };
 use crate::rawgpr::RawGPR;
 use crate::scenarios::{AllScenarios, Scenario};
@@ -35,10 +36,8 @@ impl GPR {
             SimpleName::Target,
             ExprValue::new_static_str("unknown_target"),
         );
-        s.values[PackageName::Linker as usize].insert(
-            SimpleName::LinkerOptions,
-            ExprValue::new_empty_list(),
-        );
+        s.values[PackageName::Linker as usize]
+            .insert(SimpleName::LinkerOptions, ExprValue::new_empty_list());
 
         s
     }
@@ -51,7 +50,7 @@ impl GPR {
         name: SimpleName,
         value: ExprValue,
     ) -> Result<(), String> {
-//        println!("MANU {}: declared {}{} as {:?}", self, package, name, value);
+        //        println!("MANU {}: declared {}{} as {:?}", self, package, name, value);
         let pkg = &mut self.values[package as usize];
         pkg.insert(name, value);
         Ok(())
@@ -100,91 +99,74 @@ impl GPR {
         r1.ok_or_else(|| format!("{}: {} not found", self, name))
     }
 
-    /// Process a set of statements
-    pub fn process_body(
+    /// Process one statement
+    fn process_one_stmt(
         &mut self,
         dependencies: &[&GPR],
         scenarios: &mut AllScenarios,
         current_scenario: Scenario,
         current_pkg: PackageName,
-        body: &Vec<Statement>,
-    ) -> std::result::Result<(), String> {
-        for s in body {
-            match s {
-                Statement::TypeDecl { typename, valid } => {
-                    let e = ExprValue::eval(
-                        valid,
-                        self,
-                        dependencies,
-                        scenarios,
-                        current_scenario,
-                        current_pkg,
+        statement: &Statement,
+    ) -> std::result::Result<(), Error> {
+        match statement {
+            Statement::TypeDecl { typename, valid } => {
+                let e = ExprValue::eval(
+                    valid,
+                    self,
+                    dependencies,
+                    scenarios,
+                    current_scenario,
+                    current_pkg,
+                )?;
+                self.declare(
+                    current_pkg,
+                    SimpleName::Name(typename.clone()),
+                    e,
+                )?;
+            }
+
+            Statement::VariableDecl {
+                name,
+                typename,
+                expr,
+            } => {
+                // Is this a scenario variable ?
+                // It has both a type and "external".  In this case, we do
+                // not check its actual value from the environment or the
+                // default, but instead create a ExprValue with a different
+                // value for each scenario
+                let ext = expr.has_external();
+                if let (Some(typename), Some(ext)) = (typename, ext) {
+                    let valid =
+                        self.lookup(typename, dependencies, current_pkg)?;
+
+                    // Check that this variable wasn't already declared
+                    // with a different set of values.
+                    scenarios.try_add_variable(
+                        ext,
+                        &valid
+                            .as_static_list()
+                            .iter()
+                            .map(|s| s.as_ref())
+                            .collect::<Vec<_>>(),
                     )?;
+
                     self.declare(
                         current_pkg,
-                        SimpleName::Name(typename.clone()),
-                        e,
+                        SimpleName::Name(name.clone()),
+                        ExprValue::from_scenario_variable(
+                            scenarios, ext, valid,
+                        ),
                     )?;
-                }
 
-                Statement::VariableDecl {
-                    name,
-                    typename,
-                    expr,
-                } => {
-                    // Is this a scenario variable ?
-                    // It has both a type and "external".  In this case, we do
-                    // not check its actual value from the environment or the
-                    // default, but instead create a ExprValue with a different
-                    // value for each scenario
-                    let ext = expr.has_external();
-                    if let (Some(typename), Some(ext)) = (typename, ext) {
-                        let valid =
-                            self.lookup(typename, dependencies, current_pkg)?;
-
-                        // Check that this variable wasn't already declared
-                        // with a different set of values.
-                        scenarios.try_add_variable(
-                            ext,
-                            &valid
-                                .as_static_list()
-                                .iter()
-                                .map(|s| s.as_ref())
-                                .collect::<Vec<_>>(),
-                        )?;
-
-                        self.declare(
-                            current_pkg,
-                            SimpleName::Name(name.clone()),
-                            ExprValue::from_scenario_variable(
-                                scenarios, ext, valid,
-                            ),
-                        )?;
-
-                    // Else we have a standard variable (either untyped or not
-                    // using external), and we get its value from the expression
-                    } else {
-                        self.declare(
-                            current_pkg,
-                            SimpleName::Name(name.clone()),
-                            ExprValue::eval(
-                                expr,
-                                self,
-                                dependencies,
-                                scenarios,
-                                current_scenario,
-                                current_pkg,
-                            )?,
-                        )?;
-                    }
-                }
-
-                Statement::AttributeDecl { name, value } => {
+                // Else we have a standard variable (either untyped or not
+                // using external), and we get its value from the expression
+                } else {
                     self.declare(
                         current_pkg,
-                        name.clone(),
+                        SimpleName::Name(name.clone()),
                         ExprValue::eval(
-                            value,
+                            expr,
                             self,
                             dependencies,
                             scenarios,
@@ -193,92 +175,129 @@ impl GPR {
                         )?,
                     )?;
                 }
+            }
 
-                Statement::Package {
-                    name,
-                    renames,
-                    extends,
+            Statement::AttributeDecl { name, value } => {
+                self.declare(
+                    current_pkg,
+                    name.clone(),
+                    ExprValue::eval(
+                        value,
+                        self,
+                        dependencies,
+                        scenarios,
+                        current_scenario,
+                        current_pkg,
+                    )?,
+                )?;
+            }
+
+            Statement::Package {
+                name,
+                renames,
+                extends,
+                body,
+            } => {
+                match (renames, extends) {
+                    (Some(r), None) | (None, Some(r)) => {
+                        let mut orig = self.lookup_gpr(r, dependencies)?.values
+                            [current_pkg as usize]
+                            .clone();
+                        for (n, expr) in orig.drain() {
+                            self.values[current_pkg as usize]
+                                .insert(n.clone(), expr.clone());
+                        }
+                    }
+                    _ => {}
+                }
+
+                self.process_body(
+                    dependencies,
+                    scenarios,
+                    current_scenario,
+                    *name,
                     body,
-                } => {
-                    match (renames, extends) {
-                        (Some(r), None) | (None, Some(r)) => {
-                            let mut orig = self
-                                .lookup_gpr(r, dependencies)?
-                                .values[current_pkg as usize]
-                                .clone();
-                            for (n, expr) in orig.drain() {
-                                self.values[current_pkg as usize].insert(
-                                    n.clone(), expr.clone()
-                                );
+                )?;
+            }
+
+            Statement::Case { varname, when } => {
+                // This is a scenario variable, so it's ExprValue is one
+                // entry per scenario, with one static string every time.
+                // We no longer have the link to the external name, so we use
+                // the ExprValue itself.
+                let var = self.lookup(varname, dependencies, current_pkg)?;
+                let mut remaining = var.prepare_case_stmt()?;
+
+                for w in when {
+                    let mut combined = Scenario::default();
+                    let mut is_first = true;
+
+                    let mut combine = |s: Scenario| -> Result<(), String> {
+                        if is_first {
+                            combined = s;
+                            is_first = false;
+                        } else {
+                            combined = scenarios
+                                .union(combined, s)
+                                .ok_or("Could not combine scenarios")?;
+                        }
+                        Ok(())
+                    };
+
+                    for val in &w.values {
+                        match val {
+                            StringOrOthers::Str(s) => {
+                                // If the variable wasn't a scenario
+                                // variable, we might not have all possible
+                                // values (e.g. Target variable)
+                                let c = remaining.get(s);
+                                if let Some(c) = c {
+                                    combine(*c)?;
+                                    remaining.remove(s);
+                                }
+                            }
+                            StringOrOthers::Others => {
+                                for s in remaining.values() {
+                                    combine(*s)?;
+                                }
+                                remaining.clear();
                             }
                         }
-                        _ => {}
                     }
 
+                    let s =
+                        scenarios.intersection(current_scenario, combined)?;
                     self.process_body(
-                        dependencies, scenarios,
-                        current_scenario,
-                        *name,
-                        body
+                        dependencies,
+                        scenarios,
+                        s,
+                        current_pkg,
+                        &w.body,
                     )?;
                 }
+            }
+        }
+        Ok(())
+    }
 
-                Statement::Case { varname, when } => {
-                    // This is a scenario variable, so it's ExprValue is one
-                    // entry per scenario, with one static string every time.
-                    // We no longer have the link to the external name, so we use
-                    // the ExprValue itself.
-                    let var = self.lookup(varname, dependencies, current_pkg)?;
-                    let mut remaining = var.prepare_case_stmt()?;
-
-                    for w in when {
-                        let mut combined = Scenario::default();
-                        let mut is_first = true;
-
-                        let mut combine = |s: Scenario| -> Result<(), String> {
-                            if is_first {
-                                combined = s;
-                                is_first = false;
-                            } else {
-                                combined = scenarios
-                                    .union(combined, s)
-                                    .ok_or("Could not combine scenarios")?;
-                            }
-                            Ok(())
-                        };
-
-                        for val in &w.values {
-                            match val {
-                                StringOrOthers::Str(s) => {
-                                    // If the variable wasn't a scenario
-                                    // variable, we might not have all possible
-                                    // values (e.g. Target variable)
-                                    let c = remaining.get(s);
-                                    if let Some(c) = c {
-                                        combine(*c)?;
-                                        remaining.remove(s);
-                                    }
-                                }
-                                StringOrOthers::Others => {
-                                    for s in remaining.values() {
-                                        combine(*s)?;
-                                    }
-                                    remaining.clear();
-                                }
-                            }
-                        }
-
-                        let s = scenarios.intersection(
-                            current_scenario, combined);
-                        self.process_body(
-                            dependencies, scenarios,
-                            s,
-                            current_pkg,
-                            &w.body
-                        )?;
-                    }
-                }
-
+    /// Process a set of statements
+    fn process_body(
+        &mut self,
+        dependencies: &[&GPR],
+        scenarios: &mut AllScenarios,
+        current_scenario: Scenario,
+        current_pkg: PackageName,
+        body: &StatementList,
+    ) -> std::result::Result<(), Error> {
+        for s in body {
+            if let Err(e) = self.process_one_stmt(
+                dependencies,
+                scenarios,
+                current_scenario,
+                current_pkg,
+                &s.1,
+            ) {
+                Err(e.decorate(None, s.0))?;
             }
         }
         Ok(())
@@ -291,8 +310,7 @@ impl GPR {
         extends: Option<&GPR>,
         dependencies: &[&GPR],
         scenarios: &mut AllScenarios,
-    ) -> std::result::Result<(), String> {
-
+    ) -> std::result::Result<(), Error> {
         if let Some(ext) = extends {
             self.values = ext.values.clone();
         }

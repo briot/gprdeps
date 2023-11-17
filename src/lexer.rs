@@ -8,7 +8,7 @@ fn is_wordchar(c: u8) -> bool {
 
 pub struct Lexer<'a> {
     current: usize,
-    line: i32,
+    line: u32,
     path: &'a std::path::Path,
     buffer: &'a [u8], // The file, as bytes.  All keywords are ASCII
     peeked: Token<'a>,
@@ -21,14 +21,14 @@ impl<'a> Lexer<'a> {
             line: 1,
             path: file.path(),
             buffer: file.as_bytes(),
-            peeked: Token::new(TokenKind::EOF, -1),
+            peeked: Token::new(TokenKind::EOF, 0),
         };
         _ = s.next();
         s
     }
 
     pub fn decorate_error(&self, error: Error) -> Error {
-        error.decorate(self.path, self.line)
+        error.decorate(Some(self.path), self.line)
     }
 
     pub fn error(&self, msg: String) -> Error {
@@ -99,6 +99,11 @@ impl<'a> Lexer<'a> {
     /// Peek at the next item, without consuming it
     pub fn peek(&self) -> TokenKind {
         self.peeked.kind.clone()
+    }
+
+    /// Peek at the next item, without consuming it
+    pub fn peek_with_line(&self) -> (u32, TokenKind) {
+        (self.peeked.line, self.peeked.kind.clone())
     }
 }
 
