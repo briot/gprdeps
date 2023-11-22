@@ -26,9 +26,12 @@ impl ExprValue {
     }
 
     // An expression value created as an empty list
-    pub fn new_empty_list() -> Self {
+    pub fn from_list(list: &[&str]) -> Self {
         let mut m = HashMap::new();
-        m.insert(Scenario::default(), OneScenario::List(vec![]));
+        m.insert(
+            Scenario::default(),
+            OneScenario::List(list.iter().map(|s| s.to_string()).collect())
+        );
         ExprValue(m)
     }
 
@@ -89,6 +92,24 @@ impl ExprValue {
         for s in self.0.keys() {
             useful.insert(*s);
         }
+    }
+
+    /// Return all strings used in any scenario
+    pub fn find_all_str(&self) -> HashSet<&String> {
+        let mut result = HashSet::new();
+        for v in self.0.values() {
+            match v {
+                OneScenario::List(v) => {
+                    for s in v {
+                        result.insert(s);
+                    }
+                }
+                OneScenario::StaticString(s) => {
+                    result.insert(s);
+                }
+            }
+        }
+        result
     }
 
     /// Return a mapping from one string value to the corresponding scenario.

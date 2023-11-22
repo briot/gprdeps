@@ -35,6 +35,7 @@ impl FileFind {
                     && !meta.is_symlink()
                     && !n.ends_with("External/Ada_Web_Server/aws-dev")
                     && !n.ends_with("External/GNATCOLL/gnatcoll-dev")
+                    && !n.ends_with("Examples/Elektron/Ema/Training")
                     && !n.ends_with("Packaging")
                     && !n.ends_with("Compiler")
                     && !n.ends_with(".dbc")

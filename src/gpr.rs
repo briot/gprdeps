@@ -8,6 +8,7 @@ use crate::rawgpr::RawGPR;
 use crate::scenarios::{AllScenarios, Scenario};
 use crate::values::ExprValue;
 use std::collections::{HashMap, HashSet};
+use walkdir::WalkDir;
 
 /// A specific GPR file
 /// Such an object is independent of the scanner that created it, though it
@@ -34,11 +35,16 @@ impl GPR {
         // Declare the fallback value for "project'Target" attribute.
         s.values[PackageName::None as usize].insert(
             SimpleName::Target,
-            ExprValue::new_static_str("unknown_target"),
+            ExprValue::new_static_str("x86_64-linux"),
         );
         s.values[PackageName::Linker as usize]
-            .insert(SimpleName::LinkerOptions, ExprValue::new_empty_list());
-
+            .insert(SimpleName::LinkerOptions, ExprValue::from_list(&[]));
+        s.values[PackageName::None as usize]
+            .insert(SimpleName::SourceDirs, ExprValue::from_list(&["."]));
+        s.values[PackageName::None as usize]
+            .insert(SimpleName::ObjectDir, ExprValue::from_list(&["."]));
+        s.values[PackageName::None as usize]
+            .insert(SimpleName::ExecDir, ExprValue::from_list(&["."]));
         s
     }
 
@@ -70,6 +76,67 @@ impl GPR {
                 v.find_used_scenarios(useful);
             }
         }
+    }
+
+    /// Resolve relative paths
+    pub fn normalize_path(
+        &self,
+        path: &str,
+    ) -> Result<std::path::PathBuf, String> {
+        let p = self.path.parent().unwrap().join(path);
+        match p.canonicalize() {
+            Ok(p) => Ok(p),
+            Err(e) => Err(format!("{}: {}", p.display(), e)),
+        }
+    }
+
+    /// List required source directories
+    pub fn get_all_source_dirs(
+        &self,
+        dirs: &mut HashSet<std::path::PathBuf>,
+    ) -> Result<(), String> {
+        let attr = self
+            .values[PackageName::None as usize]
+            .get(&SimpleName::SourceDirs);
+        match attr {
+            None => {},
+            Some(attr) => {
+                for s in attr.find_all_str() {
+                    if s.ends_with("/**") {
+                        let parent = s
+                            .chars().take(s.len() - 3)
+                            .collect::<String>();
+
+                        match self.normalize_path(&parent) {
+                            Err(e) => {
+                                println!("{}: {}", self, e);
+                            }
+                            Ok(s) => {
+                                for entry in WalkDir::new(s)
+                                    .follow_links(true)
+                                    .into_iter()
+                                    .filter_map(Result::ok)
+                                    .filter(|e| e.file_type().is_dir())
+                                {
+                                    dirs.insert(entry.into_path());
+                                }
+                            }
+                        }
+
+                    } else {
+                        match self.normalize_path(s) {
+                            Ok(p) => {
+                                dirs.insert(p);
+                            }
+                            Err(s) => {
+                                println!("{}: {}", self, s);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Declare a new named object.
@@ -342,7 +409,9 @@ impl GPR {
         scenarios: &mut AllScenarios,
     ) -> std::result::Result<(), Error> {
         if let Some(ext) = extends {
-            self.values = ext.values.clone();
+            for v in 0..PACKAGE_NAME_VARIANTS {
+                self.values[v] = ext.values[v].clone();
+            }
         }
 
         self.process_body(

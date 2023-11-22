@@ -84,9 +84,16 @@ impl Environment {
             gpr.find_used_scenarios(&mut useful);
         }
         println!("Actually used scenarios={}", useful.len());
-        for s in &useful {
-            println!("scenario {}", self.scenarios.debug(*s));
+        //  for s in &useful {
+        //      println!("scenario {}", self.scenarios.debug(*s));
+        //  }
+
+        let mut all_source_dirs = HashSet::new();
+        for gpr in gprs.values() {
+            gpr.get_all_source_dirs(&mut all_source_dirs)?;
         }
+        println!("Total source directories={}", all_source_dirs.len());
+
 
         //    let pool = threadpool::ThreadPool::new(1);
         //    for gpr in list_of_gpr {
