@@ -1,3 +1,4 @@
+use crate::directory::Directory;
 use crate::gpr::GPR;
 use crate::graph::{DepGraph, Edge, GPRIndex, Node};
 use crate::scenarios::AllScenarios;
@@ -93,6 +94,28 @@ impl Environment {
             gpr.get_all_source_dirs(&mut all_source_dirs)?;
         }
         println!("Total source directories={}", all_source_dirs.len());
+
+        let mut dirs = HashSet::new();
+        let mut files_count = 0;
+        for d in all_source_dirs {
+            let dir = Directory::new(d);
+            files_count += dir.files_count();
+            dirs.insert(dir);
+        }
+        println!("Total files={}", files_count);
+
+//        let mut all_files = Vec::new();
+//        for d in &all_source_dirs {
+//            if let Ok(iter) = std::fs::read_dir(d) {
+//                for entry in iter.flatten() {
+//                    if let Ok(t) = entry.file_type() {
+//                        if t.is_file() {
+//                            all_files.push(entry.path());
+//                        }
+//                    }
+//                }
+//            }
+//        }
 
 
         //    let pool = threadpool::ThreadPool::new(1);

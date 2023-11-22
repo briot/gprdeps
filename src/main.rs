@@ -1,3 +1,4 @@
+pub mod directory;
 pub mod environment;
 pub mod errors;
 pub mod files;
