@@ -7,6 +7,7 @@ use crate::rawexpr::{
 };
 use crate::rawgpr::RawGPR;
 use crate::scenarios::{AllScenarios, Scenario, EMPTY_SCENARIO};
+use crate::settings::Settings;
 use crate::values::ExprValue;
 use std::collections::{HashMap, HashSet};
 use walkdir::WalkDir;
@@ -162,6 +163,7 @@ impl GPR {
     pub fn resolve_source_dirs(
         &mut self,
         dirs: &mut HashSet<Directory>,
+        settings: &Settings,
     ) -> Result<(), String> {
         let sourcedirs =
             self.strlist_attr(PackageName::None, &SimpleName::SourceDirs);
@@ -177,7 +179,9 @@ impl GPR {
 
                     match self.normalize_path(&parent) {
                         Err(e) => {
-                            println!("{}: {}", self, e);
+                            if settings.report_missing_source_dirs {
+                                println!("{}: {}", self, e);
+                            }
                         }
                         Ok(s) => {
                             for entry in WalkDir::new(s)
@@ -196,7 +200,9 @@ impl GPR {
                             for_scenar.push(p);
                         }
                         Err(s) => {
-                            println!("{}: {}", self, s);
+                            if settings.report_missing_source_dirs {
+                                println!("{}: {}", self, s);
+                            }
                         }
                     }
                 }

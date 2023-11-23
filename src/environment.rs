@@ -1,11 +1,13 @@
 use crate::gpr::GPR;
 use crate::graph::{DepGraph, Edge, GPRIndex, Node};
 use crate::scenarios::AllScenarios;
+use crate::settings::Settings;
 use std::collections::{HashMap, HashSet};
 
 /// The whole set of gpr files
 #[derive(Default)]
 pub struct Environment {
+    settings: Settings,
     scenarios: AllScenarios,
     graph: DepGraph,
 }
@@ -81,7 +83,7 @@ impl Environment {
         for gpr in gprs.values_mut() {
             gpr.trim();
             gpr.find_used_scenarios(&mut useful_scenars);
-            gpr.resolve_source_dirs(&mut all_source_dirs)?;
+            gpr.resolve_source_dirs(&mut all_source_dirs, &self.settings)?;
         }
         let files_count: usize =
             all_source_dirs.iter().map(|d| d.files_count()).sum();

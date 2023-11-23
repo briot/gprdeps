@@ -11,6 +11,7 @@ pub mod rawgpr;
 pub mod scanner;
 pub mod scenario_variables;
 pub mod scenarios;
+pub mod settings;
 pub mod tokens;
 pub mod values;
 
