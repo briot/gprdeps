@@ -149,7 +149,7 @@ impl std::fmt::Display for Scenario {
     }
 }
 
-const EMPTY_SCENARIO: Scenario = Scenario(1);
+pub const EMPTY_SCENARIO: Scenario = Scenario(1);
 
 /// The collection of all variants of scenarios needed to analyze the project
 /// tree.  Each scenario is unique.
@@ -226,13 +226,11 @@ impl AllScenarios {
     }
 
     /// Similar to split, but passes an existing scenario
-    pub fn intersection(
-        &mut self,
-        s1: Scenario,
-        s2: Scenario,
-    ) -> Result<Scenario, String> {
+    pub fn intersection(&mut self, s1: Scenario, s2: Scenario) -> Scenario {
         if s1 == EMPTY_SCENARIO {
-            return Ok(EMPTY_SCENARIO);
+            return EMPTY_SCENARIO;
+        } else if s1 == s2 {
+            return s1;
         }
 
         let mut d1 = self.scenarios[s1.0].clone();
@@ -258,12 +256,12 @@ impl AllScenarios {
                     // This isn't illegal, since we use "null", but we should
                     // merge those into the same empty state.
                     if v.is_empty() {
-                        return Ok(EMPTY_SCENARIO);
+                        return EMPTY_SCENARIO;
                     }
                 }
             }
         }
-        Ok(self.create_or_reuse(d1))
+        self.create_or_reuse(d1)
     }
 
     /// Union of two scenarios
@@ -323,7 +321,6 @@ impl AllScenarios {
                     if value.len() == self.variables[name].list_valid().len() {
                         to_remove = Some(name.clone());
                     }
-
                 }
                 Some(_) => {}
             }
@@ -344,6 +341,28 @@ impl AllScenarios {
         }
 
         Some(self.create_or_reuse(d1))
+    }
+
+    /// Union of multiple scenarios.
+    /// Adds a new scenario to the list, but first check whether it can instead
+    /// be merged with an existing scenario.
+    /// For instance, if the list includes:
+    ///    [  "MODE=debug,CHECK=on",  "MODE=optimize,CHECK=on" ]
+    /// and we include "MODE=debug,CHECK=off", then we end up with
+    ///    [  "MODE=debug",  "MODE=optimize,CHECK=on" ]
+
+    pub fn union_list(
+        &mut self,
+        existing: &mut Vec<Scenario>,
+        value: Scenario,
+    ) {
+        for s in existing.iter_mut() {
+            if let Some(s2) = self.union(*s, value) {
+                *s = s2; //  replace in place
+                return;
+            }
+        }
+        existing.push(value);
     }
 
     /// Declares a new scenario variables and the list of all values it can
@@ -529,10 +548,7 @@ mod tests {
         let s3 = scenarios.split(s0, "MODE", &["optimize"]);
         let s4 = scenarios.union(s2, s3).unwrap();
         let res = scenarios.union(s4, s2).unwrap();
-        assert_eq!(
-            scenarios.debug(res),
-            "s9=MODE=debug|optimize,",
-        );
+        assert_eq!(scenarios.debug(res), "s9=MODE=debug|optimize,",);
 
         // Merging all possible values for a variable should remote it from
         // the union altogether.
@@ -541,10 +557,7 @@ mod tests {
         let s4 = scenarios.split(s0, "MODE", &["lto"]);
         let s5 = scenarios.union(s2, s3).unwrap();
         let res = scenarios.union(s5, s4).unwrap();
-        assert_eq!(
-            scenarios.debug(res),
-            "s0=",
-        );
+        assert_eq!(scenarios.debug(res), "s0=",);
         assert_eq!(res, s0);
 
         Ok(())
@@ -561,27 +574,27 @@ mod tests {
         // s1=MODE=debug
         //    => s1
         let s1 = scenarios.split(s0, "MODE", &["debug"]);
-        let res = scenarios.intersection(s0, s1)?;
+        let res = scenarios.intersection(s0, s1);
         assert_eq!(res, s1);
-        let res = scenarios.intersection(s1, s0)?; // reverse order
+        let res = scenarios.intersection(s1, s0); // reverse order
         assert_eq!(res, s1);
 
         // s1=MODE=debug
         // s2=MODE=debug,CHECK=some
         //    => s2
         let s2 = scenarios.split(s1, "CHECK", &["some"]);
-        let res = scenarios.intersection(s1, s2)?;
+        let res = scenarios.intersection(s1, s2);
         assert_eq!(res, s2);
-        let res = scenarios.intersection(s2, s1)?; // reverse order
+        let res = scenarios.intersection(s2, s1); // reverse order
         assert_eq!(res, s2);
 
         // s2=MODE=debug,CHECK=some
         // s3=CHECK=none|some
         //    => s2=MODE=debug,CHECK=some
         let s3 = scenarios.split(s0, "CHECK", &["none", "some"]);
-        let res = scenarios.intersection(s2, s3)?;
+        let res = scenarios.intersection(s2, s3);
         assert_eq!(res, s2);
-        let res = scenarios.intersection(s3, s2)?; // reverse order
+        let res = scenarios.intersection(s3, s2); // reverse order
         assert_eq!(res, s2);
 
         // s4=MODE=debug|optimize,CHECK=some
@@ -593,9 +606,9 @@ mod tests {
         let s5 = scenarios.split(s5_step1, "CHECK", &["some", "most"]);
         let s6_step1 = scenarios.split(s0, "MODE", &["optimize"]);
         let s6 = scenarios.split(s6_step1, "CHECK", &["some"]);
-        let res = scenarios.intersection(s4, s5)?;
+        let res = scenarios.intersection(s4, s5);
         assert_eq!(res, s6);
-        let res = scenarios.intersection(s5, s4)?; // reverse order
+        let res = scenarios.intersection(s5, s4); // reverse order
         assert_eq!(res, s6);
 
         Ok(())

@@ -1,11 +1,15 @@
+use std::path::PathBuf;
+
+/// A source file, once we have been able to gather information for it.
 #[derive(Debug)]
 pub struct File {
-    path: std::path::PathBuf,
+    pub path: PathBuf,
+    pub lang: String,
 }
 
 pub struct Directory {
-    path: std::path::PathBuf,
-    pub files: Vec<File>,
+    path: PathBuf,
+    pub files: Vec<PathBuf>,
 }
 
 impl Directory {
@@ -15,7 +19,7 @@ impl Directory {
             for entry in iter.flatten() {
                 if let Ok(t) = entry.file_type() {
                     if t.is_file() {
-                        files.push(File { path: entry.path() });
+                        files.push(entry.path());
                     }
                 }
             }
@@ -28,22 +32,6 @@ impl Directory {
     pub fn files_count(&self) -> usize {
         self.files.len()
     }
-
-    // Find all files in the directory that are source files of the
-    // project file.
-    // use crate::values::ExprValue;
-    // use std::ffi::OsStr;
-    //    pub fn gpr_sources(
-    //        &self,
-    //        specsuffix: &ExprValue,
-    //    ) -> Vec<std::path::PathBuf> {
-    //        let mut v = Vec::new();
-    //        for entry in &self.files {
-    //            let ext = entry.path.extension().and_then(OsStr::to_str);
-    //        }
-    //
-    //        v
-    //    }
 }
 
 // So that a HashSet can be checked by passing a &PathBuf

@@ -207,7 +207,7 @@ impl ExprValue {
                                     let mut v = v1.clone();
                                     v.push(v2.clone());
                                     new_m.insert(
-                                        scenars.intersection(*s1, s2)?,
+                                        scenars.intersection(*s1, s2),
                                         v,
                                     );
                                 }
@@ -251,7 +251,7 @@ impl ExprValue {
                                 // empty string.
                                 let mut res = v1.clone();
                                 res.push_str(v2);
-                                m.insert(scenars.intersection(s1, *s2)?, res);
+                                m.insert(scenars.intersection(s1, *s2), res);
                             }
                         }
                         Ok(ExprValue::Str(m))
@@ -268,7 +268,7 @@ impl ExprValue {
                             for (s2, v2) in &rs {
                                 let mut res = v1.clone();
                                 res.push(v2.clone());
-                                m.insert(scenars.intersection(s1, *s2)?, res);
+                                m.insert(scenars.intersection(s1, *s2), res);
                             }
                         }
                         Ok(ExprValue::StrList(m))
@@ -280,7 +280,7 @@ impl ExprValue {
                             for (s2, v2) in &rs {
                                 let mut res = v1.clone();
                                 res.extend(v2.clone());
-                                m.insert(scenars.intersection(s1, *s2)?, res);
+                                m.insert(scenars.intersection(s1, *s2), res);
                             }
                         }
                         Ok(ExprValue::StrList(m))
@@ -292,16 +292,14 @@ impl ExprValue {
         }
     }
 
-    /// Find whether (scenar, value) can be merged with any existing state
-    /// in self.
-    fn merge_internal<T>(
+    /// Merge two expression values.
+    /// There must not be any conflicts (value set for the same scenario in
+    /// both self and right, even if the values match).
+    fn merge_internal<T: Eq + std::fmt::Debug>(
         v_self: &mut HashMap<Scenario, T>,
         v_right: HashMap<Scenario, T>,
         scenars: &mut AllScenarios,
-    ) -> Result<(), String>
-    where
-        T: Eq + std::fmt::Debug,
-    {
+    ) -> Result<(), String> {
         for (s2, v2) in v_right {
             let mut merged: Option<(Scenario, Scenario)> = None;
             for (s1, v1) in v_self.iter() {

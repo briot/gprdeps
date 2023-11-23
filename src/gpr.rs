@@ -6,7 +6,7 @@ use crate::rawexpr::{
     StringOrOthers, PACKAGE_NAME_VARIANTS,
 };
 use crate::rawgpr::RawGPR;
-use crate::scenarios::{AllScenarios, Scenario};
+use crate::scenarios::{AllScenarios, Scenario, EMPTY_SCENARIO};
 use crate::values::ExprValue;
 use std::collections::{HashMap, HashSet};
 use walkdir::WalkDir;
@@ -46,6 +46,34 @@ impl GPR {
             .insert(SimpleName::ObjectDir, ExprValue::new_with_list(&["."]));
         s.values[PackageName::None as usize]
             .insert(SimpleName::ExecDir, ExprValue::new_with_list(&["."]));
+        s.values[PackageName::None as usize]
+            .insert(SimpleName::Languages, ExprValue::new_with_list(&["ada"]));
+        s.values[PackageName::Naming as usize]
+            .insert(SimpleName::DotReplacement, ExprValue::new_with_str("-"));
+        s.values[PackageName::Naming as usize].insert(
+            SimpleName::SpecSuffix("ada".to_string()),
+            ExprValue::new_with_str(".ads"),
+        );
+        s.values[PackageName::Naming as usize].insert(
+            SimpleName::BodySuffix("ada".to_string()),
+            ExprValue::new_with_str(".adb"),
+        );
+        s.values[PackageName::Naming as usize].insert(
+            SimpleName::SpecSuffix("c++".to_string()),
+            ExprValue::new_with_str(".hh"),
+        );
+        s.values[PackageName::Naming as usize].insert(
+            SimpleName::BodySuffix("c++".to_string()),
+            ExprValue::new_with_str(".cpp"),
+        );
+        s.values[PackageName::Naming as usize].insert(
+            SimpleName::SpecSuffix("c".to_string()),
+            ExprValue::new_with_str(".h"),
+        );
+        s.values[PackageName::Naming as usize].insert(
+            SimpleName::BodySuffix("c".to_string()),
+            ExprValue::new_with_str(".c"),
+        );
         s
     }
 
@@ -92,6 +120,18 @@ impl GPR {
         }
     }
 
+    // Retrieve the value of a string attribute
+    fn str_attr(
+        &self,
+        pkg: PackageName,
+        name: &SimpleName,
+    ) -> &HashMap<Scenario, String> {
+        match self.values[pkg as usize].get(name) {
+            Some(ExprValue::Str(v)) => v,
+            v => panic!("Wrong type for attribute {}{}, {:?}", pkg, name, v),
+        }
+    }
+
     // Retrieve the value of a string list attribute
     fn strlist_attr(
         &self,
@@ -99,8 +139,8 @@ impl GPR {
         name: &SimpleName,
     ) -> &HashMap<Scenario, Vec<String>> {
         match self.values[pkg as usize].get(name) {
-            Some(ExprValue::StrList(sourcedirs)) => sourcedirs,
-            v => panic!("Wrong type for attribute {}, {:?}", name, v),
+            Some(ExprValue::StrList(v)) => v,
+            v => panic!("Wrong type for attribute {}{}, {:?}", pkg, name, v),
         }
     }
 
@@ -111,11 +151,10 @@ impl GPR {
         name: &SimpleName,
     ) -> &HashMap<Scenario, Vec<std::path::PathBuf>> {
         match self.values[pkg as usize].get(name) {
-            Some(ExprValue::PathList(sourcedirs)) => sourcedirs,
-            v => panic!("Wrong type for attribute {}, {:?}", name, v),
+            Some(ExprValue::PathList(v)) => v,
+            v => panic!("Wrong type for attribute {}{}, {:?}", pkg, name, v),
         }
     }
-
 
     //  Resolve source directories from the list of relative path names (as
     //  strings) read from the project file, into full paths.
@@ -124,8 +163,8 @@ impl GPR {
         &mut self,
         dirs: &mut HashSet<Directory>,
     ) -> Result<(), String> {
-        let sourcedirs = self.strlist_attr(
-            PackageName::None, &SimpleName::SourceDirs);
+        let sourcedirs =
+            self.strlist_attr(PackageName::None, &SimpleName::SourceDirs);
 
         let mut resolved_dirs = HashMap::new();
 
@@ -171,25 +210,107 @@ impl GPR {
             resolved_dirs.insert(*scenar, for_scenar);
         }
 
-        self.values[PackageName::None as usize].insert(
-            SimpleName::SourceDirs,
-            ExprValue::PathList(resolved_dirs),
-        );
+        self.values[PackageName::None as usize]
+            .insert(SimpleName::SourceDirs, ExprValue::PathList(resolved_dirs));
 
         Ok(())
     }
 
+    fn check_file_candidates(
+        scenarios: &mut AllScenarios,
+        scenario: Scenario,
+        lang: &str,
+        directory: &Directory,
+        spec_suffix: &str,
+        files: &mut HashMap<std::path::PathBuf, Vec<Scenario>>,
+    ) {
+        for f in &directory.files {
+            let osstr = f.file_name().and_then(|s| s.to_str());
+            if let Some(true) = osstr.map(|f| f.ends_with(spec_suffix)) {
+                let v = files.entry(f.clone()).or_default();
+                scenarios.union_list(v, scenario);
+            }
+        }
+    }
+
     /// Return the list of source files for all scenarios
-    pub fn get_source_files(&mut self, all_dirs: &HashSet<Directory>) {
-        let source_dirs = self.pathlist_attr(
-            PackageName::None, &SimpleName::SourceDirs);
-        for (scenar_dir, dirs_in_scenario) in source_dirs {
-            for d in dirs_in_scenario {
-                for f in &all_dirs.get(d).unwrap().files {
-                    println!("MANU {} {}={:?}", self, scenar_dir, f);
+    pub fn get_source_files(
+        &mut self,
+        all_dirs: &HashSet<Directory>,
+        scenarios: &mut AllScenarios,
+    ) -> usize {
+        let source_dirs =
+            self.pathlist_attr(PackageName::None, &SimpleName::SourceDirs);
+        let languages =
+            self.strlist_attr(PackageName::None, &SimpleName::Languages);
+
+        let mut files: HashMap<std::path::PathBuf, Vec<Scenario>> =
+            HashMap::new();
+
+        for (scenar_dir, dirs_in_scenar) in source_dirs {
+            for (scenar_lang, langs_in_scenar) in languages {
+                let s = scenarios.intersection(*scenar_dir, *scenar_lang);
+                if s == EMPTY_SCENARIO {
+                    continue;
+                }
+
+                for lang in langs_in_scenar {
+                    let lowerlang = lang.to_lowercase();
+
+                    let spec_suffix = self.str_attr(
+                        PackageName::Naming,
+                        &SimpleName::SpecSuffix(lowerlang.clone()),
+                    );
+                    for (scenar_spec, spec_in_scenar) in spec_suffix {
+                        let s = scenarios.intersection(s, *scenar_spec);
+                        if s == EMPTY_SCENARIO {
+                            continue;
+                        }
+
+                        for d in dirs_in_scenar {
+                            GPR::check_file_candidates(
+                                scenarios,
+                                s,
+                                lang,
+                                all_dirs.get(d).unwrap(),
+                                spec_in_scenar,
+                                &mut files,
+                            );
+                        }
+                    }
+
+                    let body_suffix = self.str_attr(
+                        PackageName::Naming,
+                        &SimpleName::BodySuffix(lowerlang),
+                    );
+                    for (scenar_body, body_in_scenar) in body_suffix {
+                        let s = scenarios.intersection(s, *scenar_body);
+                        if s == EMPTY_SCENARIO {
+                            continue;
+                        }
+
+                        for d in dirs_in_scenar {
+                            GPR::check_file_candidates(
+                                scenarios,
+                                s,
+                                lang,
+                                all_dirs.get(d).unwrap(),
+                                body_in_scenar,
+                                &mut files,
+                            );
+                        }
+                    }
                 }
             }
         }
+        //        for (p, s) in files {
+        //            println!(
+        //                "MANU {}: {:?}",
+        //                p.display(),
+        //                s.iter().map(|s| scenarios.debug(*s)).collect::<Vec<_>>()
+        //            );
+        //        }
+        files.len()
     }
 
     /// Declare a new named object.
@@ -323,20 +444,18 @@ impl GPR {
                 }
             }
 
-            Statement::AttributeDecl { name, value } => {
-                self.declare(
+            Statement::AttributeDecl { name, value } => self.declare(
+                current_pkg,
+                name.clone(),
+                ExprValue::new_with_raw(
+                    value,
+                    self,
+                    dependencies,
+                    scenarios,
+                    current_scenario,
                     current_pkg,
-                    name.clone(),
-                    ExprValue::new_with_raw(
-                            value,
-                            self,
-                            dependencies,
-                            scenarios,
-                            current_scenario,
-                            current_pkg,
-                        )?
-                )?
-            }
+                )?,
+            )?,
 
             Statement::Package {
                 name,
@@ -411,8 +530,7 @@ impl GPR {
                         }
                     }
 
-                    let s =
-                        scenarios.intersection(current_scenario, combined)?;
+                    let s = scenarios.intersection(current_scenario, combined);
                     self.process_body(
                         dependencies,
                         scenarios,

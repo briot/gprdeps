@@ -91,11 +91,12 @@ impl Environment {
         println!("Total files={}", files_count);
 
         {
+            let mut source_files_count = 0;
             for gpr in gprs.values_mut() {
-                if gpr.name == "data_server" {
-                    gpr.get_source_files(&all_source_dirs);
-                }
+                source_files_count +=
+                    gpr.get_source_files(&all_source_dirs, &mut self.scenarios);
             }
+            println!("Total source files={}", source_files_count);
         }
 
         //    let pool = threadpool::ThreadPool::new(1);

@@ -64,6 +64,7 @@ pub enum SimpleName {
     BodySuffix(String),
     Body(String),
     DefaultSwitches(StringOrOthers),
+    DotReplacement,
     ExcludedSourceFiles,
     ExecDir,
     Executable(String),
@@ -115,6 +116,7 @@ impl SimpleName {
             ("default_switches", Some(idx)) => {
                 Ok(SimpleName::DefaultSwitches(idx))
             }
+            ("dot_replacement", None) => Ok(SimpleName::DotReplacement),
             ("excluded_source_files", None) => {
                 Ok(SimpleName::ExcludedSourceFiles)
             }
@@ -171,6 +173,7 @@ impl std::fmt::Display for SimpleName {
             SimpleName::Name(s) => write!(f, ".{}", s),
             SimpleName::BodySuffix(idx) => write!(f, "'body_suffix({})", idx),
             SimpleName::Body(idx) => write!(f, "'body({})", idx),
+            SimpleName::DotReplacement => write!(f, "'dot_replacement"),
             SimpleName::DefaultSwitches(idx) => {
                 write!(f, "'default_switches({})", idx)
             }
