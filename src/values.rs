@@ -1,38 +1,37 @@
 use crate::gpr::GPR;
 use crate::rawexpr::{PackageName, QualifiedName, RawExpr, SimpleName};
 use crate::scenarios::{AllScenarios, Scenario};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
+use std::collections::HashSet;
 
-/// The value of a variable or attribute, evaluated in one scenario
 #[derive(Clone, Debug, PartialEq)]
-pub enum OneScenario {
-    StaticString(String),
-    List(Vec<String>),
+pub enum ExprValue {
+    Str(HashMap<Scenario, String>),
+    StrList(HashMap<Scenario, Vec<String>>),
+    PathList(HashMap<Scenario, Vec<std::path::PathBuf>>),
 }
-
-/// The value of a variable or attribute, in all scenarios
-#[derive(Clone, Debug, PartialEq)]
-pub struct ExprValue(HashMap<Scenario, OneScenario>);
 
 impl ExprValue {
     /// An expression that always has the same static value for all scenarios
-    pub fn new_static_str(s: &str) -> Self {
+    pub fn new_with_str(s: &str) -> Self {
+        ExprValue::new_with_str_and_scenario(s, Scenario::default())
+    }
+
+    pub fn new_with_str_and_scenario(s: &str, scenario: Scenario) -> Self {
         let mut m = HashMap::new();
-        m.insert(
-            Scenario::default(),
-            OneScenario::StaticString(s.to_string()),
-        );
-        ExprValue(m)
+        m.insert(scenario, s.to_string());
+        ExprValue::Str(m)
     }
 
     // An expression value created as an empty list
-    pub fn from_list(list: &[&str]) -> Self {
+    pub fn new_with_list(list: &[&str]) -> Self {
         let mut m = HashMap::new();
         m.insert(
             Scenario::default(),
-            OneScenario::List(list.iter().map(|s| s.to_string()).collect())
+            list.iter().map(|s| s.to_string()).collect(),
         );
-        ExprValue(m)
+
+        ExprValue::StrList(m)
     }
 
     /// Given a type declaration (which cannot be declared in case statements,
@@ -45,100 +44,79 @@ impl ExprValue {
     ///     MODE=debug    => "debug"
     ///     MODE=optimize => "optimize"
     /// This is used to get the possible values of scenario variables
-    pub fn from_scenario_variable(
+    pub fn new_with_variable(
         scenarios: &mut AllScenarios,
         varname: &str,
         type_values: &ExprValue,
     ) -> Self {
-        let valid = type_values.as_static_list();
+        let valid = type_values.as_list(); // panic if not a single list
         let mut m = HashMap::new();
         let s0 = Scenario::default();
         for v in valid {
-            let s1 = scenarios.split(s0, varname, &[v]);
-            m.insert(s1, OneScenario::StaticString(v.clone()));
+            let s1 = scenarios.split(s0, varname, &[&v]);
+            m.insert(s1, v.clone());
         }
-        ExprValue(m)
+        ExprValue::Str(m)
     }
 
     /// Assumes the expression is a static string valid for all scenarios and
     /// return it.
-    pub fn as_static_str(&self) -> &String {
-        if self.0.len() != 1 {
-            panic!("Expected no variants {:?}", self.0);
-        }
-        match &self.0[&Scenario::default()] {
-            OneScenario::StaticString(s) => s,
-            OneScenario::List(_) => panic!("Expected a string {:?}", self.0),
+    pub fn as_string(&self) -> &String {
+        match self {
+            ExprValue::Str(s) => {
+                if s.len() != 1 {
+                    panic!("Expected no variants {:?}", self);
+                }
+                &s[&Scenario::default()]
+            }
+            _ => panic!("Expected a string {:?}", self),
         }
     }
 
     /// The expression is assumed to have a single value, for the default
     /// scenario (think of types).  Return that value.
     /// Otherwise panic
-    pub fn as_static_list(&self) -> &Vec<String> {
-        if self.0.len() != 1 {
-            panic!("Expected no variants {:?}", self.0);
-        }
-        match &self.0[&Scenario::default()] {
-            OneScenario::StaticString(_) => {
-                panic!("Expected a list {:?}", self.0)
-            }
-            OneScenario::List(v) => v,
+    pub fn as_list(&self) -> &Vec<String> {
+        match self {
+            ExprValue::StrList(v) => &v[&Scenario::default()],
+            _ => panic!("Expected a list {:?}", self),
         }
     }
 
-    /// Find which scenarios are actually useful for this project
+    /// List all scenarios that have an impact on the variable's value
     pub fn find_used_scenarios(&self, useful: &mut HashSet<Scenario>) {
-        for s in self.0.keys() {
-            useful.insert(*s);
+        match self {
+            ExprValue::Str(v) => useful.extend(v.keys()),
+            ExprValue::StrList(v) => useful.extend(v.keys()),
+            ExprValue::PathList(v) => useful.extend(v.keys()),
         }
     }
 
-    /// Return all strings used in any scenario
-    pub fn find_all_str(&self) -> HashSet<&String> {
-        let mut result = HashSet::new();
-        for v in self.0.values() {
-            match v {
-                OneScenario::List(v) => {
-                    for s in v {
-                        result.insert(s);
-                    }
-                }
-                OneScenario::StaticString(s) => {
-                    result.insert(s);
-                }
-            }
-        }
-        result
-    }
-
-    /// Return a mapping from one string value to the corresponding scenario.
-    /// This is used for scenario variables used in a case statement.
+    /// Given a scenario variable, as setup via new_with_variable, prepares
+    /// a mapping from one string value to the corresponding scenario.
     pub fn prepare_case_stmt(
         &self,
     ) -> Result<HashMap<String, Scenario>, String> {
-        let mut result = HashMap::new();
-        for (s, v) in &self.0 {
-            match v {
-                OneScenario::List(_) => {
-                    Err(format!(
-                        "List cannot be used in a case statement: {:?}",
-                        self.0
-                    ))?;
-                }
-                OneScenario::StaticString(v) => {
+        match self {
+            ExprValue::Str(per_scenario) => {
+                let mut result = HashMap::new();
+                for (s, v) in per_scenario {
                     result.insert(v.clone(), *s);
                 }
+                Ok(result)
             }
+            _ => Err(format!(
+                "Variable in a case statement must be a string {:?}",
+                self
+            )),
         }
-        Ok(result)
     }
 
     /// Evaluate a raw expression into its final value.
     /// The expression is initially seen in the context of one scenario (matching
     /// the case and when clauses), but its final value might be split into
     /// several scenarios if it is referencing another variable.
-    pub fn eval(
+    pub fn new_with_raw(
         expr: &RawExpr,
         gpr: &GPR, //  what project what this expression read in ?
         gpr_deps: &[&GPR],
@@ -171,8 +149,8 @@ impl ExprValue {
                         ),
                     };
                     let default = match args.get(1) {
-                        None => ExprValue::new_static_str(""),
-                        Some(expr) => ExprValue::eval(
+                        None => ExprValue::new_with_str(""),
+                        Some(expr) => ExprValue::new_with_raw(
                             expr,
                             gpr,
                             gpr_deps,
@@ -182,7 +160,7 @@ impl ExprValue {
                         )?,
                     };
                     match &std::env::var(varname) {
-                        Ok(v) => Ok(ExprValue::new_static_str(v)),
+                        Ok(v) => Ok(ExprValue::new_with_str(v)),
                         Err(_) => Ok(default),
                     }
                 }
@@ -195,16 +173,15 @@ impl ExprValue {
                 Ok(gpr.lookup(q, gpr_deps, current_pkg)?.clone())
             }
             RawExpr::StaticString(s) => {
-                let mut m = HashMap::new();
-                m.insert(scenar, OneScenario::StaticString(s.clone()));
-                Ok(ExprValue(m))
+                Ok(ExprValue::new_with_str_and_scenario(s, scenar))
             }
             RawExpr::List(ls) => {
-                let mut m = HashMap::new();
-                m.insert(Scenario::default(), OneScenario::List(vec![]));
-
+                let mut m: HashMap<Scenario, Vec<String>> = HashMap::new();
+                m.insert(scenar, vec![]);
                 for expr in ls {
-                    let s = ExprValue::eval(
+                    // Each element of the list is an expression, which could
+                    // have a different value for each scenario.
+                    let s = ExprValue::new_with_raw(
                         expr,
                         gpr,
                         gpr_deps,
@@ -212,34 +189,41 @@ impl ExprValue {
                         scenar,
                         current_pkg,
                     )?;
-                    let mut new_m = HashMap::new();
-                    for (s2, v2) in s.0 {
-                        match v2 {
-                            OneScenario::StaticString(st) => {
+                    match s {
+                        ExprValue::Str(per_scenario) => {
+                            // We have an existing map:
+                            //    s0=[all scenarios] => ["a", "b"]
+                            // and want to add a new value, for which we assume
+                            // that s1+s2 is the whole world (i.e. s0)
+                            //    s1 => "c",
+                            //    s2 => "d"
+                            // The result is a multi-valued list:
+                            //    s0*s1 => ["a", "b", "c"]
+                            //    s0*s2 => ["a", "b", "d"]
+
+                            let mut new_m = HashMap::new();
+                            for (s2, v2) in per_scenario {
                                 for (s1, v1) in &m {
-                                    if let OneScenario::List(ls) = v1 {
-                                        let mut v = ls.clone();
-                                        v.push(st.clone());
-                                        new_m.insert(
-                                            scenars.intersection(*s1, s2)?,
-                                            OneScenario::List(v),
-                                        );
-                                    }
+                                    let mut v = v1.clone();
+                                    v.push(v2.clone());
+                                    new_m.insert(
+                                        scenars.intersection(*s1, s2)?,
+                                        v,
+                                    );
                                 }
                             }
-                            OneScenario::List(_) => Err(format!(
-                                "{}: lists can only contain strings",
-                                gpr
-                            ))?,
+                            m = new_m;
                         }
+                        _ => Err(format!(
+                            "{}: lists can only contain strings",
+                            gpr
+                        ))?,
                     }
-                    m = new_m;
                 }
-                Ok(ExprValue(m))
+                Ok(ExprValue::StrList(m))
             }
             RawExpr::Ampersand((left, right)) => {
-                let mut m = HashMap::new();
-                let l_eval = ExprValue::eval(
+                let l_eval = ExprValue::new_with_raw(
                     left,
                     gpr,
                     gpr_deps,
@@ -247,7 +231,7 @@ impl ExprValue {
                     scenar,
                     current_pkg,
                 )?;
-                let r_eval = ExprValue::eval(
+                let r_eval = ExprValue::new_with_raw(
                     right,
                     gpr,
                     gpr_deps,
@@ -256,77 +240,97 @@ impl ExprValue {
                     current_pkg,
                 )?;
 
-                for (s1, v1) in l_eval.0 {
-                    match v1 {
-                        OneScenario::StaticString(ls) => {
-                            for (s2, v2) in &r_eval.0 {
-                                match v2 {
-                                    OneScenario::StaticString(rs) => {
-                                        // The string v1&v2 is only meaningful
-                                        // for the mode that is the intersection
-                                        // of s1 and s2.  In other modes, v1 or
-                                        // v2 are considered the empty string.
-                                        let mut res = ls.clone();
-                                        res.push_str(rs);
-                                        m.insert(
-                                            scenars.intersection(s1, *s2)?,
-                                            OneScenario::StaticString(res),
-                                        );
-                                    },
-                                    OneScenario::List(_) =>
-                                        Err(format!(
-                                            "{}: cannot concatenate string and list",
-                                            gpr))?,
-                                }
+                match (l_eval, r_eval) {
+                    (ExprValue::Str(ls), ExprValue::Str(rs)) => {
+                        let mut m = HashMap::new();
+                        for (s1, v1) in ls {
+                            for (s2, v2) in &rs {
+                                // The string v1&v2 is only meaningful for the
+                                // mode that is the intersection of s1 and s2.
+                                // In other modes, v1 or v2 are considered the
+                                // empty string.
+                                let mut res = v1.clone();
+                                res.push_str(v2);
+                                m.insert(scenars.intersection(s1, *s2)?, res);
                             }
                         }
-                        OneScenario::List(ls) => {
-                            for (s2, v2) in &r_eval.0 {
-                                match v2 {
-                                    OneScenario::StaticString(rs) => {
-                                        let mut res = ls.clone();
-                                        res.push(rs.clone());
-                                        m.insert(
-                                            scenars.intersection(s1, *s2)?,
-                                            OneScenario::List(res),
-                                        );
-                                    }
-                                    OneScenario::List(rs) => {
-                                        let mut res = ls.clone();
-                                        for s in rs {
-                                            res.push(s.clone());
-                                        }
-                                        m.insert(
-                                            scenars.intersection(s1, *s2)?,
-                                            OneScenario::List(res),
-                                        );
-                                    }
-                                }
-                            }
-                        }
+                        Ok(ExprValue::Str(m))
                     }
+
+                    (ExprValue::Str(_), _) => Err(format!(
+                        "{}: cannot concatenate string and list",
+                        gpr
+                    )),
+
+                    (ExprValue::StrList(ls), ExprValue::Str(rs)) => {
+                        let mut m = HashMap::new();
+                        for (s1, v1) in ls {
+                            for (s2, v2) in &rs {
+                                let mut res = v1.clone();
+                                res.push(v2.clone());
+                                m.insert(scenars.intersection(s1, *s2)?, res);
+                            }
+                        }
+                        Ok(ExprValue::StrList(m))
+                    }
+
+                    (ExprValue::StrList(ls), ExprValue::StrList(rs)) => {
+                        let mut m = HashMap::new();
+                        for (s1, v1) in ls {
+                            for (s2, v2) in &rs {
+                                let mut res = v1.clone();
+                                res.extend(v2.clone());
+                                m.insert(scenars.intersection(s1, *s2)?, res);
+                            }
+                        }
+                        Ok(ExprValue::StrList(m))
+                    }
+
+                    _ => Err(format!("{}: wrong use of &", gpr)),
                 }
-                Ok(ExprValue(m))
             }
         }
     }
 
     /// Find whether (scenar, value) can be merged with any existing state
     /// in self.
-    fn find_mergeable(
-        &self,
-        scenar: Scenario,
-        value: &OneScenario,
+    fn merge_internal<T>(
+        v_self: &mut HashMap<Scenario, T>,
+        v_right: HashMap<Scenario, T>,
         scenars: &mut AllScenarios,
-    ) -> Option<(Scenario, Scenario)> {
-        for (s, v) in &self.0 {
-            if v == value {
-                if let Some(s2) = scenars.union(*s, scenar) {
-                    return Some((s2, *s));
+    ) -> Result<(), String>
+    where
+        T: Eq + std::fmt::Debug,
+    {
+        for (s2, v2) in v_right {
+            let mut merged: Option<(Scenario, Scenario)> = None;
+            for (s1, v1) in v_self.iter() {
+                if *v1 == v2 {
+                    //  Same value in two scenarios ?
+                    if let Some(new_s) = scenars.union(*s1, s2) {
+                        merged = Some((*s1, new_s));
+                        break;
+                    }
+                }
+            }
+
+            match merged {
+                None => {
+                    if v_self.contains_key(&s2) {
+                        Err(format!(
+                            "Cannot merge two values, the same scenario occurs \
+                             twice {}: {:?} {:?}",
+                            s2, v_self, v2))?;
+                    }
+                    v_self.insert(s2, v2);
+                }
+                Some((s1, new_s)) => {
+                    let old = v_self.remove(&s1);
+                    v_self.insert(new_s, old.unwrap());
                 }
             }
         }
-        None
+        Ok(())
     }
 
     /// Merge two expression values.
@@ -337,24 +341,21 @@ impl ExprValue {
         right: ExprValue,
         scenars: &mut AllScenarios,
     ) -> Result<(), String> {
-        for (s, v) in &right.0 {
-            match self.find_mergeable(*s, v, scenars) {
-                None => {
-                    if self.0.contains_key(s) {
-                        Err(format!(
-                            "Cannot merge two values, the same scenario occurs \
-                             twice {}",
-                            s))?;
-                    }
-                    self.0.insert(*s, v.clone());
-                }
-                Some((new_s, old_s)) => {
-                    let old = self.0.remove(&old_s);
-                    self.0.insert(new_s, old.unwrap());
-                }
+        match (self, right) {
+            (ExprValue::Str(v_self), ExprValue::Str(v_right)) => {
+                ExprValue::merge_internal(v_self, v_right, scenars)
             }
+            (ExprValue::StrList(v_self), ExprValue::StrList(v_right)) => {
+                ExprValue::merge_internal(v_self, v_right, scenars)
+            }
+            (ExprValue::PathList(v_self), ExprValue::PathList(v_right)) => {
+                ExprValue::merge_internal(v_self, v_right, scenars)
+            }
+            (s, r) => Err(format!(
+                "values do not have the same type {:?} and {:?}",
+                s, r
+            )),
         }
-        Ok(())
     }
 }
 
@@ -365,26 +366,8 @@ mod tests {
     use crate::rawexpr::tests::{build_expr_list, build_expr_str};
     use crate::rawexpr::{PackageName, QualifiedName, RawExpr, SimpleName};
     use crate::scenarios::{AllScenarios, Scenario};
-    use crate::values::{ExprValue, OneScenario};
+    use crate::values::ExprValue;
     use std::collections::HashMap;
-
-    fn build_value_str(s: &str) -> ExprValue {
-        let mut m = HashMap::new();
-        m.insert(
-            Scenario::default(),
-            OneScenario::StaticString(s.to_string()),
-        );
-        ExprValue(m)
-    }
-
-    fn build_value_list(s: &[&str]) -> ExprValue {
-        let mut m = HashMap::new();
-        m.insert(
-            Scenario::default(),
-            OneScenario::List(s.iter().map(|st| st.to_string()).collect()),
-        );
-        ExprValue(m)
-    }
 
     #[test]
     fn test_eval() -> Result<(), String> {
@@ -397,22 +380,43 @@ mod tests {
         // Evaluate a string
         let expr1 = build_expr_str("value");
         assert_eq!(
-            ExprValue::eval(&expr1, &gpr, &[], &mut scenars, scenar, pkg)?,
-            build_value_str("value"),
+            ExprValue::new_with_raw(
+                &expr1,
+                &gpr,
+                &[],
+                &mut scenars,
+                scenar,
+                pkg
+            )?,
+            ExprValue::new_with_str("value"),
         );
 
         // Concatenate two strings
         let expr2 = build_expr_str("value").ampersand(build_expr_str("suffix"));
         assert_eq!(
-            ExprValue::eval(&expr2, &gpr, &[], &mut scenars, scenar, pkg)?,
-            build_value_str("valuesuffix"),
+            ExprValue::new_with_raw(
+                &expr2,
+                &gpr,
+                &[],
+                &mut scenars,
+                scenar,
+                pkg
+            )?,
+            ExprValue::new_with_str("valuesuffix"),
         );
 
         // Evaluate a list of strings
         let expr3 = build_expr_list(&["val1", "val2"]);
         assert_eq!(
-            ExprValue::eval(&expr3, &gpr, &[], &mut scenars, scenar, pkg)?,
-            build_value_list(&["val1", "val2"])
+            ExprValue::new_with_raw(
+                &expr3,
+                &gpr,
+                &[],
+                &mut scenars,
+                scenar,
+                pkg
+            )?,
+            ExprValue::new_with_list(&["val1", "val2"])
         );
 
         // Evaluate a list of expressions
@@ -423,24 +427,45 @@ mod tests {
             Box::new(build_expr_str("val2")),
         ]);
         assert_eq!(
-            ExprValue::eval(&expr4, &gpr, &[], &mut scenars, scenar, pkg)?,
-            build_value_list(&["valuesuffix", "val2"]),
+            ExprValue::new_with_raw(
+                &expr4,
+                &gpr,
+                &[],
+                &mut scenars,
+                scenar,
+                pkg
+            )?,
+            ExprValue::new_with_list(&["valuesuffix", "val2"]),
         );
 
         // Concatenate list and string
         let expr4 = build_expr_list(&["val1", "val2"])
             .ampersand(build_expr_str("value"));
         assert_eq!(
-            ExprValue::eval(&expr4, &gpr, &[], &mut scenars, scenar, pkg)?,
-            build_value_list(&["val1", "val2", "value"]),
+            ExprValue::new_with_raw(
+                &expr4,
+                &gpr,
+                &[],
+                &mut scenars,
+                scenar,
+                pkg
+            )?,
+            ExprValue::new_with_list(&["val1", "val2", "value"]),
         );
 
         // Concatenate two lists
         let expr5 = build_expr_list(&["val1", "val2"])
             .ampersand(build_expr_list(&["val3", "val4"]));
         assert_eq!(
-            ExprValue::eval(&expr5, &gpr, &[], &mut scenars, scenar, pkg)?,
-            build_value_list(&["val1", "val2", "val3", "val4"]),
+            ExprValue::new_with_raw(
+                &expr5,
+                &gpr,
+                &[],
+                &mut scenars,
+                scenar,
+                pkg
+            )?,
+            ExprValue::new_with_list(&["val1", "val2", "val3", "val4"]),
         );
 
         // Evaluate a qualified name
@@ -448,7 +473,7 @@ mod tests {
         gpr.declare(
             PackageName::None,
             SimpleName::Name("var1".to_string()),
-            build_value_str("val1"),
+            ExprValue::new_with_str("val1"),
         )?;
 
         let expr =
@@ -458,8 +483,15 @@ mod tests {
                 name: SimpleName::Name("var1".to_string()),
             }));
         assert_eq!(
-            ExprValue::eval(&expr, &gpr, &[], &mut scenars, scenar, pkg)?,
-            build_value_str("valueval1"),
+            ExprValue::new_with_raw(
+                &expr,
+                &gpr,
+                &[],
+                &mut scenars,
+                scenar,
+                pkg
+            )?,
+            ExprValue::new_with_str("valueval1"),
         );
 
         Ok(())
@@ -482,7 +514,7 @@ mod tests {
         // Assume a variable has different values in two modes
         //     s2=[MODE=debug|optimize]      => "val2"
         //     s3=[MODE=lto]                 => "val3"
-        let mut var1 = ExprValue::eval(
+        let mut var1 = ExprValue::new_with_raw(
             &build_expr_str("val2"),
             &gpr,
             &[],
@@ -491,7 +523,7 @@ mod tests {
             pkg,
         )?;
         var1.merge(
-            ExprValue::eval(
+            ExprValue::new_with_raw(
                 &build_expr_str("val3"),
                 &gpr,
                 &[],
@@ -510,7 +542,7 @@ mod tests {
         // Another variable has different values in two modes
         //     s4=[CHECK=some]      => "val4"
         //     s5=[CHECK=most|none] => "val5"
-        let mut var2 = ExprValue::eval(
+        let mut var2 = ExprValue::new_with_raw(
             &build_expr_str("val4"),
             &gpr,
             &[],
@@ -519,7 +551,7 @@ mod tests {
             pkg,
         )?;
         var2.merge(
-            ExprValue::eval(
+            ExprValue::new_with_raw(
                 &build_expr_str("val5"),
                 &gpr,
                 &[],
@@ -558,14 +590,14 @@ mod tests {
         });
         let concat = var1_ref.ampersand(var2_ref);
         let concat_expr =
-            ExprValue::eval(&concat, &gpr, &[], &mut scenars, s0, pkg)?;
+            ExprValue::new_with_raw(&concat, &gpr, &[], &mut scenars, s0, pkg)?;
 
         let mut expected = HashMap::new();
-        expected.insert(s7, OneScenario::StaticString("val2val4".to_string()));
-        expected.insert(s8, OneScenario::StaticString("val2val5".to_string()));
-        expected.insert(s5, OneScenario::StaticString("val3val4".to_string()));
-        expected.insert(s6, OneScenario::StaticString("val3val5".to_string()));
-        assert_eq!(concat_expr, ExprValue(expected));
+        expected.insert(s7, "val2val4".to_string());
+        expected.insert(s8, "val2val5".to_string());
+        expected.insert(s5, "val3val4".to_string());
+        expected.insert(s6, "val3val5".to_string());
+        assert_eq!(concat_expr, ExprValue::Str(expected));
 
         Ok(())
     }

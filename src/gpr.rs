@@ -1,3 +1,4 @@
+use crate::directory::Directory;
 use crate::errors::Error;
 use crate::graph::NodeIndex;
 use crate::rawexpr::{
@@ -15,7 +16,7 @@ use walkdir::WalkDir;
 /// needs an Environment object to resolve paths.
 pub struct GPR {
     pub index: NodeIndex,
-    name: String,
+    pub name: String,
     path: std::path::PathBuf,
     values: [HashMap<
         SimpleName, // variable or attribute name
@@ -35,37 +36,38 @@ impl GPR {
         // Declare the fallback value for "project'Target" attribute.
         s.values[PackageName::None as usize].insert(
             SimpleName::Target,
-            ExprValue::new_static_str("x86_64-linux"),
+            ExprValue::new_with_str("x86_64-linux"),
         );
         s.values[PackageName::Linker as usize]
-            .insert(SimpleName::LinkerOptions, ExprValue::from_list(&[]));
+            .insert(SimpleName::LinkerOptions, ExprValue::new_with_list(&[]));
         s.values[PackageName::None as usize]
-            .insert(SimpleName::SourceDirs, ExprValue::from_list(&["."]));
+            .insert(SimpleName::SourceDirs, ExprValue::new_with_list(&["."]));
         s.values[PackageName::None as usize]
-            .insert(SimpleName::ObjectDir, ExprValue::from_list(&["."]));
+            .insert(SimpleName::ObjectDir, ExprValue::new_with_list(&["."]));
         s.values[PackageName::None as usize]
-            .insert(SimpleName::ExecDir, ExprValue::from_list(&["."]));
+            .insert(SimpleName::ExecDir, ExprValue::new_with_list(&["."]));
         s
     }
 
     /// Trim attributes and variables that will no longer be used
     pub fn trim(&mut self) {
         for pkg in 0..PACKAGE_NAME_VARIANTS {
-            self.values[pkg].retain(
-                |name, _| matches!(
+            self.values[pkg].retain(|name, _| {
+                matches!(
                     name,
                     SimpleName::BodySuffix(_)
-                    | SimpleName::Body(_)
-                    | SimpleName::ExcludedSourceFiles
-                    | SimpleName::Languages
-                    | SimpleName::Main
-                    | SimpleName::ProjectFiles
-                    | SimpleName::SourceDirs
-                    | SimpleName::SourceFiles
-                    | SimpleName::Spec(_)
-                    | SimpleName::SpecSuffix(_)
-                    | SimpleName::SourceListFile)
-            );
+                        | SimpleName::Body(_)
+                        | SimpleName::ExcludedSourceFiles
+                        | SimpleName::Languages
+                        | SimpleName::Main
+                        | SimpleName::ProjectFiles
+                        | SimpleName::SourceDirs
+                        | SimpleName::SourceFiles
+                        | SimpleName::Spec(_)
+                        | SimpleName::SpecSuffix(_)
+                        | SimpleName::SourceListFile
+                )
+            });
         }
     }
 
@@ -90,53 +92,104 @@ impl GPR {
         }
     }
 
-    /// List required source directories
-    pub fn get_all_source_dirs(
+    // Retrieve the value of a string list attribute
+    fn strlist_attr(
         &self,
-        dirs: &mut HashSet<std::path::PathBuf>,
-    ) -> Result<(), String> {
-        let attr = self
-            .values[PackageName::None as usize]
-            .get(&SimpleName::SourceDirs);
-        match attr {
-            None => {},
-            Some(attr) => {
-                for s in attr.find_all_str() {
-                    if s.ends_with("/**") {
-                        let parent = s
-                            .chars().take(s.len() - 3)
-                            .collect::<String>();
+        pkg: PackageName,
+        name: &SimpleName,
+    ) -> &HashMap<Scenario, Vec<String>> {
+        match self.values[pkg as usize].get(name) {
+            Some(ExprValue::StrList(sourcedirs)) => sourcedirs,
+            v => panic!("Wrong type for attribute {}, {:?}", name, v),
+        }
+    }
 
-                        match self.normalize_path(&parent) {
-                            Err(e) => {
-                                println!("{}: {}", self, e);
-                            }
-                            Ok(s) => {
-                                for entry in WalkDir::new(s)
-                                    .follow_links(true)
-                                    .into_iter()
-                                    .filter_map(Result::ok)
-                                    .filter(|e| e.file_type().is_dir())
-                                {
-                                    dirs.insert(entry.into_path());
-                                }
+    // Retrieve the value of a path list attribute
+    fn pathlist_attr(
+        &self,
+        pkg: PackageName,
+        name: &SimpleName,
+    ) -> &HashMap<Scenario, Vec<std::path::PathBuf>> {
+        match self.values[pkg as usize].get(name) {
+            Some(ExprValue::PathList(sourcedirs)) => sourcedirs,
+            v => panic!("Wrong type for attribute {}, {:?}", name, v),
+        }
+    }
+
+
+    //  Resolve source directories from the list of relative path names (as
+    //  strings) read from the project file, into full paths.
+    //  This is done for all scenarios.
+    pub fn resolve_source_dirs(
+        &mut self,
+        dirs: &mut HashSet<Directory>,
+    ) -> Result<(), String> {
+        let sourcedirs = self.strlist_attr(
+            PackageName::None, &SimpleName::SourceDirs);
+
+        let mut resolved_dirs = HashMap::new();
+
+        for (scenar, dirs_in_scenario) in sourcedirs {
+            let mut for_scenar = Vec::new();
+            for d in dirs_in_scenario {
+                if d.ends_with("/**") {
+                    let parent =
+                        d.chars().take(d.len() - 3).collect::<String>();
+
+                    match self.normalize_path(&parent) {
+                        Err(e) => {
+                            println!("{}: {}", self, e);
+                        }
+                        Ok(s) => {
+                            for entry in WalkDir::new(s)
+                                .follow_links(true)
+                                .into_iter()
+                                .filter_map(Result::ok)
+                                .filter(|e| e.file_type().is_dir())
+                            {
+                                for_scenar.push(entry.into_path());
                             }
                         }
-
-                    } else {
-                        match self.normalize_path(s) {
-                            Ok(p) => {
-                                dirs.insert(p);
-                            }
-                            Err(s) => {
-                                println!("{}: {}", self, s);
-                            }
+                    }
+                } else {
+                    match self.normalize_path(d) {
+                        Ok(p) => {
+                            for_scenar.push(p);
+                        }
+                        Err(s) => {
+                            println!("{}: {}", self, s);
                         }
                     }
                 }
             }
+
+            for d in &for_scenar {
+                if !dirs.contains(d) {
+                    dirs.insert(Directory::new(d.clone()));
+                }
+            }
+            resolved_dirs.insert(*scenar, for_scenar);
         }
+
+        self.values[PackageName::None as usize].insert(
+            SimpleName::SourceDirs,
+            ExprValue::PathList(resolved_dirs),
+        );
+
         Ok(())
+    }
+
+    /// Return the list of source files for all scenarios
+    pub fn get_source_files(&mut self, all_dirs: &HashSet<Directory>) {
+        let source_dirs = self.pathlist_attr(
+            PackageName::None, &SimpleName::SourceDirs);
+        for (scenar_dir, dirs_in_scenario) in source_dirs {
+            for d in dirs_in_scenario {
+                for f in &all_dirs.get(d).unwrap().files {
+                    println!("MANU {} {}={:?}", self, scenar_dir, f);
+                }
+            }
+        }
     }
 
     /// Declare a new named object.
@@ -147,9 +200,7 @@ impl GPR {
         name: SimpleName,
         value: ExprValue,
     ) -> Result<(), String> {
-        //        println!("MANU {}: declared {}{} as {:?}", self, package, name, value);
-        let pkg = &mut self.values[package as usize];
-        pkg.insert(name, value);
+        self.values[package as usize].insert(name, value);
         Ok(())
     }
 
@@ -207,7 +258,7 @@ impl GPR {
     ) -> std::result::Result<(), Error> {
         match statement {
             Statement::TypeDecl { typename, valid } => {
-                let e = ExprValue::eval(
+                let e = ExprValue::new_with_raw(
                     valid,
                     self,
                     dependencies,
@@ -242,7 +293,7 @@ impl GPR {
                     scenarios.try_add_variable(
                         ext,
                         &valid
-                            .as_static_list()
+                            .as_list()
                             .iter()
                             .map(|s| s.as_ref())
                             .collect::<Vec<_>>(),
@@ -251,9 +302,7 @@ impl GPR {
                     self.declare(
                         current_pkg,
                         SimpleName::Name(name.clone()),
-                        ExprValue::from_scenario_variable(
-                            scenarios, ext, valid,
-                        ),
+                        ExprValue::new_with_variable(scenarios, ext, valid),
                     )?;
 
                 // Else we have a standard variable (either untyped or not
@@ -262,7 +311,7 @@ impl GPR {
                     self.declare(
                         current_pkg,
                         SimpleName::Name(name.clone()),
-                        ExprValue::eval(
+                        ExprValue::new_with_raw(
                             expr,
                             self,
                             dependencies,
@@ -278,15 +327,15 @@ impl GPR {
                 self.declare(
                     current_pkg,
                     name.clone(),
-                    ExprValue::eval(
-                        value,
-                        self,
-                        dependencies,
-                        scenarios,
-                        current_scenario,
-                        current_pkg,
-                    )?,
-                )?;
+                    ExprValue::new_with_raw(
+                            value,
+                            self,
+                            dependencies,
+                            scenarios,
+                            current_scenario,
+                            current_pkg,
+                        )?
+                )?
             }
 
             Statement::Package {
@@ -298,10 +347,10 @@ impl GPR {
                 match (renames, extends) {
                     (Some(r), None) | (None, Some(r)) => {
                         let mut orig = self.lookup_gpr(r, dependencies)?.values
-                            [current_pkg as usize]
+                            [*name as usize]
                             .clone();
                         for (n, expr) in orig.drain() {
-                            self.values[current_pkg as usize]
+                            self.values[*name as usize]
                                 .insert(n.clone(), expr.clone());
                         }
                     }
