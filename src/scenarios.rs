@@ -315,13 +315,18 @@ impl AllScenarios {
                     for v in value2 {
                         value.insert(v.clone());
                     }
+
+                    // If a variable now has all possible values in the
+                    // scenario, we simply remove it
+                    // (e.g. MODE=debug|optimize|lto is the same as not checking
+                    // MODE at all).
+                    if value.len() == self.variables[name].list_valid().len() {
+                        to_remove = Some(name.clone());
+                    }
+
                 }
                 Some(_) => {}
             }
-        }
-
-        if let Some(n) = to_remove {
-            d1.vars.remove(&n);
         }
 
         for name in d2.vars.keys() {
@@ -332,6 +337,10 @@ impl AllScenarios {
                 diffcount += 1;
                 d1.vars.remove(name);
             }
+        }
+
+        if let Some(n) = to_remove {
+            d1.vars.remove(&n);
         }
 
         Some(self.create_or_reuse(d1))
@@ -514,6 +523,29 @@ mod tests {
             scenarios.scenarios.get(res.unwrap().0).unwrap().to_string(),
             "MODE=debug,"
         );
+
+        // Merging same value multiple times has no impact
+        let s2 = scenarios.split(s0, "MODE", &["debug"]);
+        let s3 = scenarios.split(s0, "MODE", &["optimize"]);
+        let s4 = scenarios.union(s2, s3).unwrap();
+        let res = scenarios.union(s4, s2).unwrap();
+        assert_eq!(
+            scenarios.debug(res),
+            "s9=MODE=debug|optimize,",
+        );
+
+        // Merging all possible values for a variable should remote it from
+        // the union altogether.
+        let s2 = scenarios.split(s0, "MODE", &["debug"]);
+        let s3 = scenarios.split(s0, "MODE", &["optimize"]);
+        let s4 = scenarios.split(s0, "MODE", &["lto"]);
+        let s5 = scenarios.union(s2, s3).unwrap();
+        let res = scenarios.union(s5, s4).unwrap();
+        assert_eq!(
+            scenarios.debug(res),
+            "s0=",
+        );
+        assert_eq!(res, s0);
 
         Ok(())
     }
