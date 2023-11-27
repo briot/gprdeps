@@ -80,7 +80,7 @@ impl<'a> Scanner<'a> {
     fn expect_identifier(&mut self) -> Result<String, String> {
         let n = self.safe_next()?;
         match n.kind {
-            TokenKind::Identifier(s) => Ok(s),
+            TokenKind::Identifier(s) => Ok(s.to_string()),
             _ => Err(format!("Expected Identifier, got {}", n)),
         }
     }
@@ -90,7 +90,7 @@ impl<'a> Scanner<'a> {
         let n = self.safe_next()?;
         match n.kind {
             TokenKind::Project => Ok(None),
-            TokenKind::Identifier(s) => Ok(Some(s)),
+            TokenKind::Identifier(s) => Ok(Some(s.to_string())),
             _ => Err(format!("Unexpected project name {}", n))?,
         }
     }

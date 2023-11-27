@@ -20,8 +20,8 @@ impl File {
         }
     }
 
-    pub fn as_bytes(&self) -> &[u8] {
-        self.buffer.as_bytes()
+    pub fn as_str(&self) -> &str {
+        self.buffer.as_str()
     }
 
     pub fn path(&self) -> &std::path::Path {
