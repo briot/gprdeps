@@ -1,8 +1,10 @@
-use crate::graph::NodeIndex;
 /// A GPR file that hasn't been processed yet.  All we store here is the info we
 /// extracted from the file itself, but we did not resolve paths, for instance.
 /// Such an object is only valid as long as the scanner that generates it, since
 /// it references memory from that scanner directly.
+
+use std::path::PathBuf;
+use crate::graph::NodeIndex;
 use crate::rawexpr::StatementList;
 
 #[derive(Default)]
@@ -33,10 +35,13 @@ impl RawGPR {
     }
 
     /// Resolve relative paths
-    pub fn normalize_path(&self, path: &str) -> std::path::PathBuf {
+    pub fn normalize_path(&self, path: &str) -> Result<PathBuf, String> {
         let mut p = self.path.parent().unwrap().join(path);
         p.set_extension("gpr");
-        std::fs::canonicalize(p).unwrap()
+        match std::fs::canonicalize(p) {
+            Err(e) => Err(format!("{} {}", e, path)),
+            Ok(p)  => Ok(p),
+        }
     }
 }
 

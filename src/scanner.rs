@@ -182,7 +182,7 @@ impl<'a> Scanner<'a> {
         self.expect(TokenKind::With)?;
 
         let path = self.expect_str()?;
-        let normalized = self.gpr.normalize_path(path.as_str());
+        let normalized = self.gpr.normalize_path(path.as_str())?;
         let idx = path_to_id[&normalized];
         self.gpr.imported.push(idx.1);
 
@@ -209,7 +209,7 @@ impl<'a> Scanner<'a> {
         self.gpr.name = self.expect_identifier()?;
         self.gpr.extends = if self.lex.peek() == TokenKind::Extends {
             let ext = self.parse_project_extension()?;
-            let normalized = self.gpr.normalize_path(ext.as_str());
+            let normalized = self.gpr.normalize_path(ext.as_str())?;
             Some(path_to_id[&normalized].1)
         } else {
             None
