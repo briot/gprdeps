@@ -1,5 +1,7 @@
+use ustr::Ustr;
+
 #[derive(Clone, Debug, PartialEq)]
-pub enum TokenKind<'a> {
+pub enum TokenKind {
     EOF,
     Abstract,
     Aggregate,
@@ -15,7 +17,7 @@ pub enum TokenKind<'a> {
     End,
     Extends,
     For,
-    Identifier(String), // lower-cased
+    Identifier(Ustr), // lower-cased
     InvalidChar(char),
     Is,
     Library,
@@ -28,7 +30,7 @@ pub enum TokenKind<'a> {
     Project,
     Renames,
     Semicolon,
-    String(&'a str), //  Doesn't include surrounding quotes, but preserves ""
+    String(Ustr), //  Doesn't include surrounding quotes, but preserves ""
     Tick,
     Type,
     Use,
@@ -36,7 +38,7 @@ pub enum TokenKind<'a> {
     With,
 }
 
-impl<'a> std::fmt::Display for TokenKind<'a> {
+impl std::fmt::Display for TokenKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             TokenKind::String(s) => write!(f, "String({})", s),
@@ -47,24 +49,24 @@ impl<'a> std::fmt::Display for TokenKind<'a> {
 }
 
 #[derive(Clone)]
-pub struct Token<'a> {
+pub struct Token {
     pub line: u32,
-    pub kind: TokenKind<'a>,
+    pub kind: TokenKind,
 }
 
-impl<'a> Token<'a> {
-    pub fn new(kind: TokenKind<'a>, line: u32) -> Self {
+impl Token {
+    pub fn new(kind: TokenKind, line: u32) -> Self {
         Self { line, kind }
     }
 }
 
-impl<'a> std::fmt::Display for Token<'a> {
+impl std::fmt::Display for Token {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}:{}", self.kind, self.line)
     }
 }
 
-impl<'a> std::fmt::Debug for Token<'a> {
+impl std::fmt::Debug for Token {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self)
     }

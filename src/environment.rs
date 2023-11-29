@@ -40,8 +40,8 @@ impl Environment {
 
         let mut rawfiles = HashMap::new();
         for (path, (gpridx, nodeidx)) in &path_to_indexes {
-            let file = crate::files::File::new(path)?;
-            let scan = crate::scanner::Scanner::new(&file);
+            let mut file = crate::files::File::new(path)?;
+            let scan = crate::scanner::Scanner::new(&mut file);
             let raw = scan.parse(&path_to_indexes)?;
 
             for dep in &raw.imported {

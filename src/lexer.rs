@@ -1,54 +1,59 @@
 use crate::errors::Error;
 use crate::files::File;
 use crate::tokens::{Token, TokenKind};
+use ustr::Ustr;
 
 fn is_wordchar(c: char) -> bool {
     matches!(c, '0' ..= '9' | 'A' ..= 'Z' | 'a' ..= 'z' | '_')
 }
 
 pub struct Lexer<'a> {
+    path: std::path::PathBuf,
+    input: &'a mut str,
+
     line: u32,
-    path: &'a std::path::Path,
-
-    input: &'a str,
-    iter: std::iter::Peekable<std::str::CharIndices<'a>>,
-
     offset: usize,
     current: char,
+    // The next character to process, the source line it is at, and the
+    // offset at which we read it.
 
-    peeked: Token<'a>,  // ??? Could let users use Peekable
+    peeked: Token,  // ??? Could let users use Peekable
+    // One symbol ahead
 }
 
 impl<'a> Lexer<'a> {
-    pub fn new(file: &'a File) -> Self {
+    pub fn new(file: &'a mut File) -> Self {
+        let path = file.path().to_owned();
+        let f = file.as_mut_str();
         let mut s = Self {
+            path,
             line: 1,
-            path: file.path(),
-            input: file.as_str(),
-            iter: file.as_str().char_indices().peekable(),
-            peeked: Token::new(TokenKind::EOF, 0),
+            current: f.chars().next().unwrap(),
+            input: f,
             offset: 0,
-            current: '\x00',
+            peeked: Token::new(TokenKind::EOF, 0),
         };
-        s.scan_char();
         s.peeked = s.scan_token();
         s
     }
 
     pub fn decorate_error(&self, error: Error) -> Error {
-        error.decorate(Some(self.path), self.line)
+        error.decorate(Some(&self.path), self.line)
     }
 
     /// Consumes one character
     #[inline]
     fn scan_char(&mut self) {
-        if let Some((index, c)) = self.iter.next() {
-            self.offset = index;
-            self.current = c;
-        } else {
-            self.offset = self.input.len();
-            self.current = '\x00';
+        self.offset += self.current.len_utf8();
+        match self.input[self.offset..].chars().next() {
+            None => self.current = '\x00',
+            Some(c) => self.current = c,
         }
+    }
+
+    #[inline]
+    fn peek_char(&mut self) -> Option<char> {
+        self.input[self.offset..].chars().next()
     }
 
     /// Peek at the next item, without consuming it
@@ -62,23 +67,23 @@ impl<'a> Lexer<'a> {
     }
 
     /// On input, self.current is the leading quote
-    fn scan_quote(&mut self) -> Token<'a> {
+    fn scan_quote(&mut self) -> Token {
         let start_line = self.line;
         self.scan_char();  // consume leading quote
         let start_offset = self.offset;
         loop {
             match self.current {
                 '\x00' => {
-                     // Unterminated string
-                     return Token {
-                         line: start_line,
-                         kind: TokenKind::EOF,
-                     };
+                    // Unterminated string
+                    return Token {
+                        line: start_line,
+                        kind: TokenKind::EOF,
+                    };
                 }
                 '"' => {
                     let end_offset = self.offset;
                     self.scan_char();
-                    let s = &self.input[start_offset..end_offset];
+                    let s = Ustr::from(&self.input[start_offset..end_offset]);
                     return Token {
                         line: start_line,
                         kind: TokenKind::String(s),
@@ -90,7 +95,7 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn scan_colon(&mut self) -> Token<'a> {
+    fn scan_colon(&mut self) -> Token {
         let start_line = self.line;
         self.scan_char();
         if self.current == '=' {
@@ -107,7 +112,7 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn scan_equal(&mut self) -> Token<'a> {
+    fn scan_equal(&mut self) -> Token {
         let start_line = self.line;
         self.scan_char();
         if self.current == '>' {
@@ -130,7 +135,7 @@ impl<'a> Lexer<'a> {
                 '\n' => self.line += 1,
                 ' ' | '\t' | '\r' => {},
                 '-' => {
-                    if let Some((_, '-')) = self.iter.peek() {
+                    if let Some('-') = self.peek_char() {
                         loop {
                             self.scan_char();
                             match self.current {
@@ -148,7 +153,7 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn scan_identifier(&mut self) -> Token<'a> {
+    fn scan_identifier(&mut self) -> Token {
         let start_line = self.line;
         let start_offset = self.offset;
         loop {
@@ -157,27 +162,29 @@ impl<'a> Lexer<'a> {
                 break;
             }
         }
-        let n = &self.input[start_offset..self.offset];
-        let lower = n.to_lowercase();
-        let kind = match lower.as_str() {
-            "abstract" => TokenKind::Abstract,
-            "aggregate" => TokenKind::Aggregate,
-            "case" => TokenKind::Case,
-            "end" => TokenKind::End,
-            "extends" => TokenKind::Extends,
-            "for" => TokenKind::For,
-            "is" => TokenKind::Is,
-            "library" => TokenKind::Library,
-            "others" => TokenKind::Others,
-            "package" => TokenKind::Package,
-            "project" => TokenKind::Project,
-            "renames" => TokenKind::Renames,
-            "type" => TokenKind::Type,
-            "null" => TokenKind::Null,
-            "use" => TokenKind::Use,
-            "with" => TokenKind::With,
-            "when" => TokenKind::When,
-            _ => TokenKind::Identifier(lower),
+        let kind = {
+            let n: &mut str = &mut self.input[start_offset..self.offset];
+            n.make_ascii_lowercase();
+            match &*n {
+                "abstract" => TokenKind::Abstract,
+                "aggregate" => TokenKind::Aggregate,
+                "case" => TokenKind::Case,
+                "end" => TokenKind::End,
+                "extends" => TokenKind::Extends,
+                "for" => TokenKind::For,
+                "is" => TokenKind::Is,
+                "library" => TokenKind::Library,
+                "others" => TokenKind::Others,
+                "package" => TokenKind::Package,
+                "project" => TokenKind::Project,
+                "renames" => TokenKind::Renames,
+                "type" => TokenKind::Type,
+                "null" => TokenKind::Null,
+                "use" => TokenKind::Use,
+                "with" => TokenKind::With,
+                "when" => TokenKind::When,
+                _ => TokenKind::Identifier(Ustr::from(n)),
+            }
         };
         Token {
             line: start_line,
@@ -185,11 +192,16 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn scan_token(&mut self) -> Token<'a> {
+    fn scan_token(&mut self) -> Token {
         self.skip_non_tokens();
         let start_line = self.line;
         let kind = match self.current {
-            '\x00' => TokenKind::EOF,
+            '\x00' => {
+                return Token {
+                    line: start_line,
+                    kind: TokenKind::EOF,
+                };
+            }
             '(' => TokenKind::OpenParenthesis,
             ')' => TokenKind::CloseParenthesis,
             ';' => TokenKind::Semicolon,
@@ -216,7 +228,7 @@ impl<'a> Lexer<'a> {
 }
 
 impl<'a> Iterator for Lexer<'a> {
-    type Item = Token<'a>;
+    type Item = Token;
 
     /// Consume the next token in the stream
     fn next(&mut self) -> Option<Self::Item> {

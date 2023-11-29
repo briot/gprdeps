@@ -24,6 +24,10 @@ impl File {
         self.buffer.as_str()
     }
 
+    pub fn as_mut_str(&mut self) -> &mut str {
+        self.buffer.as_mut_str()
+    }
+
     pub fn path(&self) -> &std::path::Path {
         &self.path
     }

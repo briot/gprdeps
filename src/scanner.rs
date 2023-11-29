@@ -8,6 +8,7 @@ use crate::rawexpr::{
 };
 use crate::rawgpr::RawGPR;
 use crate::tokens::{Token, TokenKind};
+use ustr::Ustr;
 
 pub struct Scanner<'a> {
     lex: Lexer<'a>,
@@ -16,7 +17,7 @@ pub struct Scanner<'a> {
 }
 
 impl<'a> Scanner<'a> {
-    pub fn new(file: &'a File) -> Self {
+    pub fn new(file: &'a mut File) -> Self {
         Self {
             gpr: RawGPR::new(file.path()),
             lex: Lexer::new(file),
@@ -37,7 +38,7 @@ impl<'a> Scanner<'a> {
 
     /// Get the next token, failing with error on end of file
     #[inline]
-    fn safe_next(&mut self) -> Result<Token<'a>, String> {
+    fn safe_next(&mut self) -> Result<Token, String> {
         match self.lex.next() {
             Some(n) => Ok(n),
             None => Err("Unexpected end of file".into()),
@@ -56,7 +57,7 @@ impl<'a> Scanner<'a> {
 
     /// Consumes the next token from the lexer, and expects it to be a string,
     /// which is returned.
-    fn expect_str(&mut self) -> Result<&'a str, String> {
+    fn expect_str(&mut self) -> Result<Ustr, String> {
         let n = self.safe_next()?;
         match n.kind {
             TokenKind::String(s) => Ok(s),
@@ -181,7 +182,7 @@ impl<'a> Scanner<'a> {
         self.expect(TokenKind::With)?;
 
         let path = self.expect_str()?;
-        let normalized = self.gpr.normalize_path(path);
+        let normalized = self.gpr.normalize_path(path.as_str());
         let idx = path_to_id[&normalized];
         self.gpr.imported.push(idx.1);
 
@@ -208,7 +209,7 @@ impl<'a> Scanner<'a> {
         self.gpr.name = self.expect_identifier()?;
         self.gpr.extends = if self.lex.peek() == TokenKind::Extends {
             let ext = self.parse_project_extension()?;
-            let normalized = self.gpr.normalize_path(ext);
+            let normalized = self.gpr.normalize_path(ext.as_str());
             Some(path_to_id[&normalized].1)
         } else {
             None
@@ -263,7 +264,7 @@ impl<'a> Scanner<'a> {
         Ok(())
     }
 
-    fn parse_project_extension(&mut self) -> Result<&'a str, String> {
+    fn parse_project_extension(&mut self) -> Result<Ustr, String> {
         self.expect(TokenKind::Extends)?;
         self.expect_str()
     }
@@ -607,8 +608,8 @@ mod tests {
     where
         F: FnOnce(Result<crate::scanner::RawGPR, Error>),
     {
-        let file = crate::files::File::new_from_str(s);
-        let scan = crate::scanner::Scanner::new(&file);
+        let mut file = crate::files::File::new_from_str(s);
+        let scan = crate::scanner::Scanner::new(&mut file);
         let path_to_id: PathToIndexes = Default::default();
         let gpr = scan.parse(&path_to_id);
         check(gpr);
