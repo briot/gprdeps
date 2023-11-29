@@ -63,7 +63,7 @@ impl Environment {
             let (path, raw) = &rawfiles[&gpridx];
             let deps = self.graph.gpr_dependencies(*nodeidx);
             let gprdeps = deps.iter().map(|i| &gprs[i]).collect::<Vec<_>>();
-            let mut gpr = GPR::new(path, *nodeidx, &raw.name);
+            let mut gpr = GPR::new(path, *nodeidx, raw.name);
             let success = gpr.process(
                 raw,
                 raw.extends.map(|i| &gprs[&self.graph.get_project(i)]),

@@ -1,5 +1,6 @@
 /// The un-interpreted tree, as parsed from a GPR file
 use std::fmt::Debug;
+use ustr::Ustr;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum PackageName {
@@ -16,7 +17,7 @@ pub enum PackageName {
 pub const PACKAGE_NAME_VARIANTS: usize = 7;
 
 impl PackageName {
-    pub fn new(lower: &String) -> Result<Self, String> {
+    pub fn new(lower: Ustr) -> Result<Self, String> {
         match lower.as_str() {
             "binder" => Ok(PackageName::Binder),
             "builder" => Ok(PackageName::Builder),
@@ -45,7 +46,7 @@ impl std::fmt::Display for PackageName {
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum StringOrOthers {
-    Str(String),
+    Str(Ustr),
     Others,
 }
 impl std::fmt::Display for StringOrOthers {
@@ -60,14 +61,14 @@ impl std::fmt::Display for StringOrOthers {
 /// An unqualified name, which could be either an attribute or variable
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum SimpleName {
-    Name(String), // Either variable or attribute name, lower-cased
-    BodySuffix(String),
-    Body(String),
+    Name(Ustr), // Either variable or attribute name, lower-cased
+    BodySuffix(Ustr),
+    Body(Ustr),
     DefaultSwitches(StringOrOthers),
     DotReplacement,
     ExcludedSourceFiles,
     ExecDir,
-    Executable(String),
+    Executable(Ustr),
     ExternallyBuilt,
     GlobalConfigurationPragmas,
     Languages,
@@ -86,8 +87,8 @@ pub enum SimpleName {
     SharedLibraryPrefix,
     SourceDirs,
     SourceFiles,
-    Spec(String),
-    SpecSuffix(String),
+    Spec(Ustr),
+    SpecSuffix(Ustr),
     SourceListFile,
     Switches(StringOrOthers),
     Target,
@@ -96,14 +97,14 @@ pub enum SimpleName {
 }
 impl SimpleName {
     /// Builds a variable name
-    pub fn new_var(lower: String) -> Result<Self, String> {
+    pub fn new_var(lower: Ustr) -> Result<Self, String> {
         Ok(SimpleName::Name(lower))
     }
 
     /// Builds an attribute name
     /// Properly detects whether an index was needed or not
     pub fn new_attr(
-        lower: String,
+        lower: Ustr,
         index: Option<StringOrOthers>,
     ) -> Result<Self, String> {
         match (lower.as_str(), index) {
@@ -239,7 +240,7 @@ impl std::fmt::Display for SimpleName {
 ///     project'name
 #[derive(Debug, PartialEq)]
 pub struct QualifiedName {
-    pub project: Option<String>, // None for current project or "Project'"
+    pub project: Option<Ustr>, // None for current project or "Project'"
     pub package: PackageName,
     pub name: SimpleName,
 }
@@ -248,14 +249,14 @@ impl QualifiedName {
     /// When we find a name in the source which an optional leading identifier,
     /// the latter could be either a project or a package.  This function will
     /// guess as needed.
-    pub fn from_two(prj_or_pkg: Option<String>, name: SimpleName) -> Self {
+    pub fn from_two(prj_or_pkg: Option<Ustr>, name: SimpleName) -> Self {
         match prj_or_pkg {
             None => QualifiedName {
                 project: prj_or_pkg,
                 package: PackageName::None,
                 name,
             },
-            Some(n1) => match PackageName::new(&n1) {
+            Some(n1) => match PackageName::new(n1) {
                 Ok(p) => QualifiedName {
                     project: None,
                     package: p,
@@ -296,7 +297,7 @@ pub enum Statement {
         body: StatementList,
     },
     TypeDecl {
-        typename: String,
+        typename: Ustr,
         valid: RawExpr,
     },
     AttributeDecl {
@@ -304,7 +305,7 @@ pub enum Statement {
         value: RawExpr,
     },
     VariableDecl {
-        name: String,
+        name: Ustr,
         typename: Option<QualifiedName>,
         expr: RawExpr,
     },
@@ -321,17 +322,21 @@ pub type StatementList = Vec<(u32, Statement)>;
 pub enum RawExpr {
     Empty,
     Others,
-    StaticString(String), //  doesn't include surrounding quotes
+    StaticString(Ustr), //  doesn't include surrounding quotes
     Name(QualifiedName),
     FuncCall((QualifiedName, Vec<RawExpr>)),
     Ampersand((Box<RawExpr>, Box<RawExpr>)),
     List(Vec<Box<RawExpr>>),
 }
 
+lazy_static::lazy_static! {
+    static ref EXTERNAL: Ustr = Ustr::from("external");
+}
+
 impl RawExpr {
     /// Whether the expression contains a call to external().
     /// Returns the name of the scenario variable
-    pub fn has_external(&self) -> Option<&String> {
+    pub fn has_external(&self) -> Option<Ustr> {
         match self {
             RawExpr::Ampersand((left, right)) => {
                 left.has_external().or_else(|| right.has_external())
@@ -345,9 +350,9 @@ impl RawExpr {
                 },
                 args,
             )) => {
-                if n == "external" {
+                if *n == *EXTERNAL {
                     match &args[0] {
-                        RawExpr::StaticString(s) => Some(s),
+                        RawExpr::StaticString(s) => Some(*s),
                         _ => panic!(
                             "First argument to external must \
                                  be static string"
@@ -371,7 +376,7 @@ impl RawExpr {
 
     /// Convert to a static string
     /// ??? Should use values.rs
-    pub fn as_static_str(self) -> Result<String, String> {
+    pub fn as_static_str(self) -> Result<Ustr, String> {
         match self {
             RawExpr::StaticString(s) => Ok(s),
             _ => Err("not a static string".into()),
@@ -382,9 +387,10 @@ impl RawExpr {
 #[cfg(test)]
 pub mod tests {
     use crate::rawexpr::RawExpr;
+    use ustr::Ustr;
 
     pub fn build_expr_str(s: &str) -> RawExpr {
-        RawExpr::StaticString(s.to_string())
+        RawExpr::StaticString(Ustr::from(s))
     }
 
     pub fn build_expr_list(s: &[&str]) -> RawExpr {

@@ -10,14 +10,30 @@ use crate::scenarios::{AllScenarios, Scenario, EMPTY_SCENARIO};
 use crate::settings::Settings;
 use crate::values::ExprValue;
 use std::collections::{HashMap, HashSet};
+use ustr::{Ustr, UstrSet};
 use walkdir::WalkDir;
+
+lazy_static::lazy_static! {
+    static ref CST_ADA: Ustr = Ustr::from("ada");
+    static ref CST_C: Ustr = Ustr::from("c");
+    static ref CST_CPP: Ustr = Ustr::from("c++");
+    static ref CST_X86_64_LINUX: Ustr = Ustr::from("x86_64-linux");
+    static ref CST_DOT: Ustr = Ustr::from(".");
+    static ref CST_MINUS: Ustr = Ustr::from("-");
+    static ref CST_EXT_ADS: Ustr = Ustr::from(".ads");
+    static ref CST_EXT_ADB: Ustr = Ustr::from(".adb");
+    static ref CST_EXT_H: Ustr = Ustr::from(".h");
+    static ref CST_EXT_C: Ustr = Ustr::from(".c");
+    static ref CST_EXT_HH: Ustr = Ustr::from(".hh");
+    static ref CST_EXT_CPP: Ustr = Ustr::from(".cpp");
+}
 
 /// A specific GPR file
 /// Such an object is independent of the scanner that created it, though it
 /// needs an Environment object to resolve paths.
 pub struct GPR {
     pub index: NodeIndex,
-    pub name: String,
+    pub name: Ustr,
     path: std::path::PathBuf,
     values: [HashMap<
         SimpleName, // variable or attribute name
@@ -26,10 +42,10 @@ pub struct GPR {
 }
 
 impl GPR {
-    pub fn new(path: &std::path::Path, index: NodeIndex, name: &str) -> Self {
+    pub fn new(path: &std::path::Path, index: NodeIndex, name: Ustr) -> Self {
         let mut s = Self {
             path: path.into(),
-            name: name.to_lowercase(),
+            name,
             index,
             values: Default::default(),
         };
@@ -37,43 +53,51 @@ impl GPR {
         // Declare the fallback value for "project'Target" attribute.
         s.values[PackageName::None as usize].insert(
             SimpleName::Target,
-            ExprValue::new_with_str("x86_64-linux"),
+            ExprValue::new_with_str(*CST_X86_64_LINUX),
         );
         s.values[PackageName::Linker as usize]
             .insert(SimpleName::LinkerOptions, ExprValue::new_with_list(&[]));
+        s.values[PackageName::None as usize].insert(
+            SimpleName::SourceDirs,
+            ExprValue::new_with_list(&[*CST_DOT]),
+        );
+        s.values[PackageName::None as usize].insert(
+            SimpleName::ObjectDir,
+            ExprValue::new_with_list(&[*CST_DOT]),
+        );
         s.values[PackageName::None as usize]
-            .insert(SimpleName::SourceDirs, ExprValue::new_with_list(&["."]));
-        s.values[PackageName::None as usize]
-            .insert(SimpleName::ObjectDir, ExprValue::new_with_list(&["."]));
-        s.values[PackageName::None as usize]
-            .insert(SimpleName::ExecDir, ExprValue::new_with_list(&["."]));
-        s.values[PackageName::None as usize]
-            .insert(SimpleName::Languages, ExprValue::new_with_list(&["ada"]));
-        s.values[PackageName::Naming as usize]
-            .insert(SimpleName::DotReplacement, ExprValue::new_with_str("-"));
-        s.values[PackageName::Naming as usize].insert(
-            SimpleName::SpecSuffix("ada".to_string()),
-            ExprValue::new_with_str(".ads"),
+            .insert(SimpleName::ExecDir, ExprValue::new_with_list(&[*CST_DOT]));
+        s.values[PackageName::None as usize].insert(
+            SimpleName::Languages,
+            ExprValue::new_with_list(&[*CST_ADA]),
         );
         s.values[PackageName::Naming as usize].insert(
-            SimpleName::BodySuffix("ada".to_string()),
-            ExprValue::new_with_str(".adb"),
+            SimpleName::DotReplacement,
+            ExprValue::new_with_str(*CST_MINUS),
         );
         s.values[PackageName::Naming as usize].insert(
-            SimpleName::SpecSuffix("c++".to_string()),
-            ExprValue::new_with_str(".hh"),
+            SimpleName::SpecSuffix(*CST_ADA),
+            ExprValue::new_with_str(*CST_EXT_ADS),
         );
         s.values[PackageName::Naming as usize].insert(
-            SimpleName::BodySuffix("c++".to_string()),
-            ExprValue::new_with_str(".cpp"),
+            SimpleName::BodySuffix(*CST_ADA),
+            ExprValue::new_with_str(*CST_EXT_ADB),
         );
         s.values[PackageName::Naming as usize].insert(
-            SimpleName::SpecSuffix("c".to_string()),
-            ExprValue::new_with_str(".h"),
+            SimpleName::SpecSuffix(*CST_CPP),
+            ExprValue::new_with_str(*CST_EXT_HH),
         );
         s.values[PackageName::Naming as usize].insert(
-            SimpleName::BodySuffix("c".to_string()),
-            ExprValue::new_with_str(".c"),
+            SimpleName::BodySuffix(*CST_CPP),
+            ExprValue::new_with_str(*CST_EXT_CPP),
+        );
+        s.values[PackageName::Naming as usize].insert(
+            SimpleName::SpecSuffix(*CST_C),
+            ExprValue::new_with_str(*CST_EXT_H),
+        );
+        s.values[PackageName::Naming as usize].insert(
+            SimpleName::BodySuffix(*CST_C),
+            ExprValue::new_with_str(*CST_EXT_C),
         );
         s
     }
@@ -126,7 +150,7 @@ impl GPR {
         &self,
         pkg: PackageName,
         name: &SimpleName,
-    ) -> &HashMap<Scenario, String> {
+    ) -> &HashMap<Scenario, Ustr> {
         match self.values[pkg as usize].get(name) {
             Some(ExprValue::Str(v)) => v,
             v => panic!("Wrong type for attribute {}{}, {:?}", pkg, name, v),
@@ -138,7 +162,7 @@ impl GPR {
         &self,
         pkg: PackageName,
         name: &SimpleName,
-    ) -> &HashMap<Scenario, Vec<String>> {
+    ) -> &HashMap<Scenario, Vec<Ustr>> {
         match self.values[pkg as usize].get(name) {
             Some(ExprValue::StrList(v)) => v,
             v => panic!("Wrong type for attribute {}{}, {:?}", pkg, name, v),
@@ -225,7 +249,7 @@ impl GPR {
     fn check_file_candidates(
         scenarios: &mut AllScenarios,
         scenario: Scenario,
-        lang: &str,
+        _lang: &str,
         directory: &Directory,
         spec_suffix: &str,
         files: &mut HashMap<std::path::PathBuf, Vec<Scenario>>,
@@ -261,11 +285,11 @@ impl GPR {
                 }
 
                 for lang in langs_in_scenar {
-                    let lowerlang = lang.to_lowercase();
+                    let lowerlang = Ustr::from(&lang.to_lowercase());
 
                     let spec_suffix = self.str_attr(
                         PackageName::Naming,
-                        &SimpleName::SpecSuffix(lowerlang.clone()),
+                        &SimpleName::SpecSuffix(lowerlang),
                     );
                     for (scenar_spec, spec_in_scenar) in spec_suffix {
                         let s = scenarios.intersection(s, *scenar_spec);
@@ -340,7 +364,7 @@ impl GPR {
     ) -> Result<&'a GPR, String> {
         match &name.project {
             None => Ok(self),
-            Some(c) if c == self.name.as_str() => Ok(self),
+            Some(c) if *c == self.name => Ok(self),
             Some(n) => dependencies
                 .iter()
                 .copied()
@@ -393,11 +417,7 @@ impl GPR {
                     current_scenario,
                     current_pkg,
                 )?;
-                self.declare(
-                    current_pkg,
-                    SimpleName::Name(typename.clone()),
-                    e,
-                )?;
+                self.declare(current_pkg, SimpleName::Name(*typename), e)?;
             }
 
             Statement::VariableDecl {
@@ -419,16 +439,12 @@ impl GPR {
                     // with a different set of values.
                     scenarios.try_add_variable(
                         ext,
-                        &valid
-                            .as_list()
-                            .iter()
-                            .map(|s| s.as_ref())
-                            .collect::<Vec<_>>(),
+                        valid.as_list().iter().copied().collect::<UstrSet>(),
                     )?;
 
                     self.declare(
                         current_pkg,
-                        SimpleName::Name(name.clone()),
+                        SimpleName::Name(*name),
                         ExprValue::new_with_variable(scenarios, ext, valid),
                     )?;
 
@@ -437,7 +453,7 @@ impl GPR {
                 } else {
                     self.declare(
                         current_pkg,
-                        SimpleName::Name(name.clone()),
+                        SimpleName::Name(*name),
                         ExprValue::new_with_raw(
                             expr,
                             self,

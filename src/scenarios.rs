@@ -89,7 +89,8 @@
 ///     s9|s10 = (mode=opt|lto,check=some|most) | (mode=opt|lto,check=none)
 ///            = (mode=opt|lto) = s2   => src3/b.adb
 use crate::scenario_variables::ScenarioVariable;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
+use ustr::{Ustr, UstrMap, UstrSet};
 
 /// Describes the set of scenario variables covered by a scenario.  For each
 /// known scenario variables, we either have:
@@ -97,13 +98,13 @@ use std::collections::{HashMap, HashSet};
 ///    * a vector of values: the scenario is only valid for those values
 #[derive(Default)]
 struct ScenarioDetails {
-    vars: HashMap<String, HashSet<String>>,
+    vars: UstrMap<UstrSet>,
 }
 
 impl ScenarioDetails {
     pub fn empty() -> Self {
-        let mut vars = HashMap::new();
-        vars.insert("-".to_string(), HashSet::new());
+        let mut vars = UstrMap::default();
+        vars.insert(Ustr::from("-"), UstrSet::default());
         Self { vars }
     }
 }
@@ -155,7 +156,7 @@ pub const EMPTY_SCENARIO: Scenario = Scenario(1);
 /// tree.  Each scenario is unique.
 
 pub struct AllScenarios {
-    variables: HashMap<String, ScenarioVariable>,
+    variables: HashMap<Ustr, ScenarioVariable>,
     scenarios: Vec<ScenarioDetails>, // indexed by Scenario
 }
 
@@ -201,21 +202,18 @@ impl AllScenarios {
     pub fn split(
         &mut self,
         scenario: Scenario,
-        variable: &str,
-        values: &[&str],
+        variable: Ustr,
+        values: UstrSet,
     ) -> Scenario {
         // Prepare the new details
         let mut tmp = self.scenarios[scenario.0].clone();
-        let mut old = tmp.vars.get_mut(variable);
+        let mut old = tmp.vars.get_mut(&variable);
         match old {
             None => {
-                tmp.vars.insert(
-                    variable.to_string(),
-                    values.iter().map(|s| s.to_string()).collect(),
-                );
+                tmp.vars.insert(variable, values);
             }
             Some(ref mut v) => {
-                v.retain(|old| values.iter().any(|v| v == old));
+                v.retain(|old| values.iter().any(|newv| old == newv));
                 if v.is_empty() {
                     return EMPTY_SCENARIO;
                 }
@@ -238,10 +236,7 @@ impl AllScenarios {
             let mut old = d1.vars.get_mut(name);
             match old {
                 None => {
-                    d1.vars.insert(
-                        name.to_string(),
-                        vals.iter().map(|s| s.to_string()).collect(),
-                    );
+                    d1.vars.insert(*name, vals.clone());
                 }
                 Some(ref mut v) => {
                     v.retain(|old| vals.iter().any(|v| v == old));
@@ -289,7 +284,7 @@ impl AllScenarios {
         let mut d1 = self.scenarios[s1.0].clone();
         let d2 = &self.scenarios[s2.0];
 
-        let mut to_remove: Option<String> = None;
+        let mut to_remove: Option<Ustr> = None;
 
         for (name, value) in &mut d1.vars {
             match d2.vars.get(name) {
@@ -302,7 +297,7 @@ impl AllScenarios {
                     // accepted all possible values of the variable.  To
                     // represent this, we remove the entry for the variable.
                     diffcount += 1;
-                    to_remove = Some(name.clone());
+                    to_remove = Some(*name);
                 }
                 Some(value2) if value != value2 => {
                     if diffcount > 0 {
@@ -311,7 +306,7 @@ impl AllScenarios {
 
                     diffcount += 1;
                     for v in value2 {
-                        value.insert(v.clone());
+                        value.insert(*v);
                     }
 
                     // If a variable now has all possible values in the
@@ -319,7 +314,7 @@ impl AllScenarios {
                     // (e.g. MODE=debug|optimize|lto is the same as not checking
                     // MODE at all).
                     if value.len() == self.variables[name].list_valid().len() {
-                        to_remove = Some(name.clone());
+                        to_remove = Some(*name);
                     }
                 }
                 Some(_) => {}
@@ -370,19 +365,17 @@ impl AllScenarios {
     /// declaring the same set of values
     pub fn try_add_variable(
         &mut self,
-        name: &str,
-        valid: &[&str],
+        name: Ustr,
+        valid: UstrSet,
     ) -> Result<(), String> {
-        match self.variables.get(name) {
+        match self.variables.get(&name) {
             None => {
-                self.variables.insert(
-                    name.to_owned(),
-                    ScenarioVariable::new(name, valid),
-                );
+                self.variables
+                    .insert(name, ScenarioVariable::new(name, valid));
                 Ok(())
             }
             Some(oldvar) => {
-                if oldvar.has_same_valid(valid) {
+                if oldvar.has_same_valid(&valid) {
                     Ok(())
                 } else {
                     let mut v = String::new();
@@ -390,7 +383,7 @@ impl AllScenarios {
                         if !v.is_empty() {
                             v.push_str(", ");
                         }
-                        v.push_str(s);
+                        v.push_str(s.as_str());
                     }
 
                     Err(format!(
@@ -417,21 +410,46 @@ impl AllScenarios {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
+    use crate::scenario_variables::tests::build_set;
     use crate::scenarios::{AllScenarios, Scenario};
+    use ustr::Ustr;
+
+    /// Restrict the scenario to a subset of values for the given variables.
+    /// This either returns an existing matching scenario, or a new one
+    pub fn split(
+        scenarios: &mut AllScenarios,
+        scenario: Scenario,
+        variable: &str,
+        values: &[&str],
+    ) -> Scenario {
+        scenarios.split(scenario, Ustr::from(variable), build_set(values))
+    }
+
+    pub fn try_add_variable(
+        scenarios: &mut AllScenarios,
+        name: &str,
+        valid: &[&str],
+    ) -> Result<(), String> {
+        scenarios.try_add_variable(Ustr::from(name), build_set(valid))
+    }
 
     #[test]
     fn create_scenario() -> Result<(), String> {
         let mut scenarios = AllScenarios::default();
-        scenarios.try_add_variable("MODE", &["debug", "optimize", "lto"])?;
-        scenarios.try_add_variable("CHECK", &["none", "some", "most"])?;
+        try_add_variable(
+            &mut scenarios,
+            "MODE",
+            &["debug", "optimize", "lto"],
+        )?;
+        try_add_variable(&mut scenarios, "CHECK", &["none", "some", "most"])?;
 
         let s0 = Scenario::default();
         assert_eq!(scenarios.scenarios.get(s0.0).unwrap().to_string(), "");
 
         //  case Mode is
         //     when "debug" => ...
-        let s2 = scenarios.split(s0, "MODE", &["debug"]);
+        let s2 = split(&mut scenarios, s0, "MODE", &["debug"]);
         assert_eq!(s2.0, 2);
         assert_eq!(
             scenarios.scenarios.get(s2.0).unwrap().to_string(),
@@ -440,24 +458,24 @@ mod tests {
 
         //  when others  => for Source_Dirs use ("src1", "src3");
         //     case Check is
-        let s3 = scenarios.split(s0, "MODE", &["optimize", "lto"]);
+        let s3 = split(&mut scenarios, s0, "MODE", &["optimize", "lto"]);
         assert_eq!(s3.0, 3);
         assert_eq!(
             scenarios.scenarios.get(s3.0).unwrap().to_string(),
             "MODE=lto|optimize,"
         );
 
-        let same = scenarios.split(s0, "MODE", &["optimize", "lto"]);
+        let same = split(&mut scenarios, s0, "MODE", &["optimize", "lto"]);
         assert_eq!(same.0, 3);
 
-        let s4 = scenarios.split(s3, "CHECK", &["most"]);
+        let s4 = split(&mut scenarios, s3, "CHECK", &["most"]);
         assert_eq!(s4.0, 4);
         assert_eq!(
             scenarios.scenarios.get(s4.0).unwrap().to_string(),
             "CHECK=most,MODE=lto|optimize,"
         );
 
-        let s5 = scenarios.split(s3, "CHECK", &["none", "some"]);
+        let s5 = split(&mut scenarios, s3, "CHECK", &["none", "some"]);
         assert_eq!(s5.0, 5);
         assert_eq!(
             scenarios.scenarios.get(s5.0).unwrap().to_string(),
@@ -466,7 +484,7 @@ mod tests {
 
         //   case Check is
         //      when "none" => for Excluded_Source_Files use ("a.ads");
-        let s6 = scenarios.split(s0, "CHECK", &["none"]);
+        let s6 = split(&mut scenarios, s0, "CHECK", &["none"]);
         assert_eq!(s6.0, 6);
         assert_eq!(
             scenarios.scenarios.get(s6.0).unwrap().to_string(),
@@ -474,7 +492,7 @@ mod tests {
         );
 
         //      when others => null;
-        let s7 = scenarios.split(s0, "CHECK", &["some", "most"]);
+        let s7 = split(&mut scenarios, s0, "CHECK", &["some", "most"]);
         assert_eq!(s7.0, 7);
         assert_eq!(
             scenarios.scenarios.get(s7.0).unwrap().to_string(),
@@ -487,17 +505,21 @@ mod tests {
     #[test]
     fn test_union() -> Result<(), String> {
         let mut scenarios = AllScenarios::default();
-        scenarios.try_add_variable("MODE", &["debug", "optimize", "lto"])?;
-        scenarios.try_add_variable("CHECK", &["none", "some", "most"])?;
+        try_add_variable(
+            &mut scenarios,
+            "MODE",
+            &["debug", "optimize", "lto"],
+        )?;
+        try_add_variable(&mut scenarios, "CHECK", &["none", "some", "most"])?;
         let s0 = Scenario::default();
 
         //  s3=[mode=debug,    check=some]
         //  s5=[mode=optimize, check=some]
         //     => s6=[mode=debug|optimize, check=some]
-        let s2 = scenarios.split(s0, "MODE", &["debug"]);
-        let s3 = scenarios.split(s2, "CHECK", &["some"]);
-        let s4 = scenarios.split(s0, "MODE", &["optimize"]);
-        let s5 = scenarios.split(s4, "CHECK", &["some"]);
+        let s2 = split(&mut scenarios, s0, "MODE", &["debug"]);
+        let s3 = split(&mut scenarios, s2, "CHECK", &["some"]);
+        let s4 = split(&mut scenarios, s0, "MODE", &["optimize"]);
+        let s5 = split(&mut scenarios, s4, "CHECK", &["some"]);
         let s6 = scenarios.union(s3, s5);
         assert!(s6.is_some());
         assert_eq!(s6.unwrap().0, 6);
@@ -517,8 +539,8 @@ mod tests {
         //  s3=[mode=debug, check=some]
         //  s8=[mode=lto,   check=most]
         //     => no merging, they differ on more than one variable
-        let s6 = scenarios.split(s0, "MODE", &["lto"]);
-        let s7 = scenarios.split(s6, "CHECK", &["most"]);
+        let s6 = split(&mut scenarios, s0, "MODE", &["lto"]);
+        let s7 = split(&mut scenarios, s6, "CHECK", &["most"]);
         let res = scenarios.union(s2, s7);
         assert!(res.is_none());
         let res = scenarios.union(s7, s2); // reverse order
@@ -544,17 +566,17 @@ mod tests {
         );
 
         // Merging same value multiple times has no impact
-        let s2 = scenarios.split(s0, "MODE", &["debug"]);
-        let s3 = scenarios.split(s0, "MODE", &["optimize"]);
+        let s2 = split(&mut scenarios, s0, "MODE", &["debug"]);
+        let s3 = split(&mut scenarios, s0, "MODE", &["optimize"]);
         let s4 = scenarios.union(s2, s3).unwrap();
         let res = scenarios.union(s4, s2).unwrap();
         assert_eq!(scenarios.debug(res), "s9=MODE=debug|optimize,",);
 
         // Merging all possible values for a variable should remote it from
         // the union altogether.
-        let s2 = scenarios.split(s0, "MODE", &["debug"]);
-        let s3 = scenarios.split(s0, "MODE", &["optimize"]);
-        let s4 = scenarios.split(s0, "MODE", &["lto"]);
+        let s2 = split(&mut scenarios, s0, "MODE", &["debug"]);
+        let s3 = split(&mut scenarios, s0, "MODE", &["optimize"]);
+        let s4 = split(&mut scenarios, s0, "MODE", &["lto"]);
         let s5 = scenarios.union(s2, s3).unwrap();
         let res = scenarios.union(s5, s4).unwrap();
         assert_eq!(scenarios.debug(res), "s0=",);
@@ -566,14 +588,18 @@ mod tests {
     #[test]
     fn test_intersection() -> Result<(), String> {
         let mut scenarios = AllScenarios::default();
-        scenarios.try_add_variable("MODE", &["debug", "optimize", "lto"])?;
-        scenarios.try_add_variable("CHECK", &["none", "some", "most"])?;
+        try_add_variable(
+            &mut scenarios,
+            "MODE",
+            &["debug", "optimize", "lto"],
+        )?;
+        try_add_variable(&mut scenarios, "CHECK", &["none", "some", "most"])?;
         let s0 = Scenario::default();
 
         // s0=everything
         // s1=MODE=debug
         //    => s1
-        let s1 = scenarios.split(s0, "MODE", &["debug"]);
+        let s1 = split(&mut scenarios, s0, "MODE", &["debug"]);
         let res = scenarios.intersection(s0, s1);
         assert_eq!(res, s1);
         let res = scenarios.intersection(s1, s0); // reverse order
@@ -582,7 +608,7 @@ mod tests {
         // s1=MODE=debug
         // s2=MODE=debug,CHECK=some
         //    => s2
-        let s2 = scenarios.split(s1, "CHECK", &["some"]);
+        let s2 = split(&mut scenarios, s1, "CHECK", &["some"]);
         let res = scenarios.intersection(s1, s2);
         assert_eq!(res, s2);
         let res = scenarios.intersection(s2, s1); // reverse order
@@ -591,7 +617,7 @@ mod tests {
         // s2=MODE=debug,CHECK=some
         // s3=CHECK=none|some
         //    => s2=MODE=debug,CHECK=some
-        let s3 = scenarios.split(s0, "CHECK", &["none", "some"]);
+        let s3 = split(&mut scenarios, s0, "CHECK", &["none", "some"]);
         let res = scenarios.intersection(s2, s3);
         assert_eq!(res, s2);
         let res = scenarios.intersection(s3, s2); // reverse order
@@ -600,12 +626,13 @@ mod tests {
         // s4=MODE=debug|optimize,CHECK=some
         // s5=MODE=lto|optimize,CHECK=some|most
         //    =>  s6=MODE=optimize,CHECK=some
-        let s4_step1 = scenarios.split(s0, "MODE", &["debug", "optimize"]);
-        let s4 = scenarios.split(s4_step1, "CHECK", &["some"]);
-        let s5_step1 = scenarios.split(s0, "MODE", &["lto", "optimize"]);
-        let s5 = scenarios.split(s5_step1, "CHECK", &["some", "most"]);
-        let s6_step1 = scenarios.split(s0, "MODE", &["optimize"]);
-        let s6 = scenarios.split(s6_step1, "CHECK", &["some"]);
+        let s4_step1 =
+            split(&mut scenarios, s0, "MODE", &["debug", "optimize"]);
+        let s4 = split(&mut scenarios, s4_step1, "CHECK", &["some"]);
+        let s5_step1 = split(&mut scenarios, s0, "MODE", &["lto", "optimize"]);
+        let s5 = split(&mut scenarios, s5_step1, "CHECK", &["some", "most"]);
+        let s6_step1 = split(&mut scenarios, s0, "MODE", &["optimize"]);
+        let s6 = split(&mut scenarios, s6_step1, "CHECK", &["some"]);
         let res = scenarios.intersection(s4, s5);
         assert_eq!(res, s6);
         let res = scenarios.intersection(s5, s4); // reverse order

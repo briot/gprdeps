@@ -71,27 +71,27 @@ impl<'a> Scanner<'a> {
         let n = self.safe_next()?;
         match n.kind {
             TokenKind::Others => Ok(StringOrOthers::Others),
-            TokenKind::String(s) => Ok(StringOrOthers::Str(s.to_string())),
+            TokenKind::String(s) => Ok(StringOrOthers::Str(s)),
             _ => Err(format!("Expected String or others, got {}", n)),
         }
     }
 
     /// Consumes the next token from the lexer, and expects it to be an identifier
     /// which is returned.  The identifier is always lower-cased.
-    fn expect_identifier(&mut self) -> Result<String, String> {
+    fn expect_identifier(&mut self) -> Result<Ustr, String> {
         let n = self.safe_next()?;
         match n.kind {
-            TokenKind::Identifier(s) => Ok(s.to_string()),
+            TokenKind::Identifier(s) => Ok(s),
             _ => Err(format!("Expected Identifier, got {}", n)),
         }
     }
 
     // Expect either "Project'" or "<name>."
-    fn expect_project_name(&mut self) -> Result<Option<String>, String> {
+    fn expect_project_name(&mut self) -> Result<Option<Ustr>, String> {
         let n = self.safe_next()?;
         match n.kind {
             TokenKind::Project => Ok(None),
-            TokenKind::Identifier(s) => Ok(Some(s.to_string())),
+            TokenKind::Identifier(s) => Ok(Some(s)),
             _ => Err(format!("Unexpected project name {}", n))?,
         }
     }
@@ -126,7 +126,7 @@ impl<'a> Scanner<'a> {
                         let name3 = self.expect_identifier()?;
                         Ok(QualifiedName {
                             project: name1,
-                            package: PackageName::new(&name2)?,
+                            package: PackageName::new(name2)?,
                             name: SimpleName::new_var(name3)?,
                         })
                     }
@@ -134,7 +134,7 @@ impl<'a> Scanner<'a> {
                         let _ = self.lex.next(); //  consume the tick
                         Ok(QualifiedName {
                             project: name1,
-                            package: PackageName::new(&name2)?,
+                            package: PackageName::new(name2)?,
                             name: self.expect_unqualified_attrname()?,
                         })
                     }
@@ -276,14 +276,14 @@ impl<'a> Scanner<'a> {
         let expr = self.parse_expression()?;
         self.expect(TokenKind::Semicolon)?;
         Ok(Statement::TypeDecl {
-            typename: typename.to_string(),
+            typename,
             valid: expr,
         })
     }
 
     fn parse_package_declaration(&mut self) -> Result<Statement, String> {
         self.expect(TokenKind::Package)?;
-        let name = PackageName::new(&self.expect_identifier()?)?;
+        let name = PackageName::new(self.expect_identifier()?)?;
         let mut extends: Option<QualifiedName> = None;
         let mut renames: Option<QualifiedName> = None;
         let mut body = Vec::new();
@@ -305,7 +305,7 @@ impl<'a> Scanner<'a> {
                             (_, TokenKind::End) => {
                                 let _ = self.lex.next(); //  consume
                                 let endname = PackageName::new(
-                                    &self.expect_identifier()?,
+                                    self.expect_identifier()?,
                                 )?;
                                 if name != endname {
                                     Err(format!(
@@ -403,7 +403,7 @@ impl<'a> Scanner<'a> {
                                 Err("Unexpected end of file".to_string())?
                             }
                             TokenKind::String(s) => {
-                                values.push(StringOrOthers::Str(s.to_string()))
+                                values.push(StringOrOthers::Str(s))
                             }
                             TokenKind::Others => {
                                 self.expect(TokenKind::Arrow)?;
@@ -530,7 +530,7 @@ impl<'a> Scanner<'a> {
             match self.lex.peek() {
                 TokenKind::EOF => Err("Unexpected end of file".to_string())?,
                 TokenKind::String(_) => {
-                    let s = self.expect_str()?.to_string();
+                    let s = self.expect_str()?;
                     result = result.ampersand(RawExpr::StaticString(s));
                 }
                 TokenKind::Identifier(_) | TokenKind::Project => {
@@ -603,6 +603,7 @@ mod tests {
         PackageName, QualifiedName, RawExpr, SimpleName, Statement,
         StatementList, StringOrOthers,
     };
+    use ustr::Ustr;
 
     fn do_check<F>(s: &str, check: F)
     where
@@ -651,7 +652,7 @@ mod tests {
                     Statement::AttributeDecl {
                         name: SimpleName::SourceFiles,
                         value: RawExpr::List(vec![Box::new(
-                            RawExpr::StaticString("a.adb".to_string()),
+                            RawExpr::StaticString(Ustr::from("a.adb")),
                         )]),
                     },
                 ),
@@ -704,26 +705,26 @@ mod tests {
                 (
                     2,
                     Statement::TypeDecl {
-                        typename: "mode_type".to_string(),
+                        typename: Ustr::from("mode_type"),
                         valid: build_expr_list(&["Debug", "Optimize", "lto"]),
                     },
                 ),
                 (
                     3,
                     Statement::VariableDecl {
-                        name: "mode".to_string(),
+                        name: Ustr::from("mode"),
                         typename: Some(QualifiedName {
                             project: None,
                             package: PackageName::None,
-                            name: SimpleName::Name("mode_type".to_string()),
+                            name: SimpleName::Name(Ustr::from("mode_type")),
                         }),
                         expr: RawExpr::FuncCall((
                             QualifiedName {
                                 project: None,
                                 package: PackageName::None,
-                                name: SimpleName::Name("external".to_string()),
+                                name: SimpleName::Name(Ustr::from("external")),
                             },
-                            vec![RawExpr::StaticString("MODE".to_string())],
+                            vec![RawExpr::StaticString(Ustr::from("MODE"))],
                         )),
                     },
                 ),

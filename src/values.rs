@@ -3,32 +3,33 @@ use crate::rawexpr::{PackageName, QualifiedName, RawExpr, SimpleName};
 use crate::scenarios::{AllScenarios, Scenario};
 use std::collections::HashMap;
 use std::collections::HashSet;
+use ustr::{Ustr, UstrMap, UstrSet};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ExprValue {
-    Str(HashMap<Scenario, String>),
-    StrList(HashMap<Scenario, Vec<String>>),
+    Str(HashMap<Scenario, Ustr>),
+    StrList(HashMap<Scenario, Vec<Ustr>>),
     PathList(HashMap<Scenario, Vec<std::path::PathBuf>>),
 }
 
 impl ExprValue {
     /// An expression that always has the same static value for all scenarios
-    pub fn new_with_str(s: &str) -> Self {
+    pub fn new_with_str(s: Ustr) -> Self {
         ExprValue::new_with_str_and_scenario(s, Scenario::default())
     }
 
-    pub fn new_with_str_and_scenario(s: &str, scenario: Scenario) -> Self {
+    pub fn new_with_str_and_scenario(s: Ustr, scenario: Scenario) -> Self {
         let mut m = HashMap::new();
-        m.insert(scenario, s.to_string());
+        m.insert(scenario, s);
         ExprValue::Str(m)
     }
 
     // An expression value created as an empty list
-    pub fn new_with_list(list: &[&str]) -> Self {
+    pub fn new_with_list(list: &[Ustr]) -> Self {
         let mut m = HashMap::new();
         m.insert(
             Scenario::default(),
-            list.iter().map(|s| s.to_string()).collect(),
+            list.iter().map(|s| Ustr::from(s)).collect(),
         );
 
         ExprValue::StrList(m)
@@ -46,28 +47,30 @@ impl ExprValue {
     /// This is used to get the possible values of scenario variables
     pub fn new_with_variable(
         scenarios: &mut AllScenarios,
-        varname: &str,
+        varname: Ustr,
         type_values: &ExprValue,
     ) -> Self {
         let valid = type_values.as_list(); // panic if not a single list
         let mut m = HashMap::new();
         let s0 = Scenario::default();
         for v in valid {
-            let s1 = scenarios.split(s0, varname, &[&v]);
-            m.insert(s1, v.clone());
+            let mut onevalue = UstrSet::default();
+            onevalue.insert(*v);
+            let s1 = scenarios.split(s0, varname, onevalue);
+            m.insert(s1, *v);
         }
         ExprValue::Str(m)
     }
 
     /// Assumes the expression is a static string valid for all scenarios and
     /// return it.
-    pub fn as_string(&self) -> &String {
+    pub fn as_string(&self) -> Ustr {
         match self {
             ExprValue::Str(s) => {
                 if s.len() != 1 {
                     panic!("Expected no variants {:?}", self);
                 }
-                &s[&Scenario::default()]
+                s[&Scenario::default()]
             }
             _ => panic!("Expected a string {:?}", self),
         }
@@ -76,7 +79,7 @@ impl ExprValue {
     /// The expression is assumed to have a single value, for the default
     /// scenario (think of types).  Return that value.
     /// Otherwise panic
-    pub fn as_list(&self) -> &Vec<String> {
+    pub fn as_list(&self) -> &Vec<Ustr> {
         match self {
             ExprValue::StrList(v) => &v[&Scenario::default()],
             _ => panic!("Expected a list {:?}", self),
@@ -94,14 +97,12 @@ impl ExprValue {
 
     /// Given a scenario variable, as setup via new_with_variable, prepares
     /// a mapping from one string value to the corresponding scenario.
-    pub fn prepare_case_stmt(
-        &self,
-    ) -> Result<HashMap<String, Scenario>, String> {
+    pub fn prepare_case_stmt(&self) -> Result<UstrMap<Scenario>, String> {
         match self {
             ExprValue::Str(per_scenario) => {
-                let mut result = HashMap::new();
+                let mut result = UstrMap::default();
                 for (s, v) in per_scenario {
-                    result.insert(v.clone(), *s);
+                    result.insert(*v, *s);
                 }
                 Ok(result)
             }
@@ -149,7 +150,7 @@ impl ExprValue {
                         ),
                     };
                     let default = match args.get(1) {
-                        None => ExprValue::new_with_str(""),
+                        None => ExprValue::new_with_str(Ustr::from("")),
                         Some(expr) => ExprValue::new_with_raw(
                             expr,
                             gpr,
@@ -159,8 +160,8 @@ impl ExprValue {
                             current_pkg,
                         )?,
                     };
-                    match &std::env::var(varname) {
-                        Ok(v) => Ok(ExprValue::new_with_str(v)),
+                    match &std::env::var(varname.as_str()) {
+                        Ok(v) => Ok(ExprValue::new_with_str(Ustr::from(v))),
                         Err(_) => Ok(default),
                     }
                 }
@@ -173,10 +174,10 @@ impl ExprValue {
                 Ok(gpr.lookup(q, gpr_deps, current_pkg)?.clone())
             }
             RawExpr::StaticString(s) => {
-                Ok(ExprValue::new_with_str_and_scenario(s, scenar))
+                Ok(ExprValue::new_with_str_and_scenario(*s, scenar))
             }
             RawExpr::List(ls) => {
-                let mut m: HashMap<Scenario, Vec<String>> = HashMap::new();
+                let mut m: HashMap<Scenario, Vec<Ustr>> = HashMap::new();
                 m.insert(scenar, vec![]);
                 for expr in ls {
                     // Each element of the list is an expression, which could
@@ -205,7 +206,7 @@ impl ExprValue {
                             for (s2, v2) in per_scenario {
                                 for (s1, v1) in &m {
                                     let mut v = v1.clone();
-                                    v.push(v2.clone());
+                                    v.push(v2);
                                     new_m.insert(
                                         scenars.intersection(*s1, s2),
                                         v,
@@ -249,9 +250,12 @@ impl ExprValue {
                                 // mode that is the intersection of s1 and s2.
                                 // In other modes, v1 or v2 are considered the
                                 // empty string.
-                                let mut res = v1.clone();
-                                res.push_str(v2);
-                                m.insert(scenars.intersection(s1, *s2), res);
+                                let mut res = v1.as_str().to_string();
+                                res.push_str(v2.as_str());
+                                m.insert(
+                                    scenars.intersection(s1, *s2),
+                                    Ustr::from(&res),
+                                );
                             }
                         }
                         Ok(ExprValue::Str(m))
@@ -267,7 +271,7 @@ impl ExprValue {
                         for (s1, v1) in ls {
                             for (s2, v2) in &rs {
                                 let mut res = v1.clone();
-                                res.push(v2.clone());
+                                res.push(*v2);
                                 m.insert(scenars.intersection(s1, *s2), res);
                             }
                         }
@@ -363,14 +367,19 @@ mod tests {
     use crate::graph::NodeIndex;
     use crate::rawexpr::tests::{build_expr_list, build_expr_str};
     use crate::rawexpr::{PackageName, QualifiedName, RawExpr, SimpleName};
+    use crate::scenarios::tests::{split, try_add_variable};
     use crate::scenarios::{AllScenarios, Scenario};
     use crate::values::ExprValue;
     use std::collections::HashMap;
+    use ustr::Ustr;
 
     #[test]
     fn test_eval() -> Result<(), String> {
-        let mut gpr =
-            GPR::new(std::path::Path::new("/"), NodeIndex::default(), "dummy");
+        let mut gpr = GPR::new(
+            std::path::Path::new("/"),
+            NodeIndex::default(),
+            Ustr::from("dummy"),
+        );
         let mut scenars = AllScenarios::default();
         let scenar = Scenario::default();
         let pkg = PackageName::None;
@@ -386,7 +395,7 @@ mod tests {
                 scenar,
                 pkg
             )?,
-            ExprValue::new_with_str("value"),
+            ExprValue::new_with_str(Ustr::from("value")),
         );
 
         // Concatenate two strings
@@ -400,7 +409,7 @@ mod tests {
                 scenar,
                 pkg
             )?,
-            ExprValue::new_with_str("valuesuffix"),
+            ExprValue::new_with_str(Ustr::from("valuesuffix")),
         );
 
         // Evaluate a list of strings
@@ -414,7 +423,7 @@ mod tests {
                 scenar,
                 pkg
             )?,
-            ExprValue::new_with_list(&["val1", "val2"])
+            ExprValue::new_with_list(&[Ustr::from("val1"), Ustr::from("val2")])
         );
 
         // Evaluate a list of expressions
@@ -433,7 +442,10 @@ mod tests {
                 scenar,
                 pkg
             )?,
-            ExprValue::new_with_list(&["valuesuffix", "val2"]),
+            ExprValue::new_with_list(&[
+                Ustr::from("valuesuffix"),
+                Ustr::from("val2")
+            ]),
         );
 
         // Concatenate list and string
@@ -448,7 +460,11 @@ mod tests {
                 scenar,
                 pkg
             )?,
-            ExprValue::new_with_list(&["val1", "val2", "value"]),
+            ExprValue::new_with_list(&[
+                Ustr::from("val1"),
+                Ustr::from("val2"),
+                Ustr::from("value")
+            ]),
         );
 
         // Concatenate two lists
@@ -463,22 +479,27 @@ mod tests {
                 scenar,
                 pkg
             )?,
-            ExprValue::new_with_list(&["val1", "val2", "val3", "val4"]),
+            ExprValue::new_with_list(&[
+                Ustr::from("val1"),
+                Ustr::from("val2"),
+                Ustr::from("val3"),
+                Ustr::from("val4")
+            ]),
         );
 
         // Evaluate a qualified name
 
         gpr.declare(
             PackageName::None,
-            SimpleName::Name("var1".to_string()),
-            ExprValue::new_with_str("val1"),
+            SimpleName::Name(Ustr::from("var1")),
+            ExprValue::new_with_str(Ustr::from("val1")),
         )?;
 
         let expr =
             build_expr_str("value").ampersand(RawExpr::Name(QualifiedName {
                 project: None,
                 package: PackageName::None,
-                name: SimpleName::Name("var1".to_string()),
+                name: SimpleName::Name(Ustr::from("var1")),
             }));
         assert_eq!(
             ExprValue::new_with_raw(
@@ -489,7 +510,7 @@ mod tests {
                 scenar,
                 pkg
             )?,
-            ExprValue::new_with_str("valueval1"),
+            ExprValue::new_with_str(Ustr::from("valueval1")),
         );
 
         Ok(())
@@ -497,17 +518,20 @@ mod tests {
 
     #[test]
     fn test_eval_scenario() -> Result<(), String> {
-        let mut gpr =
-            GPR::new(std::path::Path::new("/"), NodeIndex::default(), "dummy");
+        let mut gpr = GPR::new(
+            std::path::Path::new("/"),
+            NodeIndex::default(),
+            Ustr::from("dummy"),
+        );
         let mut scenars = AllScenarios::default();
-        scenars.try_add_variable("MODE", &["debug", "optimize", "lto"])?;
-        scenars.try_add_variable("CHECK", &["none", "some", "most"])?;
+        try_add_variable(&mut scenars, "MODE", &["debug", "optimize", "lto"])?;
+        try_add_variable(&mut scenars, "CHECK", &["none", "some", "most"])?;
         let pkg = PackageName::None;
         let s0 = Scenario::default();
-        let s2 = scenars.split(s0, "MODE", &["debug", "optimize"]);
-        let s3 = scenars.split(s0, "MODE", &["lto"]);
-        let s4 = scenars.split(s0, "CHECK", &["some"]);
-        let s5 = scenars.split(s0, "CHECK", &["most", "none"]);
+        let s2 = split(&mut scenars, s0, "MODE", &["debug", "optimize"]);
+        let s3 = split(&mut scenars, s0, "MODE", &["lto"]);
+        let s4 = split(&mut scenars, s0, "CHECK", &["some"]);
+        let s5 = split(&mut scenars, s0, "CHECK", &["most", "none"]);
 
         // Assume a variable has different values in two modes
         //     s2=[MODE=debug|optimize]      => "val2"
@@ -533,7 +557,7 @@ mod tests {
         )?;
         gpr.declare(
             PackageName::None,
-            SimpleName::Name("var1".to_string()),
+            SimpleName::Name(Ustr::from("var1")),
             var1,
         )?;
 
@@ -562,7 +586,7 @@ mod tests {
 
         gpr.declare(
             PackageName::None,
-            SimpleName::Name("var2".to_string()),
+            SimpleName::Name(Ustr::from("var2")),
             var2,
         )?;
 
@@ -571,30 +595,30 @@ mod tests {
         //   s2*s5=s8=[MODE=debug|optimize, CHECK=most|none] => "val2val5"
         //   s3*s4=s5=[MODE=lto,            CHECK=some]      => "val3val4"
         //   s3*s4=s6=[MODE=lto,            CHECK=most|none] => "val3val5"
-        let s5 = scenars.split(s3, "CHECK", &["some"]);
-        let s6 = scenars.split(s3, "CHECK", &["most", "none"]);
-        let s7 = scenars.split(s2, "CHECK", &["some"]);
-        let s8 = scenars.split(s2, "CHECK", &["most", "none"]);
+        let s5 = split(&mut scenars, s3, "CHECK", &["some"]);
+        let s6 = split(&mut scenars, s3, "CHECK", &["most", "none"]);
+        let s7 = split(&mut scenars, s2, "CHECK", &["some"]);
+        let s8 = split(&mut scenars, s2, "CHECK", &["most", "none"]);
 
         let var1_ref = RawExpr::Name(QualifiedName {
             project: None,
             package: PackageName::None,
-            name: SimpleName::Name("var1".to_string()),
+            name: SimpleName::Name(Ustr::from("var1")),
         });
         let var2_ref = RawExpr::Name(QualifiedName {
             project: None,
             package: PackageName::None,
-            name: SimpleName::Name("var2".to_string()),
+            name: SimpleName::Name(Ustr::from("var2")),
         });
         let concat = var1_ref.ampersand(var2_ref);
         let concat_expr =
             ExprValue::new_with_raw(&concat, &gpr, &[], &mut scenars, s0, pkg)?;
 
         let mut expected = HashMap::new();
-        expected.insert(s7, "val2val4".to_string());
-        expected.insert(s8, "val2val5".to_string());
-        expected.insert(s5, "val3val4".to_string());
-        expected.insert(s6, "val3val5".to_string());
+        expected.insert(s7, Ustr::from("val2val4"));
+        expected.insert(s8, Ustr::from("val2val5"));
+        expected.insert(s5, Ustr::from("val3val4"));
+        expected.insert(s6, Ustr::from("val3val5"));
         assert_eq!(concat_expr, ExprValue::Str(expected));
 
         Ok(())

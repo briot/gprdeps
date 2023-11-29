@@ -1,17 +1,17 @@
+use crate::graph::NodeIndex;
+use crate::rawexpr::StatementList;
 /// A GPR file that hasn't been processed yet.  All we store here is the info we
 /// extracted from the file itself, but we did not resolve paths, for instance.
 /// Such an object is only valid as long as the scanner that generates it, since
 /// it references memory from that scanner directly.
-
 use std::path::PathBuf;
-use crate::graph::NodeIndex;
-use crate::rawexpr::StatementList;
+use ustr::Ustr;
 
 #[derive(Default)]
 pub struct RawGPR {
     pub path: std::path::PathBuf,
     pub imported: Vec<NodeIndex>,
-    pub name: String,
+    pub name: Ustr,
     pub is_abstract: bool,
     pub is_aggregate: bool,
     pub is_library: bool,
@@ -40,7 +40,7 @@ impl RawGPR {
         p.set_extension("gpr");
         match std::fs::canonicalize(p) {
             Err(e) => Err(format!("{} {}", e, path)),
-            Ok(p)  => Ok(p),
+            Ok(p) => Ok(p),
         }
     }
 }

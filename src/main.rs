@@ -23,4 +23,8 @@ fn main() {
     if let Err(e) = env.parse_all(Path::new("/home/briot/dbc/deepblue")) {
         println!("ERROR: {}", e);
     }
+
+    unsafe {
+        ustr::_clear_cache();
+    }
 }

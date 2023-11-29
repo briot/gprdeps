@@ -16,9 +16,8 @@ pub struct Lexer<'a> {
     current: char,
     // The next character to process, the source line it is at, and the
     // offset at which we read it.
-
-    peeked: Token,  // ??? Could let users use Peekable
-    // One symbol ahead
+    peeked: Token, // ??? Could let users use Peekable
+                   // One symbol ahead
 }
 
 impl<'a> Lexer<'a> {
@@ -69,7 +68,7 @@ impl<'a> Lexer<'a> {
     /// On input, self.current is the leading quote
     fn scan_quote(&mut self) -> Token {
         let start_line = self.line;
-        self.scan_char();  // consume leading quote
+        self.scan_char(); // consume leading quote
         let start_offset = self.offset;
         loop {
             match self.current {
@@ -106,8 +105,8 @@ impl<'a> Lexer<'a> {
             }
         } else {
             Token {
-               line: start_line,
-               kind: TokenKind::Colon,
+                line: start_line,
+                kind: TokenKind::Colon,
             }
         }
     }
@@ -123,8 +122,8 @@ impl<'a> Lexer<'a> {
             }
         } else {
             Token {
-               line: start_line,
-               kind: TokenKind::Equal,
+                line: start_line,
+                kind: TokenKind::Equal,
             }
         }
     }
@@ -133,7 +132,7 @@ impl<'a> Lexer<'a> {
         loop {
             match self.current {
                 '\n' => self.line += 1,
-                ' ' | '\t' | '\r' => {},
+                ' ' | '\t' | '\r' => {}
                 '-' => {
                     if let Some('-') = self.peek_char() {
                         loop {
@@ -144,7 +143,7 @@ impl<'a> Lexer<'a> {
                             }
                         }
                     } else {
-                       break
+                        break;
                     }
                 }
                 _ => break,
@@ -210,12 +209,12 @@ impl<'a> Lexer<'a> {
             '|' => TokenKind::Pipe,
             '&' => TokenKind::Ampersand,
             '\'' => TokenKind::Tick,
-            '-' => TokenKind::Minus,  // comments handled in skip_non_tokens
+            '-' => TokenKind::Minus, // comments handled in skip_non_tokens
             '"' => return self.scan_quote(),
             ':' => return self.scan_colon(),
             '=' => return self.scan_equal(),
             c if is_wordchar(c) => return self.scan_identifier(),
-            c  => TokenKind::InvalidChar(c),
+            c => TokenKind::InvalidChar(c),
         };
 
         let token = Token {
