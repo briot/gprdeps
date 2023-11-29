@@ -12,6 +12,7 @@ opt-level = 3
 [dependencies]
 lazy_static = "1.4.0"
 threadpool = "1.8.1"
+path-clean = "1.0.1"
 petgraph = "0.6.4"
 ustr = "0.10.0"
 walkdir = "2.4.0"

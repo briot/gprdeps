@@ -61,17 +61,17 @@ impl std::fmt::Display for StringOrOthers {
 /// An unqualified name, which could be either an attribute or variable
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum SimpleName {
-    Name(Ustr), // Either variable or attribute name, lower-cased
-    BodySuffix(Ustr),
-    Body(Ustr),
-    DefaultSwitches(StringOrOthers),
+    Name(Ustr),       // Either variable or attribute name, lower-cased
+    BodySuffix(Ustr), // indexed on lower-cased language
+    Body(Ustr),       // indexed on file basename, casing preserved
+    DefaultSwitches(StringOrOthers), // indexed on lower-cased language
     DotReplacement,
     ExcludedSourceFiles,
     ExecDir,
-    Executable(Ustr),
-    ExternallyBuilt,
+    Executable(Ustr), // indexed on file basename, casing preserved
+    ExternallyBuilt,  // "true" or "false", lower-cased
     GlobalConfigurationPragmas,
-    Languages,
+    Languages, // lower-cased
     LibraryDir,
     LibraryInterface,
     LibraryKind,
@@ -87,10 +87,10 @@ pub enum SimpleName {
     SharedLibraryPrefix,
     SourceDirs,
     SourceFiles,
-    Spec(Ustr),
-    SpecSuffix(Ustr),
+    Spec(Ustr),       // indexed on file basename, casing preserved
+    SpecSuffix(Ustr), // indexed on lower-cased language
     SourceListFile,
-    Switches(StringOrOthers),
+    Switches(StringOrOthers), // indexed on lower-cased language
     Target,
     VCSKind,
     VCSRepositoryRoot,

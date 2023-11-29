@@ -1,12 +1,5 @@
 use std::path::PathBuf;
 
-/// A source file, once we have been able to gather information for it.
-#[derive(Debug)]
-pub struct File {
-    pub path: PathBuf,
-    pub lang: String,
-}
-
 pub struct Directory {
     path: PathBuf,
     pub files: Vec<PathBuf>,

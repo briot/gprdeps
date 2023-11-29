@@ -9,6 +9,7 @@ use crate::rawgpr::RawGPR;
 use crate::scenarios::{AllScenarios, Scenario, EMPTY_SCENARIO};
 use crate::settings::Settings;
 use crate::values::ExprValue;
+use path_clean::PathClean;
 use std::collections::{HashMap, HashSet};
 use ustr::{Ustr, UstrSet};
 use walkdir::WalkDir;
@@ -39,6 +40,8 @@ pub struct GPR {
         SimpleName, // variable or attribute name
         ExprValue,  // value for each scenario
     >; PACKAGE_NAME_VARIANTS],
+
+    files: HashMap<std::path::PathBuf, Vec<Scenario>>,
 }
 
 impl GPR {
@@ -48,6 +51,7 @@ impl GPR {
             name,
             index,
             values: Default::default(),
+            files: Default::default(),
         };
 
         // Declare the fallback value for "project'Target" attribute.
@@ -102,7 +106,9 @@ impl GPR {
         s
     }
 
-    /// Trim attributes and variables that will no longer be used
+    /// Trim attributes and variables that will no longer be used.
+    /// This is optional, and just a way to reduce the number of combinations
+    /// that we will need to look at for scenarios.
     pub fn trim(&mut self) {
         for pkg in 0..PACKAGE_NAME_VARIANTS {
             self.values[pkg].retain(|name, _| {
@@ -133,15 +139,27 @@ impl GPR {
         }
     }
 
-    /// Resolve relative paths
-    pub fn normalize_path(
+    /// Resolve relative paths, and cleanup ".." from the name.
+    /// It optionally resolves symbolic links, in which case it might fail if
+    /// the file doesn't exist on the disk.
+    fn normalize_path(
         &self,
         path: &str,
-    ) -> Result<std::path::PathBuf, String> {
+        settings: &Settings,
+    ) -> Option<std::path::PathBuf> {
         let p = self.path.parent().unwrap().join(path);
-        match p.canonicalize() {
-            Ok(p) => Ok(p),
-            Err(e) => Err(format!("{}: {}", p.display(), e)),
+        if settings.resolve_symbolic_links {
+            match p.canonicalize() {
+                Ok(p) => Some(p),
+                Err(e) => {
+                    if settings.report_missing_source_dirs {
+                        println!("{}: {} {}", self, e, p.display());
+                    }
+                    None
+                }
+            }
+        } else {
+            Some(p.clean())
         }
     }
 
@@ -201,34 +219,18 @@ impl GPR {
                     let parent =
                         d.chars().take(d.len() - 3).collect::<String>();
 
-                    match self.normalize_path(&parent) {
-                        Err(e) => {
-                            if settings.report_missing_source_dirs {
-                                println!("{}: {}", self, e);
-                            }
-                        }
-                        Ok(s) => {
-                            for entry in WalkDir::new(s)
-                                .follow_links(true)
-                                .into_iter()
-                                .filter_map(Result::ok)
-                                .filter(|e| e.file_type().is_dir())
-                            {
-                                for_scenar.push(entry.into_path());
-                            }
+                    if let Some(s) = self.normalize_path(&parent, settings) {
+                        for entry in WalkDir::new(s)
+                            .follow_links(true)
+                            .into_iter()
+                            .filter_map(Result::ok)
+                            .filter(|e| e.file_type().is_dir())
+                        {
+                            for_scenar.push(entry.into_path());
                         }
                     }
-                } else {
-                    match self.normalize_path(d) {
-                        Ok(p) => {
-                            for_scenar.push(p);
-                        }
-                        Err(s) => {
-                            if settings.report_missing_source_dirs {
-                                println!("{}: {}", self, s);
-                            }
-                        }
-                    }
+                } else if let Some(s) = self.normalize_path(d, settings) {
+                    for_scenar.push(s);
                 }
             }
 
@@ -246,6 +248,9 @@ impl GPR {
         Ok(())
     }
 
+    /// Given a directory, find all source files matching the naming scheme,
+    /// and add them to `files`.  The naming scheme is for one specific
+    /// scenario.
     fn check_file_candidates(
         scenarios: &mut AllScenarios,
         scenario: Scenario,
@@ -333,6 +338,8 @@ impl GPR {
                 }
             }
         }
+        self.files = files;
+
         //        for (p, s) in files {
         //            println!(
         //                "MANU {}: {:?}",
@@ -340,7 +347,7 @@ impl GPR {
         //                s.iter().map(|s| scenarios.debug(*s)).collect::<Vec<_>>()
         //            );
         //        }
-        files.len()
+        self.files.len()
     }
 
     /// Declare a new named object.

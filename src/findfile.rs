@@ -27,22 +27,25 @@ impl FileFind {
 
     /// Whether the directory should be traversed
     fn traverse_dir(&mut self, path: &Path) -> bool {
-        let meta = std::fs::symlink_metadata(path);
-        let n = path.as_os_str().to_str();
-        match (meta, n) {
-            (Ok(meta), Some(n)) => {
-                meta.is_dir()
-                    && !meta.is_symlink()
-                    && !n.ends_with("External/Ada_Web_Server/aws-dev")
-                    && !n.ends_with("External/GNATCOLL/gnatcoll-dev")
-                    && !n.ends_with("Examples/Elektron/Ema/Training")
-                    && !n.ends_with("Packaging")
-                    && !n.ends_with("Compiler")
-                    && !n.ends_with(".dbc")
-                    && !n.ends_with(".git")
-                    && !n.ends_with("objects")
+        match path.as_os_str().to_str() {
+            None => false,
+            Some(n) => {
+                if n.ends_with("External/Ada_Web_Server/aws-dev")
+                    || n.ends_with("External/GNATCOLL/gnatcoll-dev")
+                    || n.ends_with("Examples/Elektron/Ema/Training")
+                    || n.ends_with("Packaging")
+                    || n.ends_with("Compiler")
+                    || n.ends_with(".dbc")
+                    || n.ends_with(".git")
+                    || n.ends_with("objects")
+                {
+                    false
+                } else if let Ok(meta) = std::fs::symlink_metadata(path) {
+                    !meta.is_symlink()
+                } else {
+                    false
+                }
             }
-            _ => false,
         }
     }
 }
@@ -73,9 +76,7 @@ impl Iterator for FileFind {
                                 if let Some("gpr") =
                                     path.extension().and_then(OsStr::to_str)
                                 {
-                                    return Some(
-                                        std::fs::canonicalize(path).unwrap(),
-                                    );
+                                    return Some(path);
                                 }
                             }
                         }

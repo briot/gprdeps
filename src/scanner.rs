@@ -7,21 +7,26 @@ use crate::rawexpr::{
     WhenClause,
 };
 use crate::rawgpr::RawGPR;
+use crate::settings::Settings;
 use crate::tokens::{Token, TokenKind};
+use path_clean::PathClean;
+use std::path::PathBuf;
 use ustr::Ustr;
 
 pub struct Scanner<'a> {
     lex: Lexer<'a>,
     gpr: RawGPR,
     current_pkg: PackageName, //  What are we parsing
+    settings: &'a Settings,
 }
 
 impl<'a> Scanner<'a> {
-    pub fn new(file: &'a mut File) -> Self {
+    pub fn new(file: &'a mut File, settings: &'a Settings) -> Self {
         Self {
             gpr: RawGPR::new(file.path()),
             lex: Lexer::new(file),
             current_pkg: PackageName::None,
+            settings,
         }
     }
 
@@ -174,6 +179,21 @@ impl<'a> Scanner<'a> {
         }
     }
 
+    /// Resolve relative paths for project dependencies.
+    /// Optionally resolves symbolic links.
+    pub fn normalize_gpr_path(&self, path: &str) -> Result<PathBuf, String> {
+        let mut p = self.gpr.path.parent().unwrap().join(path);
+        p.set_extension("gpr");
+        if self.settings.resolve_symbolic_links {
+            match std::fs::canonicalize(p) {
+                Err(e) => Err(format!("{} {}", e, path)),
+                Ok(p) => Ok(p),
+            }
+        } else {
+            Ok(p.clean())
+        }
+    }
+
     /// Expect a with_clause
     fn parse_with_clause(
         &mut self,
@@ -182,9 +202,13 @@ impl<'a> Scanner<'a> {
         self.expect(TokenKind::With)?;
 
         let path = self.expect_str()?;
-        let normalized = self.gpr.normalize_path(path.as_str())?;
-        let idx = path_to_id[&normalized];
-        self.gpr.imported.push(idx.1);
+        let normalized = self.normalize_gpr_path(path.as_str())?;
+        match path_to_id.get(&normalized) {
+            None => {
+                Err(format!("Project file {} not found", normalized.display()))?
+            }
+            Some(idx) => self.gpr.imported.push(idx.1),
+        }
 
         self.expect(TokenKind::Semicolon)?;
         Ok(())
@@ -209,7 +233,7 @@ impl<'a> Scanner<'a> {
         self.gpr.name = self.expect_identifier()?;
         self.gpr.extends = if self.lex.peek() == TokenKind::Extends {
             let ext = self.parse_project_extension()?;
-            let normalized = self.gpr.normalize_path(ext.as_str())?;
+            let normalized = self.normalize_gpr_path(ext.as_str())?;
             Some(path_to_id[&normalized].1)
         } else {
             None
@@ -603,6 +627,7 @@ mod tests {
         PackageName, QualifiedName, RawExpr, SimpleName, Statement,
         StatementList, StringOrOthers,
     };
+    use crate::settings::Settings;
     use ustr::Ustr;
 
     fn do_check<F>(s: &str, check: F)
@@ -610,7 +635,8 @@ mod tests {
         F: FnOnce(Result<crate::scanner::RawGPR, Error>),
     {
         let mut file = crate::files::File::new_from_str(s);
-        let scan = crate::scanner::Scanner::new(&mut file);
+        let settings = Settings::default();
+        let scan = crate::scanner::Scanner::new(&mut file, &settings);
         let path_to_id: PathToIndexes = Default::default();
         let gpr = scan.parse(&path_to_id);
         check(gpr);
