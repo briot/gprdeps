@@ -1,51 +1,13 @@
+use crate::settings::Settings;
+use crate::directory::{Directory, File};
+use std::collections::HashMap;
 use std::ffi::OsStr;
-use std::fs::FileType;
 use std::path::{Path, PathBuf};
-
-struct DirEntry {
-    path: PathBuf,
-
-    // Will always be needed, so save it.
-    ft: FileType,
-}
-
-impl DirEntry {
-    pub(crate) fn from_entry(ent: &std::fs::DirEntry) -> Result<Self, String> {
-        let ft = ent.file_type().map_err(|e| {
-            format!("Could not read {}: {}", ent.path().display(), e)
-        })?;
-        Ok(DirEntry {
-            path: ent.path(),
-            ft,
-        })
-    }
-
-    /// Return the file name of this entry.
-    ///
-    /// If this entry has no file name (e.g., `/`), then the full path is
-    /// returned.
-    //    pub fn file_name(&self) -> &OsStr {
-    //        self.path.file_name().unwrap_or_else(|| self.path.as_os_str())
-    //    }
-
-    pub fn is_dir(&self) -> bool {
-        self.ft.is_dir()
-    }
-
-    pub fn is_file(&self) -> bool {
-        self.ft.is_file()
-    }
-
-    pub fn is_symlink(&self) -> bool {
-        self.ft.is_symlink()
-    }
-}
 
 /// The entry will always be a directory, and this should return True
 /// if we should also traverse children.
-fn should_traverse_dir(entry: &DirEntry) -> bool {
-    entry
-        .path
+fn should_traverse_dir(path: &Path) -> bool {
+    path
         .to_str()
         .map(|n| {
             !n.ends_with("External/Ada_Web_Server/aws-dev")
@@ -63,84 +25,87 @@ fn should_traverse_dir(entry: &DirEntry) -> bool {
 
 #[derive(Default)]
 pub struct FileFind {
-    stack: Vec<PathBuf>,
-    current: Option<std::fs::ReadDir>,
+    pub gprfiles: Vec<PathBuf>,
+    // The list of project files we found on the disk
+    pub directories: HashMap<PathBuf, Directory>,
+    // The list of files in each directory (potential source files).
+    // This doesn't include GPR files themselves, since we know they are not
+    // source files.
 }
 
-impl FileFind {
-    /// Start searching for file in path, recursively
-    pub fn new(path: &Path) -> FileFind {
-        let mut f = FileFind::default();
-        f.pushdir(path.to_owned());
-        f
-    }
+pub fn find_files(root: &Path, settings: &Settings) -> FileFind {
+    type Current = Option<(PathBuf, Directory, std::fs::ReadDir)>;
 
-    /// Push a new directory to traverse (we will first return the entries from
-    /// that directory, then the remaining ones from the parent directory,
-    /// and so on).
-    fn pushdir(&mut self, path: PathBuf) {
-        self.stack.push(path);
-    }
-}
+    let mut stack: Vec<PathBuf> = vec![root.to_owned()];
+    let mut result = FileFind::default();
+    let mut current: Current = None;
 
-impl Iterator for FileFind {
-    type Item = PathBuf;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        loop {
-            match &mut self.current {
-                None => match self.stack.pop() {
-                    None => {
-                        return None;
+    loop {
+        match &mut current {
+            None => match stack.pop() {
+                None => {
+                    break;
+                }
+                Some(path) => match std::fs::read_dir(&path) {
+                    Err(err) => {
+                        println!(
+                            "Error reading directory {}: {}",
+                            path.display(),
+                            err
+                        );
                     }
-                    Some(path) => match std::fs::read_dir(&path) {
-                        Err(err) => {
-                            println!(
-                                "Error reading directory {}: {}",
-                                path.display(),
-                                err
-                            );
-                        }
-                        Ok(readdir) => {
-                            self.current = Some(readdir);
-                        }
-                    },
+                    Ok(readdir) => {
+                        current = Some((path, Directory::default(), readdir));
+                    }
                 },
-                Some(readdir) => {
-                    match readdir.next() {
-                        None => {
-                            // Nothing else to read in the current directory
-                            self.current = None;
+            },
+            Some((_, _, readdir)) => {
+                match readdir.next() {
+                    None => {
+                        // Nothing else to read in the current directory
+                        let mut d: Current = None;
+                        std::mem::swap(&mut d, &mut current);
+                        if let Some((p, d, _)) = d {
+                            result.directories.insert(p, d);
                         }
-                        Some(Ok(entry)) => {
-                            match DirEntry::from_entry(&entry) {
-                                Err(err) => println!("{}", err),
-                                Ok(e) => {
-                                    if e.is_dir() {
-                                        if !e.is_symlink()
-                                            && should_traverse_dir(&e)
-                                        {
-                                            self.pushdir(e.path);
-                                        }
-                                    } else if e.is_file() {
-                                        if let Some("gpr") = e
-                                            .path
-                                            .extension()
-                                            .and_then(OsStr::to_str)
-                                        {
-                                            return Some(e.path);
-                                        }
+                    }
+                    Some(Ok(entry)) => {
+                        let path = entry.path();
+                        match entry.file_type() {
+                            Err(err) => {
+                                println!("Could not read {}: {}",
+                                    path.display(), err);
+                            }
+                            Ok(ft) => {
+                                if !settings.resolve_symbolic_links
+                                    && ft.is_symlink()
+                                {
+                                } else if ft.is_dir() {
+                                    if should_traverse_dir(&path) {
+                                        stack.push(path);
+                                    }
+                                } else if ft.is_file() {
+                                    if let Some("gpr") = path
+                                        .extension()
+                                        .and_then(OsStr::to_str)
+                                    {
+                                        result.gprfiles.push(path);
+                                    } else if let Some((_, d, _)) = &mut current
+                                    {
+                                        d.files.insert(path, File::default());
                                     }
                                 }
-                            };
-                        }
-                        Some(Err(err)) => {
-                            // Could not read current entry, just skip it
-                            println!("Error {}", err);
-                        }
+                            }
+                        };
+                    }
+                    Some(Err(err)) => {
+                        // Could not read current entry, just skip it
+                        println!("Error {}", err);
                     }
                 }
             }
         }
     }
+
+    result
 }

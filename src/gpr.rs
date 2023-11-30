@@ -11,6 +11,7 @@ use crate::settings::Settings;
 use crate::values::ExprValue;
 use path_clean::PathClean;
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 use ustr::{Ustr, UstrSet};
 use walkdir::WalkDir;
 
@@ -204,7 +205,7 @@ impl GPR {
     //  This is done for all scenarios.
     pub fn resolve_source_dirs(
         &mut self,
-        dirs: &mut HashSet<Directory>,
+        dirs: &HashMap<PathBuf, Directory>,
         settings: &Settings,
     ) -> Result<(), String> {
         let sourcedirs =
@@ -235,8 +236,10 @@ impl GPR {
             }
 
             for d in &for_scenar {
-                if !dirs.contains(d) {
-                    dirs.insert(Directory::new(d.clone()));
+                if !dirs.contains_key(d) {
+                    Err(format!(
+                        "{}: directory {} was not found beneath the root",
+                        self, d.display()))?;
                 }
             }
             resolved_dirs.insert(*scenar, for_scenar);
@@ -259,10 +262,10 @@ impl GPR {
         spec_suffix: &str,
         files: &mut HashMap<std::path::PathBuf, Vec<Scenario>>,
     ) {
-        for f in &directory.files {
-            let osstr = f.file_name().and_then(|s| s.to_str());
+        for path in directory.files.keys() {
+            let osstr = path.file_name().and_then(|s| s.to_str());
             if let Some(true) = osstr.map(|f| f.ends_with(spec_suffix)) {
-                let v = files.entry(f.clone()).or_default();
+                let v = files.entry(path.clone()).or_default();
                 scenarios.union_list(v, scenario);
             }
         }
@@ -271,7 +274,7 @@ impl GPR {
     /// Return the list of source files for all scenarios
     pub fn get_source_files(
         &mut self,
-        all_dirs: &HashSet<Directory>,
+        all_dirs: &HashMap<PathBuf, Directory>,
         scenarios: &mut AllScenarios,
     ) -> usize {
         let source_dirs =

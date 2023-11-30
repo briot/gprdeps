@@ -1,3 +1,4 @@
+use crate::findfile::find_files;
 use crate::gpr::GPR;
 use crate::graph::{DepGraph, Edge, GPRIndex, Node};
 use crate::scenarios::AllScenarios;
@@ -19,20 +20,22 @@ impl Environment {
         &mut self,
         path: &std::path::Path,
     ) -> Result<(), Box<dyn std::error::Error>> {
+
         let mut path_to_indexes = HashMap::new();
+        let files_and_dirs = find_files(path, &self.settings);
 
         // Find all GPR files we will have to parse
         // Insert dummy nodes in the graph, so that we have an index
-        for (gpridx, gpr) in crate::findfile::FileFind::new(path).enumerate() {
+        for (gpridx, gpr) in files_and_dirs.gprfiles.iter().enumerate() {
             let gpridx = GPRIndex::new(gpridx);
             let nodeidx = self.graph.add_node(Node::Project(gpridx));
             let path = gpr.to_path_buf();
-            if path_to_indexes.contains_key(&gpr) {
+            if path_to_indexes.contains_key(gpr) {
                 // ??? We could instead reuse the same gpridx and nodeidx, but
                 // this is unexpected.
                 panic!("Project file found multiple times: {}", path.display());
             }
-            path_to_indexes.insert(gpr, (gpridx, nodeidx));
+            path_to_indexes.insert(gpr.clone(), (gpridx, nodeidx));
         }
 
         // Parse the raw GPR files, but do not analyze them yet.
@@ -79,24 +82,22 @@ impl Environment {
         // Remove all attributes we do not actually need, which makes some
         // scenarios useless too
         let mut useful_scenars = HashSet::new();
-        let mut all_source_dirs = HashSet::new();
         for gpr in gprs.values_mut() {
             gpr.trim();
             gpr.find_used_scenarios(&mut useful_scenars);
-            gpr.resolve_source_dirs(&mut all_source_dirs, &self.settings)?;
+            gpr.resolve_source_dirs(
+                &files_and_dirs.directories,
+                &self.settings)?;
         }
-        let files_count: usize =
-            all_source_dirs.iter().map(|d| d.files_count()).sum();
 
         println!("Actually used scenarios={}", useful_scenars.len());
-        println!("Total source directories={}", all_source_dirs.len());
-        println!("Total files={}", files_count);
+        // println!("Total source directories={}", all_source_dirs.len());
 
         {
             let mut source_files_count = 0;
             for gpr in gprs.values_mut() {
                 source_files_count +=
-                    gpr.get_source_files(&all_source_dirs, &mut self.scenarios);
+                    gpr.get_source_files(&files_and_dirs.directories, &mut self.scenarios);
             }
             println!("Total source files={}", source_files_count);
         }
