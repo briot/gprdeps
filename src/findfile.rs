@@ -1,52 +1,10 @@
 use std::ffi::OsStr;
-use std::fs::FileType;
 use std::path::{Path, PathBuf};
-
-struct DirEntry {
-    path: PathBuf,
-
-    // Will always be needed, so save it.
-    ft: FileType,
-}
-
-impl DirEntry {
-    pub(crate) fn from_entry(ent: &std::fs::DirEntry) -> Result<Self, String> {
-        let ft = ent.file_type().map_err(|e| {
-            format!("Could not read {}: {}", ent.path().display(), e)
-        })?;
-        Ok(DirEntry {
-            path: ent.path(),
-            ft,
-        })
-    }
-
-    /// Return the file name of this entry.
-    ///
-    /// If this entry has no file name (e.g., `/`), then the full path is
-    /// returned.
-    //    pub fn file_name(&self) -> &OsStr {
-    //        self.path.file_name().unwrap_or_else(|| self.path.as_os_str())
-    //    }
-
-    pub fn is_dir(&self) -> bool {
-        self.ft.is_dir()
-    }
-
-    pub fn is_file(&self) -> bool {
-        self.ft.is_file()
-    }
-
-    pub fn is_symlink(&self) -> bool {
-        self.ft.is_symlink()
-    }
-}
 
 /// The entry will always be a directory, and this should return True
 /// if we should also traverse children.
-fn should_traverse_dir(entry: &DirEntry) -> bool {
-    entry
-        .path
-        .to_str()
+fn should_traverse_dir(path: &Path) -> bool {
+    path.to_str()
         .map(|n| {
             !n.ends_with("External/Ada_Web_Server/aws-dev")
                 && !n.ends_with("External/GNATCOLL/gnatcoll-dev")
@@ -95,7 +53,7 @@ impl Iterator for FileFind {
                     }
                     Some(path) => match std::fs::read_dir(&path) {
                         Err(err) => {
-                            println!(
+                            eprintln!(
                                 "Error reading directory {}: {}",
                                 path.display(),
                                 err
@@ -113,22 +71,25 @@ impl Iterator for FileFind {
                             self.current = None;
                         }
                         Some(Ok(entry)) => {
-                            match DirEntry::from_entry(&entry) {
-                                Err(err) => println!("{}", err),
-                                Ok(e) => {
-                                    if e.is_dir() {
-                                        if !e.is_symlink()
-                                            && should_traverse_dir(&e)
-                                        {
-                                            self.pushdir(e.path);
+                            let path = &entry.path();
+                            match entry.file_type() {
+                                Err(e) => eprintln!(
+                                    "Could not read {}: {}",
+                                    entry.path().display(),
+                                    e
+                                ),
+                                Ok(ft) => {
+                                    if ft.is_symlink() {
+                                    } else if ft.is_dir() {
+                                        if should_traverse_dir(path) {
+                                            self.pushdir(path.to_owned());
                                         }
-                                    } else if e.is_file() {
-                                        if let Some("gpr") = e
-                                            .path
+                                    } else if ft.is_file() {
+                                        if let Some("gpr") = path
                                             .extension()
                                             .and_then(OsStr::to_str)
                                         {
-                                            return Some(e.path);
+                                            return Some(path.to_owned());
                                         }
                                     }
                                 }
@@ -136,7 +97,7 @@ impl Iterator for FileFind {
                         }
                         Some(Err(err)) => {
                             // Could not read current entry, just skip it
-                            println!("Error {}", err);
+                            eprintln!("Error {}", err);
                         }
                     }
                 }
