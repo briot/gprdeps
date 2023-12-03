@@ -409,7 +409,7 @@ pub type StatementList = Vec<(u32, Statement)>;
 pub enum RawExpr {
     Empty,
     Others,
-    StaticString(Ustr), //  doesn't include surrounding quotes
+    Str(Ustr), //  doesn't include surrounding quotes
     Name(QualifiedName),
     FuncCall((QualifiedName, Vec<RawExpr>)),
     Ampersand((Box<RawExpr>, Box<RawExpr>)),
@@ -439,7 +439,7 @@ impl RawExpr {
             )) => {
                 if *n == *EXTERNAL {
                     match &args[0] {
-                        RawExpr::StaticString(s) => Some(*s),
+                        RawExpr::Str(s) => Some(*s),
                         _ => panic!(
                             "First argument to external must \
                                  be static string"
@@ -465,7 +465,7 @@ impl RawExpr {
     /// ??? Should use values.rs
     pub fn into_static_str(self) -> Result<Ustr, String> {
         match self {
-            RawExpr::StaticString(s) => Ok(s),
+            RawExpr::Str(s) => Ok(s),
             _ => Err("not a static string".into()),
         }
     }
@@ -473,8 +473,8 @@ impl RawExpr {
     /// Convert a list of static strings to lower case
     pub fn to_lowercase(&self) -> RawExpr {
         match &self {
-            RawExpr::StaticString(s) => {
-                RawExpr::StaticString(Ustr::from(&s.as_str().to_lowercase()))
+            RawExpr::Str(s) => {
+                RawExpr::Str(Ustr::from(&s.as_str().to_lowercase()))
             }
             RawExpr::List(s) => {
                 RawExpr::List(s.iter().map(|e| e.to_lowercase()).collect())
@@ -490,7 +490,7 @@ pub mod tests {
     use ustr::Ustr;
 
     pub fn build_expr_str(s: &str) -> RawExpr {
-        RawExpr::StaticString(Ustr::from(s))
+        RawExpr::Str(Ustr::from(s))
     }
 
     pub fn build_expr_list(s: &[&str]) -> RawExpr {

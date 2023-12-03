@@ -128,7 +128,7 @@ impl ExprValue {
             )) => match n.as_ref() {
                 "external" => {
                     let varname = match &args[0] {
-                        RawExpr::StaticString(v) => v,
+                        RawExpr::Str(v) => v,
                         _ => panic!(
                             "Expected static string for variable \
                                      name in {:?}",
@@ -159,7 +159,7 @@ impl ExprValue {
             RawExpr::Name(q) => {
                 Ok(gpr.lookup(q, gpr_deps, current_pkg)?.clone())
             }
-            RawExpr::StaticString(s) => {
+            RawExpr::Str(s) => {
                 Ok(ExprValue::new_with_str_and_scenario(*s, scenar))
             }
             RawExpr::List(ls) => {

@@ -564,7 +564,7 @@ impl<'a> Scanner<'a> {
                 }
                 TokenKind::String(_) => {
                     let s = self.expect_str()?;
-                    result = result.ampersand(RawExpr::StaticString(s));
+                    result = result.ampersand(RawExpr::Str(s));
                 }
                 TokenKind::Identifier(_) | TokenKind::Project => {
                     let s = self.expect_qname_or_func()?;
@@ -698,9 +698,9 @@ mod tests {
                     2,
                     Statement::AttributeDecl {
                         name: SimpleName::SourceFiles,
-                        value: RawExpr::List(vec![RawExpr::StaticString(
-                            Ustr::from("a.adb"),
-                        )]),
+                        value: RawExpr::List(vec![RawExpr::Str(Ustr::from(
+                            "a.adb",
+                        ))]),
                     },
                 ),
                 (
@@ -708,8 +708,8 @@ mod tests {
                     Statement::AttributeDecl {
                         name: SimpleName::Languages,
                         value: RawExpr::List(vec![
-                            RawExpr::StaticString(Ustr::from("ada")),
-                            RawExpr::StaticString(Ustr::from("c")),
+                            RawExpr::Str(Ustr::from("ada")),
+                            RawExpr::Str(Ustr::from("c")),
                         ]),
                     },
                 ),
@@ -792,7 +792,7 @@ mod tests {
                                 package: PackageName::None,
                                 name: SimpleName::Name(Ustr::from("external")),
                             },
-                            vec![RawExpr::StaticString(Ustr::from("MODE"))],
+                            vec![RawExpr::Str(Ustr::from("MODE"))],
                         )),
                     },
                 ),
