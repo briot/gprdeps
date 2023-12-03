@@ -104,12 +104,20 @@ impl<'a> Scanner<'a> {
     /// Expects an unqualified attribute name (and optional index)
     fn expect_unqualified_attrname(&mut self) -> Result<SimpleName, String> {
         let name3 = self.expect_identifier()?;
+        let insensitive = SimpleName::is_case_insensitive(&name3);
         let args = self.parse_opt_arg_list()?;
         match args {
             None => Ok(SimpleName::new_attr(name3, None)?),
             Some(mut args) if args.len() == 1 => Ok(SimpleName::new_attr(
                 name3,
-                Some(StringOrOthers::Str(args.remove(0).as_static_str()?)),
+                Some(StringOrOthers::Str(
+                    if insensitive.0 {
+                        Ustr::from(
+                            &args.remove(0).as_static_str()?.to_lowercase())
+                    } else {
+                        args.remove(0).as_static_str()?
+                    }
+                )),
             )?),
             Some(args) => {
                 Err(format!("Wrong number of indexes for {:?}", args))
@@ -569,7 +577,6 @@ impl<'a> Scanner<'a> {
                     } else {
                         loop {
                             list.push(Box::new(self.parse_expression()?));
-
                             let n = self.safe_next()?;
                             match n.kind {
                                 TokenKind::CloseParenthesis => break,
@@ -599,11 +606,19 @@ impl<'a> Scanner<'a> {
     fn parse_attribute_declaration(&mut self) -> Result<Statement, String> {
         self.expect(TokenKind::For)?;
         let name = self.expect_identifier()?;
+        let insensitive = SimpleName::is_case_insensitive(&name);
+
         let index = if self.lex.peek() == TokenKind::OpenParenthesis {
             self.expect(TokenKind::OpenParenthesis)?;
-            let index = Some(self.expect_str_or_others()?);
+            let index = self.expect_str_or_others()?;
             self.expect(TokenKind::CloseParenthesis)?;
-            index
+            match (index, insensitive.0) {
+                (StringOrOthers::Str(s), true) =>
+                    Some(StringOrOthers::Str(
+                        Ustr::from(&s.as_str().to_lowercase())
+                    )),
+                (s, _) => Some(s)
+            }
         } else {
             None
         };
@@ -613,7 +628,7 @@ impl<'a> Scanner<'a> {
         self.expect(TokenKind::Semicolon)?;
         Ok(Statement::AttributeDecl {
             name: SimpleName::new_attr(name, index)?,
-            value,
+            value: if insensitive.1 { value.to_lowercase() } else { value },
         })
     }
 }
@@ -668,7 +683,9 @@ mod tests {
         expect_statements(
             "project A is
                 for Source_Files use (\"a.adb\");
+                for Languages use (\"ADA\", \"C\");
                 package Linker is
+                   for Switches (\"ADA\") use ();
                    for Switches (others) use ();
                 end Linker;
              end A;",
@@ -684,19 +701,40 @@ mod tests {
                 ),
                 (
                     3,
+                    Statement::AttributeDecl {
+                        name: SimpleName::Languages,
+                        value: RawExpr::List(vec![
+                            Box::new(RawExpr::StaticString(Ustr::from("ada"))),
+                            Box::new(RawExpr::StaticString(Ustr::from("c"))),
+                        ]),
+                    },
+                ),
+                (
+                    4,
                     Statement::Package {
                         name: PackageName::Linker,
                         renames: None,
                         extends: None,
-                        body: vec![(
-                            4,
-                            Statement::AttributeDecl {
-                                name: SimpleName::Switches(
-                                    StringOrOthers::Others,
-                                ),
-                                value: RawExpr::List(vec![]),
-                            },
-                        )],
+                        body: vec![
+                            (
+                                5,
+                                Statement::AttributeDecl {
+                                    name: SimpleName::Switches(
+                                        StringOrOthers::Str(Ustr::from("ada")),
+                                    ),
+                                    value: RawExpr::List(vec![]),
+                                },
+                            ),
+                            (
+                                6,
+                                Statement::AttributeDecl {
+                                    name: SimpleName::Switches(
+                                        StringOrOthers::Others,
+                                    ),
+                                    value: RawExpr::List(vec![]),
+                                },
+                            )
+                        ],
                     },
                 ),
             ],

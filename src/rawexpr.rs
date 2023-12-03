@@ -2,6 +2,46 @@
 use std::fmt::Debug;
 use ustr::Ustr;
 
+lazy_static::lazy_static! {
+    static ref BODY_SUFFIX: Ustr = Ustr::from("body_suffix");
+    static ref BODY: Ustr = Ustr::from("body");
+    static ref DEFAULT_SWITCHES: Ustr = Ustr::from("default_switches");
+    static ref DOT_REPLACEMENT: Ustr = Ustr::from("dot_replacement");
+    static ref EXCLUDED_SOURCE_FILES: Ustr =
+        Ustr::from("excluded_source_files");
+    static ref EXEC_DIR: Ustr = Ustr::from("exec_dir");
+    static ref EXECUTABLE: Ustr = Ustr::from("executable");
+    static ref EXTERNALLY_BUILT: Ustr = Ustr::from("externally_built");
+    static ref GLOBAL_CONFIGURATION_PRAGMAS: Ustr =
+        Ustr::from("global_configuration_pragmas");
+    static ref LANGUAGES: Ustr = Ustr::from("languages");
+    static ref LIBRARY_DIR: Ustr = Ustr::from("library_dir");
+    static ref LIBRARY_INTERFACE: Ustr = Ustr::from("library_interface");
+    static ref LIBRARY_KIND: Ustr = Ustr::from("library_kind");
+    static ref LIBRARY_NAME: Ustr = Ustr::from("library_name");
+    static ref LIBRARY_OPTIONS: Ustr = Ustr::from("library_options");
+    static ref LIBRARY_STANDALONE: Ustr = Ustr::from("library_standalone");
+    static ref LIBRARY_VERSION: Ustr = Ustr::from("library_version");
+    static ref LINKER_OPTIONS: Ustr = Ustr::from("linker_options");
+    static ref LOCAL_CONFIGURATION_PRAGMAS: Ustr =
+        Ustr::from("local_configuration_pragmas");
+    static ref MAIN: Ustr = Ustr::from("main");
+    static ref OBJECT_DIR: Ustr = Ustr::from("object_dir");
+    static ref PROJECT_FILES: Ustr = Ustr::from("project_files");
+    static ref SHARED_LIBRARY_PREFIX: Ustr =
+        Ustr::from("shared_library_prefix");
+    static ref SOURCE_DIRS: Ustr = Ustr::from("source_dirs");
+    static ref SOURCE_FILES: Ustr = Ustr::from("source_files");
+    static ref SOURCE_LIST_FILE: Ustr = Ustr::from("source_list_file");
+    static ref SPEC: Ustr = Ustr::from("spec");
+    static ref SPEC_SUFFIX: Ustr = Ustr::from("spec_suffix");
+    static ref SWITCHES: Ustr = Ustr::from("switches");
+    static ref TARGET: Ustr = Ustr::from("target");
+    static ref VCS_KIND: Ustr = Ustr::from("vcs_kind");
+    static ref VCS_REPOSITORY_ROOT: Ustr =
+        Ustr::from("vcs_repository_root");
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum PackageName {
     None = 0,
@@ -18,6 +58,7 @@ pub const PACKAGE_NAME_VARIANTS: usize = 7;
 
 impl PackageName {
     pub fn new(lower: Ustr) -> Result<Self, String> {
+        // ??? Should compare with pre-built Ustr instances
         match lower.as_str() {
             "binder" => Ok(PackageName::Binder),
             "builder" => Ok(PackageName::Builder),
@@ -107,63 +148,97 @@ impl SimpleName {
         lower: Ustr,
         index: Option<StringOrOthers>,
     ) -> Result<Self, String> {
-        match (lower.as_str(), index) {
-            ("body_suffix", Some(StringOrOthers::Str(idx))) => {
+        match (lower, index) {
+            (a, Some(StringOrOthers::Str(idx))) if a == *BODY_SUFFIX => {
                 Ok(SimpleName::BodySuffix(idx))
             }
-            ("body", Some(StringOrOthers::Str(idx))) => {
+            (a, Some(StringOrOthers::Str(idx))) if a == *BODY => {
                 Ok(SimpleName::Body(idx))
             }
-            ("default_switches", Some(idx)) => {
+            (a, Some(idx)) if a == *DEFAULT_SWITCHES => {
                 Ok(SimpleName::DefaultSwitches(idx))
             }
-            ("dot_replacement", None) => Ok(SimpleName::DotReplacement),
-            ("excluded_source_files", None) => {
+            (a, None) if a == *DOT_REPLACEMENT => {
+                Ok(SimpleName::DotReplacement)
+            }
+            (a, None) if a == *EXCLUDED_SOURCE_FILES => {
                 Ok(SimpleName::ExcludedSourceFiles)
             }
-            ("exec_dir", None) => Ok(SimpleName::ExecDir),
-            ("executable", Some(StringOrOthers::Str(idx))) => {
+            (a, None) if a == *EXEC_DIR => Ok(SimpleName::ExecDir),
+            (a, Some(StringOrOthers::Str(idx))) if a == *EXECUTABLE => {
                 Ok(SimpleName::Executable(idx))
             }
-            ("externally_built", None) => Ok(SimpleName::ExternallyBuilt),
-            ("global_configuration_pragmas", None) => {
+            (a, None) if a == *EXTERNALLY_BUILT => {
+                Ok(SimpleName::ExternallyBuilt)
+            }
+            (a, None) if a == *GLOBAL_CONFIGURATION_PRAGMAS => {
                 Ok(SimpleName::GlobalConfigurationPragmas)
             }
-            ("languages", None) => Ok(SimpleName::Languages),
-            ("library_dir", None) => Ok(SimpleName::LibraryDir),
-            ("library_interface", None) => Ok(SimpleName::LibraryInterface),
-            ("library_kind", None) => Ok(SimpleName::LibraryKind),
-            ("library_name", None) => Ok(SimpleName::LibraryName),
-            ("library_options", None) => Ok(SimpleName::LibraryOptions),
-            ("library_standalone", None) => Ok(SimpleName::LibraryStandalone),
-            ("library_version", None) => Ok(SimpleName::LibraryVersion),
-            ("linker_options", None) => Ok(SimpleName::LinkerOptions),
-            ("local_configuration_pragmas", None) => {
+            (a, None) if a == *LANGUAGES => Ok(SimpleName::Languages),
+            (a, None) if a == *LIBRARY_DIR => Ok(SimpleName::LibraryDir),
+            (a, None) if a == *LIBRARY_INTERFACE => {
+                Ok(SimpleName::LibraryInterface)
+            }
+            (a, None) if a == *LIBRARY_KIND => Ok(SimpleName::LibraryKind),
+            (a, None) if a == *LIBRARY_NAME => Ok(SimpleName::LibraryName),
+            (a, None) if a == *LIBRARY_OPTIONS => {
+                Ok(SimpleName::LibraryOptions)
+            }
+            (a, None) if a == *LIBRARY_STANDALONE => {
+                Ok(SimpleName::LibraryStandalone)
+            }
+            (a, None) if a == *LIBRARY_VERSION => {
+                Ok(SimpleName::LibraryVersion)
+            }
+            (a, None) if a == *LINKER_OPTIONS => Ok(SimpleName::LinkerOptions),
+            (a, None) if a == *LOCAL_CONFIGURATION_PRAGMAS => {
                 Ok(SimpleName::LocalConfigurationPragmas)
             }
-            ("main", None) => Ok(SimpleName::Main),
-            ("object_dir", None) => Ok(SimpleName::ObjectDir),
-            ("project_files", None) => Ok(SimpleName::ProjectFiles),
-            ("shared_library_prefix", None) => {
+            (a, None) if a == *MAIN => Ok(SimpleName::Main),
+            (a, None) if a == *OBJECT_DIR => Ok(SimpleName::ObjectDir),
+            (a, None) if a == *PROJECT_FILES => Ok(SimpleName::ProjectFiles),
+            (a, None) if a == *SHARED_LIBRARY_PREFIX => {
                 Ok(SimpleName::SharedLibraryPrefix)
             }
-            ("source_dirs", None) => Ok(SimpleName::SourceDirs),
-            ("source_files", None) => Ok(SimpleName::SourceFiles),
-            ("source_list_file", None) => Ok(SimpleName::SourceListFile),
-            ("spec", Some(StringOrOthers::Str(idx))) => {
+            (a, None) if a == *SOURCE_DIRS => Ok(SimpleName::SourceDirs),
+            (a, None) if a == *SOURCE_FILES => Ok(SimpleName::SourceFiles),
+            (a, None) if a == *SOURCE_LIST_FILE => {
+                Ok(SimpleName::SourceListFile)
+            }
+            (a, Some(StringOrOthers::Str(idx))) if a == *SPEC => {
                 Ok(SimpleName::Spec(idx))
             }
-            ("spec_suffix", Some(StringOrOthers::Str(idx))) => {
+            (a, Some(StringOrOthers::Str(idx))) if a == *SPEC_SUFFIX => {
                 Ok(SimpleName::SpecSuffix(idx))
             }
-            ("switches", Some(idx)) => Ok(SimpleName::Switches(idx)),
-            ("target", None) => Ok(SimpleName::Target),
-            ("vcs_kind", None) => Ok(SimpleName::VCSKind),
-            ("vcs_repository_root", None) => Ok(SimpleName::VCSRepositoryRoot),
+            (a, Some(idx)) if a == *SWITCHES => Ok(SimpleName::Switches(idx)),
+            (a, None) if a == *TARGET => Ok(SimpleName::Target),
+            (a, None) if a == *VCS_KIND => Ok(SimpleName::VCSKind),
+            (a, None) if a == *VCS_REPOSITORY_ROOT => {
+                Ok(SimpleName::VCSRepositoryRoot)
+            }
             (_, None) => Err(format!("Invalid attribute name {}", lower)),
             (_, Some(idx)) => {
                 Err(format!("Invalid attribute name {}({})", lower, idx))
             }
+        }
+    }
+
+    /// Whether this attribute uses a case-insensitive index (first element of
+    /// tuple) or case-insensitive value (second element) ?
+    pub fn is_case_insensitive(lower: &Ustr) -> (bool, bool) {
+        if *lower == *LANGUAGES {
+            (false, true)   // No index, case-insensitive value
+        } else if *lower == *BODY
+            || *lower == *SPEC
+            || *lower == *BODY_SUFFIX
+            || *lower == *SPEC_SUFFIX
+            || *lower == *SWITCHES
+            || *lower == *DEFAULT_SWITCHES
+        {
+            (true, false)  // case-insensitive index, case-sensitive value
+        } else {
+            (false, false)
         }
     }
 }
@@ -380,6 +455,20 @@ impl RawExpr {
         match self {
             RawExpr::StaticString(s) => Ok(s),
             _ => Err("not a static string".into()),
+        }
+    }
+
+    /// Convert a list of static strings to lower case
+    pub fn to_lowercase(&self) -> RawExpr {
+        match &self {
+            RawExpr::StaticString(s) => RawExpr::StaticString(
+                Ustr::from(&s.as_str().to_lowercase())),
+            RawExpr::List(s) => RawExpr::List(
+                s.iter()
+                    .map(|e| Box::new(e.to_lowercase()))
+                    .collect()
+            ),
+            _ => panic!("Can only convert static list to lower-case"),
         }
     }
 }

@@ -153,7 +153,7 @@ impl GPR {
                 Ok(p) => Some(p),
                 Err(e) => {
                     if settings.report_missing_source_dirs {
-                        println!("{}: {} {}", self, e, p.display());
+                        eprintln!("{}: {} {}", self, e, p.display());
                     }
                     None
                 }
@@ -290,11 +290,9 @@ impl GPR {
                 }
 
                 for lang in langs_in_scenar {
-                    let lowerlang = Ustr::from(&lang.to_lowercase());
-
                     let spec_suffix = self.str_attr(
                         PackageName::Naming,
-                        &SimpleName::SpecSuffix(lowerlang),
+                        &SimpleName::SpecSuffix(*lang),
                     );
                     for (scenar_spec, spec_in_scenar) in spec_suffix {
                         let s = scenarios.intersection(s, *scenar_spec);
@@ -316,7 +314,7 @@ impl GPR {
 
                     let body_suffix = self.str_attr(
                         PackageName::Naming,
-                        &SimpleName::BodySuffix(lowerlang),
+                        &SimpleName::BodySuffix(*lang),
                     );
                     for (scenar_body, body_in_scenar) in body_suffix {
                         let s = scenarios.intersection(s, *scenar_body);
@@ -341,7 +339,7 @@ impl GPR {
         self.files = files;
 
         //        for (p, s) in files {
-        //            println!(
+        //            eprintln!(
         //                "MANU {}: {:?}",
         //                p.display(),
         //                s.iter().map(|s| scenarios.debug(*s)).collect::<Vec<_>>()
@@ -376,7 +374,7 @@ impl GPR {
                 .iter()
                 .copied()
                 .find(|gpr| gpr.name == *n)
-                .ok_or_else(|| format!("{}: {} not found", self, name)),
+                .ok_or_else(|| format!("{} not found", name)),
         }
     }
 
@@ -402,7 +400,7 @@ impl GPR {
             r1 = project.values[name.package as usize].get(&name.name);
         }
 
-        r1.ok_or_else(|| format!("{}: {} not found", self, name))
+        r1.ok_or_else(|| format!("{} not found", name))
     }
 
     /// Process one statement

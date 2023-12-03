@@ -182,7 +182,11 @@ impl<'a> Lexer<'a> {
                 "use" => TokenKind::Use,
                 "with" => TokenKind::With,
                 "when" => TokenKind::When,
-                _ => TokenKind::Identifier(Ustr::from(n)),
+                _ => {
+                    // We can't just do ASCII lower-case, but instead need to do full conversion
+                    // to lower case here.
+                    TokenKind::Identifier(Ustr::from(&n.to_lowercase()))
+                }
             }
         };
         Token {
