@@ -40,6 +40,13 @@ lazy_static::lazy_static! {
     static ref VCS_KIND: Ustr = Ustr::from("vcs_kind");
     static ref VCS_REPOSITORY_ROOT: Ustr =
         Ustr::from("vcs_repository_root");
+
+    static ref BINDER:Ustr = Ustr::from("binder");
+    static ref BUILDER:Ustr = Ustr::from("builder");
+    static ref COMPILER:Ustr = Ustr::from("compiler");
+    static ref IDE:Ustr = Ustr::from("ide");
+    static ref LINKER:Ustr = Ustr::from("linker");
+    static ref NAMING:Ustr = Ustr::from("naming");
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -58,15 +65,20 @@ pub const PACKAGE_NAME_VARIANTS: usize = 7;
 
 impl PackageName {
     pub fn new(lower: Ustr) -> Result<Self, String> {
-        // ??? Should compare with pre-built Ustr instances
-        match lower.as_str() {
-            "binder" => Ok(PackageName::Binder),
-            "builder" => Ok(PackageName::Builder),
-            "compiler" => Ok(PackageName::Compiler),
-            "ide" => Ok(PackageName::Ide),
-            "linker" => Ok(PackageName::Linker),
-            "naming" => Ok(PackageName::Naming),
-            _ => Err(format!("Invalid package name {}", lower)),
+        if lower == *BINDER {
+            Ok(PackageName::Binder)
+        } else if lower == *BUILDER {
+            Ok(PackageName::Builder)
+        } else if lower == *COMPILER {
+            Ok(PackageName::Compiler)
+        } else if lower == *IDE {
+            Ok(PackageName::Ide)
+        } else if lower == *LINKER {
+            Ok(PackageName::Linker)
+        } else if lower == *NAMING {
+            Ok(PackageName::Naming)
+        } else {
+            Err(format!("Invalid package name {}", lower))
         }
     }
 }
