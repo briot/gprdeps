@@ -13,15 +13,12 @@ impl File {
         })
     }
 
+    #[cfg(test)]
     pub fn new_from_str(s: &str) -> Self {
         Self {
             path: std::path::Path::new(":memory:").to_owned(),
             buffer: s.to_string(),
         }
-    }
-
-    pub fn as_str(&self) -> &str {
-        self.buffer.as_str()
     }
 
     pub fn as_mut_str(&mut self) -> &mut str {

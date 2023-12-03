@@ -48,7 +48,7 @@ pub enum PackageName {
     Binder,
     Builder,
     Compiler,
-    IDE,
+    Ide,
     Linker,
     Naming,
 }
@@ -63,7 +63,7 @@ impl PackageName {
             "binder" => Ok(PackageName::Binder),
             "builder" => Ok(PackageName::Builder),
             "compiler" => Ok(PackageName::Compiler),
-            "ide" => Ok(PackageName::IDE),
+            "ide" => Ok(PackageName::Ide),
             "linker" => Ok(PackageName::Linker),
             "naming" => Ok(PackageName::Naming),
             _ => Err(format!("Invalid package name {}", lower)),
@@ -78,7 +78,7 @@ impl std::fmt::Display for PackageName {
             PackageName::Binder => write!(f, "binder"),
             PackageName::Builder => write!(f, "builder"),
             PackageName::Compiler => write!(f, "compiler"),
-            PackageName::IDE => write!(f, "ide"),
+            PackageName::Ide => write!(f, "ide"),
             PackageName::Linker => write!(f, "linker"),
             PackageName::Naming => write!(f, "naming"),
         }
@@ -228,7 +228,7 @@ impl SimpleName {
     /// tuple) or case-insensitive value (second element) ?
     pub fn is_case_insensitive(lower: &Ustr) -> (bool, bool) {
         if *lower == *LANGUAGES {
-            (false, true)   // No index, case-insensitive value
+            (false, true) // No index, case-insensitive value
         } else if *lower == *BODY
             || *lower == *SPEC
             || *lower == *BODY_SUFFIX
@@ -236,7 +236,7 @@ impl SimpleName {
             || *lower == *SWITCHES
             || *lower == *DEFAULT_SWITCHES
         {
-            (true, false)  // case-insensitive index, case-sensitive value
+            (true, false) // case-insensitive index, case-sensitive value
         } else {
             (false, false)
         }
@@ -401,7 +401,7 @@ pub enum RawExpr {
     Name(QualifiedName),
     FuncCall((QualifiedName, Vec<RawExpr>)),
     Ampersand((Box<RawExpr>, Box<RawExpr>)),
-    List(Vec<Box<RawExpr>>),
+    List(Vec<RawExpr>),
 }
 
 lazy_static::lazy_static! {
@@ -451,7 +451,7 @@ impl RawExpr {
 
     /// Convert to a static string
     /// ??? Should use values.rs
-    pub fn as_static_str(self) -> Result<Ustr, String> {
+    pub fn into_static_str(self) -> Result<Ustr, String> {
         match self {
             RawExpr::StaticString(s) => Ok(s),
             _ => Err("not a static string".into()),
@@ -461,13 +461,12 @@ impl RawExpr {
     /// Convert a list of static strings to lower case
     pub fn to_lowercase(&self) -> RawExpr {
         match &self {
-            RawExpr::StaticString(s) => RawExpr::StaticString(
-                Ustr::from(&s.as_str().to_lowercase())),
-            RawExpr::List(s) => RawExpr::List(
-                s.iter()
-                    .map(|e| Box::new(e.to_lowercase()))
-                    .collect()
-            ),
+            RawExpr::StaticString(s) => {
+                RawExpr::StaticString(Ustr::from(&s.as_str().to_lowercase()))
+            }
+            RawExpr::List(s) => {
+                RawExpr::List(s.iter().map(|e| e.to_lowercase()).collect())
+            }
             _ => panic!("Can only convert static list to lower-case"),
         }
     }
@@ -483,10 +482,7 @@ pub mod tests {
     }
 
     pub fn build_expr_list(s: &[&str]) -> RawExpr {
-        let v = s
-            .iter()
-            .map(|st| Box::new(build_expr_str(st)))
-            .collect::<Vec<_>>();
+        let v = s.iter().map(|st| build_expr_str(st)).collect::<Vec<_>>();
         RawExpr::List(v)
     }
 }

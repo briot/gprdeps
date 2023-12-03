@@ -2,7 +2,7 @@ use ustr::Ustr;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum TokenKind {
-    EOF,
+    EndOfFile,
     Abstract,
     Aggregate,
     Ampersand,

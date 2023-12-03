@@ -30,7 +30,7 @@ impl<'a> Lexer<'a> {
             current: f.chars().next().unwrap(),
             input: f,
             offset: 0,
-            peeked: Token::new(TokenKind::EOF, 0),
+            peeked: Token::new(TokenKind::EndOfFile, 0),
         };
         s.peeked = s.scan_token();
         s
@@ -76,7 +76,7 @@ impl<'a> Lexer<'a> {
                     // Unterminated string
                     return Token {
                         line: start_line,
-                        kind: TokenKind::EOF,
+                        kind: TokenKind::EndOfFile,
                     };
                 }
                 '"' => {
@@ -202,7 +202,7 @@ impl<'a> Lexer<'a> {
             '\x00' => {
                 return Token {
                     line: start_line,
-                    kind: TokenKind::EOF,
+                    kind: TokenKind::EndOfFile,
                 };
             }
             '(' => TokenKind::OpenParenthesis,
@@ -237,7 +237,7 @@ impl<'a> Iterator for Lexer<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         let mut p = self.scan_token();
         std::mem::swap(&mut self.peeked, &mut p);
-        if p.kind == TokenKind::EOF {
+        if p.kind == TokenKind::EndOfFile {
             None
         } else {
             Some(p)

@@ -110,14 +110,13 @@ impl<'a> Scanner<'a> {
             None => Ok(SimpleName::new_attr(name3, None)?),
             Some(mut args) if args.len() == 1 => Ok(SimpleName::new_attr(
                 name3,
-                Some(StringOrOthers::Str(
-                    if insensitive.0 {
-                        Ustr::from(
-                            &args.remove(0).as_static_str()?.to_lowercase())
-                    } else {
-                        args.remove(0).as_static_str()?
-                    }
-                )),
+                Some(StringOrOthers::Str(if insensitive.0 {
+                    Ustr::from(
+                        &args.remove(0).into_static_str()?.to_lowercase(),
+                    )
+                } else {
+                    args.remove(0).into_static_str()?
+                })),
             )?),
             Some(args) => {
                 Err(format!("Wrong number of indexes for {:?}", args))
@@ -180,7 +179,7 @@ impl<'a> Scanner<'a> {
     fn parse_file(&mut self, path_to_id: &PathToIndexes) -> Result<(), Error> {
         loop {
             match self.lex.peek() {
-                TokenKind::EOF => return Ok(()),
+                TokenKind::EndOfFile => return Ok(()),
                 TokenKind::With => self.parse_with_clause(path_to_id)?,
                 _ => self.parse_project_declaration(path_to_id)?,
             }
@@ -253,7 +252,7 @@ impl<'a> Scanner<'a> {
 
         loop {
             match self.lex.peek_with_line() {
-                (_, TokenKind::EOF) => {
+                (_, TokenKind::EndOfFile) => {
                     Err("Unexpected end of file".to_string())?
                 }
                 (_, TokenKind::End) => {
@@ -331,7 +330,7 @@ impl<'a> Scanner<'a> {
                 }) => {
                     loop {
                         match self.lex.peek_with_line() {
-                            (_, TokenKind::EOF) => {
+                            (_, TokenKind::EndOfFile) => {
                                 Err("Unexpected end of file".to_string())?
                             }
                             (_, TokenKind::End) => {
@@ -431,7 +430,7 @@ impl<'a> Scanner<'a> {
                     loop {
                         let n = self.safe_next()?;
                         match n.kind {
-                            TokenKind::EOF => {
+                            TokenKind::EndOfFile => {
                                 Err("Unexpected end of file".to_string())?
                             }
                             TokenKind::String(s) => {
@@ -449,7 +448,7 @@ impl<'a> Scanner<'a> {
 
                         let n = self.safe_next()?;
                         match n.kind {
-                            TokenKind::EOF => {
+                            TokenKind::EndOfFile => {
                                 Err("Unexpected end of file".to_string())?
                             }
                             TokenKind::Pipe => {}
@@ -460,7 +459,7 @@ impl<'a> Scanner<'a> {
 
                     loop {
                         match self.lex.peek_with_line() {
-                            (_, TokenKind::EOF) => {
+                            (_, TokenKind::EndOfFile) => {
                                 Err("Unexpected end of file".to_string())?
                             }
                             (_, TokenKind::End | TokenKind::When) => break,
@@ -508,7 +507,7 @@ impl<'a> Scanner<'a> {
 
         loop {
             match self.lex.peek() {
-                TokenKind::EOF => Err(
+                TokenKind::EndOfFile => Err(
                     "Unexpected end of file, expecting closing parenthesis"
                         .to_string(),
                 )?,
@@ -560,7 +559,9 @@ impl<'a> Scanner<'a> {
         let mut result = RawExpr::Empty;
         loop {
             match self.lex.peek() {
-                TokenKind::EOF => Err("Unexpected end of file".to_string())?,
+                TokenKind::EndOfFile => {
+                    Err("Unexpected end of file".to_string())?
+                }
                 TokenKind::String(_) => {
                     let s = self.expect_str()?;
                     result = result.ampersand(RawExpr::StaticString(s));
@@ -576,7 +577,7 @@ impl<'a> Scanner<'a> {
                         let _ = self.lex.next(); //  consume ")",  empty list
                     } else {
                         loop {
-                            list.push(Box::new(self.parse_expression()?));
+                            list.push(self.parse_expression()?);
                             let n = self.safe_next()?;
                             match n.kind {
                                 TokenKind::CloseParenthesis => break,
@@ -613,11 +614,10 @@ impl<'a> Scanner<'a> {
             let index = self.expect_str_or_others()?;
             self.expect(TokenKind::CloseParenthesis)?;
             match (index, insensitive.0) {
-                (StringOrOthers::Str(s), true) =>
-                    Some(StringOrOthers::Str(
-                        Ustr::from(&s.as_str().to_lowercase())
-                    )),
-                (s, _) => Some(s)
+                (StringOrOthers::Str(s), true) => Some(StringOrOthers::Str(
+                    Ustr::from(&s.as_str().to_lowercase()),
+                )),
+                (s, _) => Some(s),
             }
         } else {
             None
@@ -628,7 +628,11 @@ impl<'a> Scanner<'a> {
         self.expect(TokenKind::Semicolon)?;
         Ok(Statement::AttributeDecl {
             name: SimpleName::new_attr(name, index)?,
-            value: if insensitive.1 { value.to_lowercase() } else { value },
+            value: if insensitive.1 {
+                value.to_lowercase()
+            } else {
+                value
+            },
         })
     }
 }
@@ -694,8 +698,8 @@ mod tests {
                     2,
                     Statement::AttributeDecl {
                         name: SimpleName::SourceFiles,
-                        value: RawExpr::List(vec![Box::new(
-                            RawExpr::StaticString(Ustr::from("a.adb")),
+                        value: RawExpr::List(vec![RawExpr::StaticString(
+                            Ustr::from("a.adb"),
                         )]),
                     },
                 ),
@@ -704,8 +708,8 @@ mod tests {
                     Statement::AttributeDecl {
                         name: SimpleName::Languages,
                         value: RawExpr::List(vec![
-                            Box::new(RawExpr::StaticString(Ustr::from("ada"))),
-                            Box::new(RawExpr::StaticString(Ustr::from("c"))),
+                            RawExpr::StaticString(Ustr::from("ada")),
+                            RawExpr::StaticString(Ustr::from("c")),
                         ]),
                     },
                 ),
@@ -733,7 +737,7 @@ mod tests {
                                     ),
                                     value: RawExpr::List(vec![]),
                                 },
-                            )
+                            ),
                         ],
                     },
                 ),

@@ -1,4 +1,4 @@
-use crate::gpr::GPR;
+use crate::gpr::GprFile;
 use crate::rawexpr::{PackageName, QualifiedName, RawExpr, SimpleName};
 use crate::scenarios::{AllScenarios, Scenario};
 use std::collections::HashMap;
@@ -62,20 +62,6 @@ impl ExprValue {
         ExprValue::Str(m)
     }
 
-    /// Assumes the expression is a static string valid for all scenarios and
-    /// return it.
-    pub fn as_string(&self) -> Ustr {
-        match self {
-            ExprValue::Str(s) => {
-                if s.len() != 1 {
-                    panic!("Expected no variants {:?}", self);
-                }
-                s[&Scenario::default()]
-            }
-            _ => panic!("Expected a string {:?}", self),
-        }
-    }
-
     /// The expression is assumed to have a single value, for the default
     /// scenario (think of types).  Return that value.
     /// Otherwise panic
@@ -119,8 +105,8 @@ impl ExprValue {
     /// several scenarios if it is referencing another variable.
     pub fn new_with_raw(
         expr: &RawExpr,
-        gpr: &GPR, //  what project what this expression read in ?
-        gpr_deps: &[&GPR],
+        gpr: &GprFile, //  what project what this expression read in ?
+        gpr_deps: &[&GprFile],
         scenars: &mut AllScenarios,
         scenar: Scenario,
         current_pkg: PackageName,
@@ -299,6 +285,7 @@ impl ExprValue {
     /// Merge two expression values.
     /// There must not be any conflicts (value set for the same scenario in
     /// both self and right, even if the values match).
+    #[cfg(test)]
     fn merge_internal<T: Eq + std::fmt::Debug>(
         v_self: &mut HashMap<Scenario, T>,
         v_right: HashMap<Scenario, T>,
@@ -338,6 +325,7 @@ impl ExprValue {
     /// Merge two expression values.
     /// There must not be any conflicts (value set for the same scenario in
     /// both self and right, even if the values match).
+    #[cfg(test)]
     pub fn merge(
         &mut self,
         right: ExprValue,
@@ -363,7 +351,7 @@ impl ExprValue {
 
 #[cfg(test)]
 mod tests {
-    use crate::gpr::GPR;
+    use crate::gpr::GprFile;
     use crate::graph::NodeIndex;
     use crate::rawexpr::tests::{build_expr_list, build_expr_str};
     use crate::rawexpr::{PackageName, QualifiedName, RawExpr, SimpleName};
@@ -375,7 +363,7 @@ mod tests {
 
     #[test]
     fn test_eval() -> Result<(), String> {
-        let mut gpr = GPR::new(
+        let mut gpr = GprFile::new(
             std::path::Path::new("/"),
             NodeIndex::default(),
             Ustr::from("dummy"),
@@ -428,10 +416,8 @@ mod tests {
 
         // Evaluate a list of expressions
         let expr4 = RawExpr::List(vec![
-            Box::new(
-                build_expr_str("value").ampersand(build_expr_str("suffix")),
-            ),
-            Box::new(build_expr_str("val2")),
+            build_expr_str("value").ampersand(build_expr_str("suffix")),
+            build_expr_str("val2"),
         ]);
         assert_eq!(
             ExprValue::new_with_raw(
@@ -518,7 +504,7 @@ mod tests {
 
     #[test]
     fn test_eval_scenario() -> Result<(), String> {
-        let mut gpr = GPR::new(
+        let mut gpr = GprFile::new(
             std::path::Path::new("/"),
             NodeIndex::default(),
             Ustr::from("dummy"),

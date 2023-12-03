@@ -404,6 +404,7 @@ impl AllScenarios {
         }
     }
 
+    #[cfg(test)]
     pub fn debug(&self, scenario: Scenario) -> String {
         format!("{}={}", scenario, self.scenarios[scenario.0])
     }

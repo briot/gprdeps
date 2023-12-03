@@ -32,7 +32,7 @@ lazy_static::lazy_static! {
 /// A specific GPR file
 /// Such an object is independent of the scanner that created it, though it
 /// needs an Environment object to resolve paths.
-pub struct GPR {
+pub struct GprFile {
     pub index: NodeIndex,
     pub name: Ustr,
     path: std::path::PathBuf,
@@ -44,7 +44,7 @@ pub struct GPR {
     files: HashMap<std::path::PathBuf, Vec<Scenario>>,
 }
 
-impl GPR {
+impl GprFile {
     pub fn new(path: &std::path::Path, index: NodeIndex, name: Ustr) -> Self {
         let mut s = Self {
             path: path.into(),
@@ -301,7 +301,7 @@ impl GPR {
                         }
 
                         for d in dirs_in_scenar {
-                            GPR::check_file_candidates(
+                            GprFile::check_file_candidates(
                                 scenarios,
                                 s,
                                 lang,
@@ -323,7 +323,7 @@ impl GPR {
                         }
 
                         for d in dirs_in_scenar {
-                            GPR::check_file_candidates(
+                            GprFile::check_file_candidates(
                                 scenarios,
                                 s,
                                 lang,
@@ -365,8 +365,8 @@ impl GPR {
     fn lookup_gpr<'a>(
         &'a self,
         name: &QualifiedName,
-        dependencies: &'a [&GPR],
-    ) -> Result<&'a GPR, String> {
+        dependencies: &'a [&GprFile],
+    ) -> Result<&'a GprFile, String> {
         match &name.project {
             None => Ok(self),
             Some(c) if *c == self.name => Ok(self),
@@ -384,7 +384,7 @@ impl GPR {
     pub fn lookup<'a>(
         &'a self,
         name: &QualifiedName,
-        dependencies: &'a [&GPR],
+        dependencies: &'a [&GprFile],
         current_pkg: PackageName,
     ) -> Result<&'a ExprValue, String> {
         let project = self.lookup_gpr(name, dependencies)?;
@@ -406,7 +406,7 @@ impl GPR {
     /// Process one statement
     fn process_one_stmt(
         &mut self,
-        dependencies: &[&GPR],
+        dependencies: &[&GprFile],
         scenarios: &mut AllScenarios,
         current_scenario: Scenario,
         current_pkg: PackageName,
@@ -574,7 +574,7 @@ impl GPR {
     /// Process a set of statements
     fn process_body(
         &mut self,
-        dependencies: &[&GPR],
+        dependencies: &[&GprFile],
         scenarios: &mut AllScenarios,
         current_scenario: Scenario,
         current_pkg: PackageName,
@@ -598,8 +598,8 @@ impl GPR {
     pub fn process(
         &mut self,
         raw: &RawGPR,
-        extends: Option<&GPR>,
-        dependencies: &[&GPR],
+        extends: Option<&GprFile>,
+        dependencies: &[&GprFile],
         scenarios: &mut AllScenarios,
     ) -> std::result::Result<(), Error> {
         if let Some(ext) = extends {
@@ -618,13 +618,13 @@ impl GPR {
     }
 }
 
-impl std::fmt::Debug for GPR {
+impl std::fmt::Debug for GprFile {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.path.display())
     }
 }
 
-impl std::fmt::Display for GPR {
+impl std::fmt::Display for GprFile {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.path.display())
     }
