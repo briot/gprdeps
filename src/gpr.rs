@@ -259,10 +259,9 @@ impl GprFile {
         spec_suffix: &str,
         files: &mut HashMap<std::path::PathBuf, Vec<Scenario>>,
     ) {
-        for f in &directory.files {
-            let osstr = f.file_name().and_then(|s| s.to_str());
-            if let Some(true) = osstr.map(|f| f.ends_with(spec_suffix)) {
-                let v = files.entry(f.clone()).or_default();
+        for (filename, f) in &directory.files {
+            if filename.as_str().ends_with(spec_suffix) {
+                let v = files.entry(f.path().clone()).or_default();
                 scenarios.union_list(v, scenario);
             }
         }

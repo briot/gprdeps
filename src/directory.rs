@@ -1,19 +1,29 @@
+use crate::sourcefile::SourceFile;
+use std::collections::HashMap;
 use std::path::PathBuf;
-// use crate::sourcefile::SourceFile;
+use ustr::Ustr;
 
 pub struct Directory {
     path: PathBuf,
-    pub files: Vec<PathBuf>,
+    pub files: HashMap<Ustr, SourceFile>,
 }
 
 impl Directory {
     pub fn new(path: std::path::PathBuf) -> Self {
-        let mut files = Vec::new();
+        let mut files = HashMap::new();
         if let Ok(iter) = std::fs::read_dir(&path) {
             for entry in iter.flatten() {
                 if let Ok(t) = entry.file_type() {
                     if t.is_file() {
-                        files.push(entry.path());
+                        match entry.file_name().to_str() {
+                            None => {}
+                            Some(fname) => {
+                                files.insert(
+                                    Ustr::from(fname),
+                                    SourceFile::new(&path),
+                                );
+                            }
+                        }
                     }
                 }
             }

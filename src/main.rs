@@ -12,7 +12,7 @@ mod scanner;
 mod scenario_variables;
 mod scenarios;
 mod settings;
-// mod sourcefile;
+mod sourcefile;
 mod tokens;
 mod values;
 
