@@ -64,15 +64,12 @@ impl Environment {
             let deps = self.graph.gpr_dependencies(*nodeidx);
             let gprdeps = deps.iter().map(|i| &gprs[i]).collect::<Vec<_>>();
             let mut gpr = GprFile::new(path, *nodeidx, raw.name);
-            let success = gpr.process(
+            gpr.process(
                 raw,
                 raw.extends.map(|i| &gprs[&self.graph.get_project(i)]),
                 &gprdeps,
                 &mut self.scenarios,
-            );
-            if let Err(e) = success {
-                Err(e.decorate(Some(path), 0))?;
-            }
+            )?;
             gprs.insert(gpridx, gpr);
         }
 

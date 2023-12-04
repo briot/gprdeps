@@ -20,7 +20,7 @@ impl Directory {
                             Some(fname) => {
                                 files.insert(
                                     Ustr::from(fname),
-                                    SourceFile::new(&path),
+                                    SourceFile::new(&entry.path()),
                                 );
                             }
                         }

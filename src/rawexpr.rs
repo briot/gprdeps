@@ -1,3 +1,4 @@
+use crate::errors::Error;
 /// The un-interpreted tree, as parsed from a GPR file
 use std::fmt::Debug;
 use ustr::Ustr;
@@ -64,7 +65,7 @@ pub enum PackageName {
 pub const PACKAGE_NAME_VARIANTS: usize = 7;
 
 impl PackageName {
-    pub fn new(lower: Ustr) -> Result<Self, String> {
+    pub fn new(lower: Ustr) -> Result<Self, Error> {
         if lower == *BINDER {
             Ok(PackageName::Binder)
         } else if lower == *BUILDER {
@@ -78,7 +79,7 @@ impl PackageName {
         } else if lower == *NAMING {
             Ok(PackageName::Naming)
         } else {
-            Err(format!("Invalid package name {}", lower))
+            Err(Error::InvalidPackageName(lower))
         }
     }
 }
@@ -150,8 +151,8 @@ pub enum SimpleName {
 }
 impl SimpleName {
     /// Builds a variable name
-    pub fn new_var(lower: Ustr) -> Result<Self, String> {
-        Ok(SimpleName::Name(lower))
+    pub fn new_var(lower: Ustr) -> Self {
+        SimpleName::Name(lower)
     }
 
     /// Builds an attribute name
@@ -159,7 +160,7 @@ impl SimpleName {
     pub fn new_attr(
         lower: Ustr,
         index: Option<StringOrOthers>,
-    ) -> Result<Self, String> {
+    ) -> Result<Self, Error> {
         match (lower, index) {
             (a, Some(StringOrOthers::Str(idx))) if a == *BODY_SUFFIX => {
                 Ok(SimpleName::BodySuffix(idx))
@@ -229,9 +230,12 @@ impl SimpleName {
             (a, None) if a == *VCS_REPOSITORY_ROOT => {
                 Ok(SimpleName::VCSRepositoryRoot)
             }
-            (_, None) => Err(format!("Invalid attribute name {}", lower)),
-            (_, Some(idx)) => {
-                Err(format!("Invalid attribute name {}({})", lower, idx))
+            (_, None) => Err(Error::InvalidAttribute(lower)),
+            (_, Some(StringOrOthers::Str(idx))) => {
+                Err(Error::InvalidAttributeWithIndex(lower, idx))
+            }
+            (_, Some(StringOrOthers::Others)) => {
+                Err(Error::InvalidAttributeWithOthers(lower))
             }
         }
     }
@@ -463,10 +467,10 @@ impl RawExpr {
 
     /// Convert to a static string
     /// ??? Should use values.rs
-    pub fn into_static_str(self) -> Result<Ustr, String> {
+    pub fn into_static_str(self) -> Result<Ustr, Error> {
         match self {
             RawExpr::Str(s) => Ok(s),
-            _ => Err("not a static string".into()),
+            _ => Err(Error::NotStaticString),
         }
     }
 

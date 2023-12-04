@@ -1,3 +1,4 @@
+use crate::errors::Error;
 use crate::gpr::GprFile;
 use crate::rawexpr::{PackageName, QualifiedName, RawExpr, SimpleName};
 use crate::scenarios::{AllScenarios, Scenario};
@@ -83,7 +84,7 @@ impl ExprValue {
 
     /// Given a scenario variable, as setup via new_with_variable, prepares
     /// a mapping from one string value to the corresponding scenario.
-    pub fn prepare_case_stmt(&self) -> Result<UstrMap<Scenario>, String> {
+    pub fn prepare_case_stmt(&self) -> Result<UstrMap<Scenario>, Error> {
         match self {
             ExprValue::Str(per_scenario) => {
                 let mut result = UstrMap::default();
@@ -92,10 +93,7 @@ impl ExprValue {
                 }
                 Ok(result)
             }
-            _ => Err(format!(
-                "Variable in a case statement must be a string {:?}",
-                self
-            )),
+            _ => Err(Error::VariableMustBeString),
         }
     }
 
@@ -110,13 +108,10 @@ impl ExprValue {
         scenars: &mut AllScenarios,
         scenar: Scenario,
         current_pkg: PackageName,
-    ) -> Result<Self, String> {
+    ) -> Result<Self, Error> {
         match expr {
-            RawExpr::Empty => {
-                Err(format!("{}: cannot evaluate empty expr", gpr))
-            }
-            RawExpr::Others => {
-                Err(format!("{}: cannot evaluate `others` expr", gpr))
+            RawExpr::Empty | RawExpr::Others => {
+                panic!("{}: Cannot evaluate this expression {:?}", gpr, expr);
             }
             RawExpr::FuncCall((
                 QualifiedName {
@@ -151,10 +146,10 @@ impl ExprValue {
                         Err(_) => Ok(default),
                     }
                 }
-                _ => panic!("{}: Unknown function {:?}", gpr, expr),
+                _ => Err(Error::UnknownFunction(*n)),
             },
             RawExpr::FuncCall(_) => {
-                Err(format!("{}: unknown function call {:?}", gpr, expr))
+                Err(Error::UnknownFunction(Ustr::from(&format!("{:?}", expr))))
             }
             RawExpr::Name(q) => {
                 Ok(gpr.lookup(q, gpr_deps, current_pkg)?.clone())
@@ -201,10 +196,7 @@ impl ExprValue {
                             }
                             m = new_m;
                         }
-                        _ => Err(format!(
-                            "{}: lists can only contain strings",
-                            gpr
-                        ))?,
+                        _ => Err(Error::ListCanOnlyContainStrings)?,
                     }
                 }
                 Ok(ExprValue::StrList(m))
@@ -247,10 +239,7 @@ impl ExprValue {
                         Ok(ExprValue::Str(m))
                     }
 
-                    (ExprValue::Str(_), _) => Err(format!(
-                        "{}: cannot concatenate string and list",
-                        gpr
-                    )),
+                    (ExprValue::Str(_), _) => Err(Error::WrongAmpersand),
 
                     (ExprValue::StrList(ls), ExprValue::Str(rs)) => {
                         let mut m = HashMap::new();
@@ -276,7 +265,7 @@ impl ExprValue {
                         Ok(ExprValue::StrList(m))
                     }
 
-                    _ => Err(format!("{}: wrong use of &", gpr)),
+                    _ => Err(Error::WrongAmpersand),
                 }
             }
         }
@@ -290,7 +279,7 @@ impl ExprValue {
         v_self: &mut HashMap<Scenario, T>,
         v_right: HashMap<Scenario, T>,
         scenars: &mut AllScenarios,
-    ) -> Result<(), String> {
+    ) -> Result<(), Error> {
         for (s2, v2) in v_right {
             let mut merged: Option<(Scenario, Scenario)> = None;
             for (s1, v1) in v_self.iter() {
@@ -306,10 +295,7 @@ impl ExprValue {
             match merged {
                 None => {
                     if v_self.contains_key(&s2) {
-                        Err(format!(
-                            "Cannot merge two values, the same scenario occurs \
-                             twice {}: {:?} {:?}",
-                            s2, v_self, v2))?;
+                        Err(Error::CannotMerge)?;
                     }
                     v_self.insert(s2, v2);
                 }
@@ -330,7 +316,7 @@ impl ExprValue {
         &mut self,
         right: ExprValue,
         scenars: &mut AllScenarios,
-    ) -> Result<(), String> {
+    ) -> Result<(), Error> {
         match (self, right) {
             (ExprValue::Str(v_self), ExprValue::Str(v_right)) => {
                 ExprValue::merge_internal(v_self, v_right, scenars)
@@ -341,16 +327,14 @@ impl ExprValue {
             (ExprValue::PathList(v_self), ExprValue::PathList(v_right)) => {
                 ExprValue::merge_internal(v_self, v_right, scenars)
             }
-            (s, r) => Err(format!(
-                "values do not have the same type {:?} and {:?}",
-                s, r
-            )),
+            (s, r) => Err(Error::type_mismatch(s, r)),
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::errors::Error;
     use crate::gpr::GprFile;
     use crate::graph::NodeIndex;
     use crate::rawexpr::tests::{build_expr_list, build_expr_str};
@@ -362,7 +346,7 @@ mod tests {
     use ustr::Ustr;
 
     #[test]
-    fn test_eval() -> Result<(), String> {
+    fn test_eval() -> Result<(), Error> {
         let mut gpr = GprFile::new(
             std::path::Path::new("/"),
             NodeIndex::default(),
@@ -503,7 +487,7 @@ mod tests {
     }
 
     #[test]
-    fn test_eval_scenario() -> Result<(), String> {
+    fn test_eval_scenario() -> Result<(), Error> {
         let mut gpr = GprFile::new(
             std::path::Path::new("/"),
             NodeIndex::default(),

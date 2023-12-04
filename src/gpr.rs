@@ -354,7 +354,7 @@ impl GprFile {
         package: PackageName,
         name: SimpleName,
         value: ExprValue,
-    ) -> Result<(), String> {
+    ) -> Result<(), Error> {
         self.values[package as usize].insert(name, value);
         Ok(())
     }
@@ -365,7 +365,7 @@ impl GprFile {
         &'a self,
         name: &QualifiedName,
         dependencies: &'a [&GprFile],
-    ) -> Result<&'a GprFile, String> {
+    ) -> Result<&'a GprFile, Error> {
         match &name.project {
             None => Ok(self),
             Some(c) if *c == self.name => Ok(self),
@@ -373,7 +373,7 @@ impl GprFile {
                 .iter()
                 .copied()
                 .find(|gpr| gpr.name == *n)
-                .ok_or_else(|| format!("{} not found", name)),
+                .ok_or_else(|| Error::not_found(name)),
         }
     }
 
@@ -385,7 +385,7 @@ impl GprFile {
         name: &QualifiedName,
         dependencies: &'a [&GprFile],
         current_pkg: PackageName,
-    ) -> Result<&'a ExprValue, String> {
+    ) -> Result<&'a ExprValue, Error> {
         let project = self.lookup_gpr(name, dependencies)?;
         let mut r1 = None;
 
@@ -399,7 +399,7 @@ impl GprFile {
             r1 = project.values[name.package as usize].get(&name.name);
         }
 
-        r1.ok_or_else(|| format!("{} not found", name))
+        r1.ok_or_else(|| Error::not_found(name))
     }
 
     /// Process one statement
@@ -523,14 +523,14 @@ impl GprFile {
                     let mut combined = Scenario::default();
                     let mut is_first = true;
 
-                    let mut combine = |s: Scenario| -> Result<(), String> {
+                    let mut combine = |s: Scenario| -> Result<(), Error> {
                         if is_first {
                             combined = s;
                             is_first = false;
                         } else {
                             combined = scenarios
                                 .union(combined, s)
-                                .ok_or("Could not combine scenarios")?;
+                                .ok_or(Error::CannotCombineScenarios)?;
                         }
                         Ok(())
                     };
@@ -580,15 +580,13 @@ impl GprFile {
         body: &StatementList,
     ) -> std::result::Result<(), Error> {
         for s in body {
-            if let Err(e) = self.process_one_stmt(
+            self.process_one_stmt(
                 dependencies,
                 scenarios,
                 current_scenario,
                 current_pkg,
                 &s.1,
-            ) {
-                Err(e.decorate(None, s.0))?;
-            }
+            )?;
         }
         Ok(())
     }
@@ -614,6 +612,10 @@ impl GprFile {
             PackageName::None,
             &raw.body,
         )
+        .map_err(|e| Error::WithPath {
+            path: self.path.clone(),
+            error: Box::new(e),
+        })
     }
 }
 

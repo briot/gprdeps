@@ -88,6 +88,7 @@
 ///            = (mode=debug) = s1     => src2/b.adb
 ///     s9|s10 = (mode=opt|lto,check=some|most) | (mode=opt|lto,check=none)
 ///            = (mode=opt|lto) = s2   => src3/b.adb
+use crate::errors::Error;
 use crate::scenario_variables::ScenarioVariable;
 use std::collections::HashMap;
 use ustr::{Ustr, UstrMap, UstrSet};
@@ -367,7 +368,7 @@ impl AllScenarios {
         &mut self,
         name: Ustr,
         valid: UstrSet,
-    ) -> Result<(), String> {
+    ) -> Result<(), Error> {
         match self.variables.get(&name) {
             None => {
                 self.variables
@@ -386,19 +387,7 @@ impl AllScenarios {
                         v.push_str(s.as_str());
                     }
 
-                    Err(format!(
-                        "Scenario variable `{}` already defined with another \
-                          set of values (was `{:?}`, now `{:?}`)",
-                        name,
-                        oldvar
-                            .list_valid()
-                            .iter()
-                            .map(|s| s.as_str())
-                            .collect::<Vec<_>>()
-                            .join(", "),
-                        v,
-                    )
-                    .to_owned())
+                    Err(Error::ScenarioTwice(name))
                 }
             }
         }
@@ -412,6 +401,7 @@ impl AllScenarios {
 
 #[cfg(test)]
 pub mod tests {
+    use crate::errors::Error;
     use crate::scenario_variables::tests::build_set;
     use crate::scenarios::{AllScenarios, Scenario};
     use ustr::Ustr;
@@ -431,12 +421,12 @@ pub mod tests {
         scenarios: &mut AllScenarios,
         name: &str,
         valid: &[&str],
-    ) -> Result<(), String> {
+    ) -> Result<(), Error> {
         scenarios.try_add_variable(Ustr::from(name), build_set(valid))
     }
 
     #[test]
-    fn create_scenario() -> Result<(), String> {
+    fn create_scenario() -> Result<(), Error> {
         let mut scenarios = AllScenarios::default();
         try_add_variable(
             &mut scenarios,
@@ -504,7 +494,7 @@ pub mod tests {
     }
 
     #[test]
-    fn test_union() -> Result<(), String> {
+    fn test_union() -> Result<(), Error> {
         let mut scenarios = AllScenarios::default();
         try_add_variable(
             &mut scenarios,
@@ -587,7 +577,7 @@ pub mod tests {
     }
 
     #[test]
-    fn test_intersection() -> Result<(), String> {
+    fn test_intersection() -> Result<(), Error> {
         let mut scenarios = AllScenarios::default();
         try_add_variable(
             &mut scenarios,

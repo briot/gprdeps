@@ -36,8 +36,12 @@ impl<'a> Lexer<'a> {
         s
     }
 
-    pub fn decorate_error(&self, error: Error) -> Error {
-        error.decorate(Some(&self.path), self.line)
+    pub fn error_with_location(&self, error: Error) -> Error {
+        Error::WithLocation {
+            path: self.path.clone(),
+            line: self.line,
+            error: Box::new(error),
+        }
     }
 
     /// Consumes one character

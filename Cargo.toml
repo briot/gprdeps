@@ -10,8 +10,10 @@ opt-level = 1
 opt-level = 3
 
 [dependencies]
+# anyhow = { version = "1.0.75", features = ["backtrace"] }
+thiserror = { version = "1.0.50" }
 lazy_static = "1.4.0"
-threadpool = "1.8.1"
+# threadpool = "1.8.1"
 path-clean = "1.0.1"
 petgraph = "0.6.4"
 ustr = "0.10.0"
