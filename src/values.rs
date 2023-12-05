@@ -1,39 +1,79 @@
 use crate::errors::Error;
 use crate::gpr::GprFile;
 use crate::rawexpr::{PackageName, QualifiedName, RawExpr, SimpleName};
-use crate::scenarios::{AllScenarios, Scenario};
+use crate::scenarios::{AllScenarios, Scenario, EMPTY_SCENARIO};
 use std::collections::HashMap;
 use std::collections::HashSet;
 use ustr::{Ustr, UstrMap, UstrSet};
 
-#[derive(Clone, Debug, PartialEq)]
-pub enum ExprValue {
-    Str(HashMap<Scenario, Ustr>),
-    StrList(HashMap<Scenario, Vec<Ustr>>),
-    PathList(HashMap<Scenario, Vec<std::path::PathBuf>>),
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ExprValue<T>(HashMap<Scenario, T>);
+
+struct CrossJoinIter<'a, T, U> {
+    left_iter: std::collections::hash_map::Iter<'a, Scenario, T>,
+    left_val: Option<(&'a Scenario, &'a T)>,
+    right_iter: Option<std::collections::hash_map::Iter<'a, Scenario, U>>,
+    right: &'a ExprValue<U>,
+    scenarios: &'a mut AllScenarios,
 }
 
-impl ExprValue {
+impl<'a, T, U> CrossJoinIter<'a, T, U> {
+    fn new(
+        left_iter: std::collections::hash_map::Iter<'a, Scenario, T>,
+        right: &'a ExprValue<U>,
+        scenarios: &'a mut AllScenarios,
+    ) -> Self {
+        CrossJoinIter {
+            left_iter,
+            left_val: None,
+            right,
+            right_iter: None,
+            scenarios,
+        }
+    }
+}
+
+impl<'a, T, U> Iterator for CrossJoinIter<'a, T, U> {
+    type Item = (Scenario, (&'a T, &'a U));
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            if self.left_val.is_none() {
+                match self.left_iter.next() {
+                    None => return None,
+                    Some(v) => {
+                        self.left_val = Some(v);
+                    }
+                }
+            }
+            match (self.left_val, self.right_iter.as_mut().and_then(|r| r.next())) {
+                (None, _) => return None,
+                (Some(_), None) => {
+                    self.right_iter = Some(self.right.0.iter());
+                },
+                (Some((left_s, left_v)), Some((right_s, right_v))) => {
+                    let s = self.scenarios.intersection(*left_s, *right_s);
+                    if s != EMPTY_SCENARIO {
+                        return Some((s, (left_v, right_v)));
+                    }
+                }
+            }
+        }
+    }
+}
+
+impl ExprValue<Ustr> {
+
     /// An expression that always has the same static value for all scenarios
     pub fn new_with_str(s: Ustr) -> Self {
         ExprValue::new_with_str_and_scenario(s, Scenario::default())
     }
 
     pub fn new_with_str_and_scenario(s: Ustr, scenario: Scenario) -> Self {
-        let mut m = HashMap::new();
-        m.insert(scenario, s);
-        ExprValue::Str(m)
-    }
-
-    // An expression value created as an empty list
-    pub fn new_with_list(list: &[Ustr]) -> Self {
-        let mut m = HashMap::new();
-        m.insert(
-            Scenario::default(),
-            list.iter().map(|s| Ustr::from(s)).collect(),
-        );
-
-        ExprValue::StrList(m)
+        let mut m = ExprValue(HashMap::new());
+        m.0.insert(scenario, s);
+        m
     }
 
     /// Given a type declaration (which cannot be declared in case statements,
@@ -49,36 +89,58 @@ impl ExprValue {
     pub fn new_with_variable(
         scenarios: &mut AllScenarios,
         varname: Ustr,
-        type_values: &ExprValue,
+        type_values: &ExprValue<Ustr>,
     ) -> Self {
-        let valid = type_values.as_list(); // panic if not a single list
-        let mut m = HashMap::new();
+        let mut m = ExprValue(HashMap::new());
         let s0 = Scenario::default();
-        for v in valid {
+        for v in &type_values {
             let mut onevalue = UstrSet::default();
             onevalue.insert(*v);
             let s1 = scenarios.split(s0, varname, onevalue);
-            m.insert(s1, *v);
+            m.0.insert(s1, *v);
         }
-        ExprValue::Str(m)
+        m
+    }
+
+}
+
+impl ExprValue<Vec<Ustr>> {
+
+    // An expression value created as an empty list
+    pub fn new_with_list(list: &[Ustr]) -> Self {
+        let mut m = ExprValue(HashMap::new());
+        m.0.insert(
+            Scenario::default(),
+            list.iter().map(|s| Ustr::from(s)).collect(),
+        );
+        m
     }
 
     /// The expression is assumed to have a single value, for the default
     /// scenario (think of types).  Return that value.
     /// Otherwise panic
     pub fn as_list(&self) -> &Vec<Ustr> {
-        match self {
-            ExprValue::StrList(v) => &v[&Scenario::default()],
-            _ => panic!("Expected a list {:?}", self),
-        }
+        &self.0[&Scenario::default]
+    }
+}
+
+
+impl<T> ExprValue<T> {
+
+    pub fn crossjoin<'a, U>(
+        &'a self,
+        right: &'a ExprValue<U>,
+        scenarios: &'a mut AllScenarios,
+    ) -> CrossJoinIter<'a, T, U> {
+        CrossJoinIter::new(self.0.iter(), right, scenarios)
     }
 
     /// List all scenarios that have an impact on the variable's value
     pub fn find_used_scenarios(&self, useful: &mut HashSet<Scenario>) {
         match self {
-            ExprValue::Str(v) => useful.extend(v.keys()),
-            ExprValue::StrList(v) => useful.extend(v.keys()),
-            ExprValue::PathList(v) => useful.extend(v.keys()),
+            ExprValue::Str(v) => useful.extend(v.0.keys()),
+            ExprValue::StrList(v) => useful.extend(v.0.keys()),
+            ExprValue::PathList(v) => useful.extend(v.0.keys()),
         }
     }
 
@@ -88,7 +150,7 @@ impl ExprValue {
         match self {
             ExprValue::Str(per_scenario) => {
                 let mut result = UstrMap::default();
-                for (s, v) in per_scenario {
+                for (s, v) in &per_scenario.0 {
                     result.insert(*v, *s);
                 }
                 Ok(result)
@@ -158,8 +220,8 @@ impl ExprValue {
                 Ok(ExprValue::new_with_str_and_scenario(*s, scenar))
             }
             RawExpr::List(ls) => {
-                let mut m: HashMap<Scenario, Vec<Ustr>> = HashMap::new();
-                m.insert(scenar, vec![]);
+                let mut m: ExprValue<Vec<Ustr>> = ExprValue(HashMap::new());
+                m.0.insert(scenar, vec![]);
                 for expr in ls {
                     // Each element of the list is an expression, which could
                     // have a different value for each scenario.
@@ -183,12 +245,12 @@ impl ExprValue {
                             //    s0*s1 => ["a", "b", "c"]
                             //    s0*s2 => ["a", "b", "d"]
 
-                            let mut new_m = HashMap::new();
-                            for (s2, v2) in per_scenario {
-                                for (s1, v1) in &m {
+                            let mut new_m = ExprValue(HashMap::new());
+                            for (s2, v2) in per_scenario.0 {
+                                for (s1, v1) in &m.0 {
                                     let mut v = v1.clone();
                                     v.push(v2);
-                                    new_m.insert(
+                                    new_m.0.insert(
                                         scenars.intersection(*s1, s2),
                                         v,
                                     );
@@ -199,7 +261,7 @@ impl ExprValue {
                         _ => Err(Error::ListCanOnlyContainStrings)?,
                     }
                 }
-                Ok(ExprValue::StrList(m))
+                Ok(m)
             }
             RawExpr::Ampersand((left, right)) => {
                 let l_eval = ExprValue::new_with_raw(
@@ -221,45 +283,45 @@ impl ExprValue {
 
                 match (l_eval, r_eval) {
                     (ExprValue::Str(ls), ExprValue::Str(rs)) => {
-                        let mut m = HashMap::new();
-                        for (s1, v1) in ls {
-                            for (s2, v2) in &rs {
+                        let mut m = ExprValue(HashMap::new());
+                        for (s1, v1) in ls.0 {
+                            for (s2, v2) in &rs.0 {
                                 // The string v1&v2 is only meaningful for the
                                 // mode that is the intersection of s1 and s2.
                                 // In other modes, v1 or v2 are considered the
                                 // empty string.
                                 let mut res = v1.as_str().to_string();
                                 res.push_str(v2.as_str());
-                                m.insert(
+                                m.0.insert(
                                     scenars.intersection(s1, *s2),
                                     Ustr::from(&res),
                                 );
                             }
                         }
-                        Ok(ExprValue::Str(m))
+                        Ok(m)
                     }
 
                     (ExprValue::Str(_), _) => Err(Error::WrongAmpersand),
 
                     (ExprValue::StrList(ls), ExprValue::Str(rs)) => {
-                        let mut m = HashMap::new();
-                        for (s1, v1) in ls {
-                            for (s2, v2) in &rs {
+                        let mut m = ExprValue(HashMap::new());
+                        for (s1, v1) in ls.0 {
+                            for (s2, v2) in &rs.0 {
                                 let mut res = v1.clone();
                                 res.push(*v2);
-                                m.insert(scenars.intersection(s1, *s2), res);
+                                m.0.insert(scenars.intersection(s1, *s2), res);
                             }
                         }
                         Ok(ExprValue::StrList(m))
                     }
 
                     (ExprValue::StrList(ls), ExprValue::StrList(rs)) => {
-                        let mut m = HashMap::new();
-                        for (s1, v1) in ls {
-                            for (s2, v2) in &rs {
+                        let mut m = ExprValue(HashMap::new());
+                        for (s1, v1) in ls.0 {
+                            for (s2, v2) in &rs.0 {
                                 let mut res = v1.clone();
                                 res.extend(v2.clone());
-                                m.insert(scenars.intersection(s1, *s2), res);
+                                m.0.insert(scenars.intersection(s1, *s2), res);
                             }
                         }
                         Ok(ExprValue::StrList(m))
@@ -270,19 +332,24 @@ impl ExprValue {
             }
         }
     }
+}
+
+#[cfg(test)]
+impl<T> ExprValue<T>
+    where T: Eq + std::fmt::Debug
+{
 
     /// Merge two expression values.
     /// There must not be any conflicts (value set for the same scenario in
     /// both self and right, even if the values match).
-    #[cfg(test)]
-    fn merge_internal<T: Eq + std::fmt::Debug>(
-        v_self: &mut HashMap<Scenario, T>,
-        v_right: HashMap<Scenario, T>,
+    pub fn merge(
+        &mut self,
+        v_right: ExprValue<T>,
         scenars: &mut AllScenarios,
     ) -> Result<(), Error> {
-        for (s2, v2) in v_right {
+        for (s2, v2) in v_right.0 {
             let mut merged: Option<(Scenario, Scenario)> = None;
-            for (s1, v1) in v_self.iter() {
+            for (s1, v1) in self.0.iter() {
                 if *v1 == v2 {
                     //  Same value in two scenarios ?
                     if let Some(new_s) = scenars.union(*s1, s2) {
@@ -294,41 +361,18 @@ impl ExprValue {
 
             match merged {
                 None => {
-                    if v_self.contains_key(&s2) {
+                    if self.0.contains_key(&s2) {
                         Err(Error::CannotMerge)?;
                     }
-                    v_self.insert(s2, v2);
+                    self.0.insert(s2, v2);
                 }
                 Some((s1, new_s)) => {
-                    let old = v_self.remove(&s1);
-                    v_self.insert(new_s, old.unwrap());
+                    let old = self.0.remove(&s1);
+                    self.0.insert(new_s, old.unwrap());
                 }
             }
         }
         Ok(())
-    }
-
-    /// Merge two expression values.
-    /// There must not be any conflicts (value set for the same scenario in
-    /// both self and right, even if the values match).
-    #[cfg(test)]
-    pub fn merge(
-        &mut self,
-        right: ExprValue,
-        scenars: &mut AllScenarios,
-    ) -> Result<(), Error> {
-        match (self, right) {
-            (ExprValue::Str(v_self), ExprValue::Str(v_right)) => {
-                ExprValue::merge_internal(v_self, v_right, scenars)
-            }
-            (ExprValue::StrList(v_self), ExprValue::StrList(v_right)) => {
-                ExprValue::merge_internal(v_self, v_right, scenars)
-            }
-            (ExprValue::PathList(v_self), ExprValue::PathList(v_right)) => {
-                ExprValue::merge_internal(v_self, v_right, scenars)
-            }
-            (s, r) => Err(Error::type_mismatch(s, r)),
-        }
     }
 }
 
@@ -584,11 +628,11 @@ mod tests {
         let concat_expr =
             ExprValue::new_with_raw(&concat, &gpr, &[], &mut scenars, s0, pkg)?;
 
-        let mut expected = HashMap::new();
-        expected.insert(s7, Ustr::from("val2val4"));
-        expected.insert(s8, Ustr::from("val2val5"));
-        expected.insert(s5, Ustr::from("val3val4"));
-        expected.insert(s6, Ustr::from("val3val5"));
+        let mut expected = ExprValue(HashMap::new());
+        expected.0.insert(s7, Ustr::from("val2val4"));
+        expected.0.insert(s8, Ustr::from("val2val5"));
+        expected.0.insert(s5, Ustr::from("val3val4"));
+        expected.0.insert(s6, Ustr::from("val3val5"));
         assert_eq!(concat_expr, ExprValue::Str(expected));
 
         Ok(())

@@ -225,6 +225,7 @@ impl AllScenarios {
     }
 
     /// Similar to split, but passes an existing scenario
+    /// ??? Should cache the result, as this is used quite a lot
     pub fn intersection(&mut self, s1: Scenario, s2: Scenario) -> Scenario {
         if s1 == EMPTY_SCENARIO {
             return EMPTY_SCENARIO;

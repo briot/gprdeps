@@ -1,6 +1,7 @@
 use crate::directory::Directory;
 use crate::errors::Error;
 use crate::graph::NodeIndex;
+use crate::sourcefile::SourceFile;
 use crate::rawexpr::{
     PackageName, QualifiedName, SimpleName, Statement, StatementList,
     StringOrOthers, PACKAGE_NAME_VARIANTS,
@@ -11,6 +12,7 @@ use crate::settings::Settings;
 use crate::values::ExprValue;
 use path_clean::PathClean;
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 use ustr::{Ustr, UstrSet};
 use walkdir::WalkDir;
 
@@ -36,12 +38,25 @@ pub struct GprFile {
     pub index: NodeIndex,
     pub name: Ustr,
     path: std::path::PathBuf,
-    values: [HashMap<
-        SimpleName, // variable or attribute name
-        ExprValue,  // value for each scenario
-    >; PACKAGE_NAME_VARIANTS],
 
-    files: HashMap<std::path::PathBuf, Vec<Scenario>>,
+    body: HashMap<Ustr, ExprValue<Ustr>>,
+    body_suffix: HashMap<Ustr, ExprValue<Ustr>>,
+    dot_replacement: ExprValue<Ustr>,
+    excluded_source_files: ExprValue<Vec<Ustr>>,
+    exec_dir: ExprValue<Ustr>,
+    languages: ExprValue<Ustr>,
+    main: ExprValue<Ustr>,
+    object_dir: ExprValue<Ustr>,
+    project_files: ExprValue<Ustr>,
+    source_dirs: ExprValue<Vec<Ustr>>,
+    source_files: ExprValue<Ustr>,
+    source_list_files: ExprValue<Ustr>,
+    spec: HashMap<Ustr, ExprValue<Ustr>>,
+    spec_suffix: HashMap<Ustr, ExprValue<Ustr>>,
+    target: ExprValue<Ustr>,
+
+    type_and_vars: HashMap<(PackageName, Ustr), ExprValue<Ustr>>,
+    scenarios_for_source_files: HashMap<std::path::PathBuf, Vec<Scenario>>,
 }
 
 impl GprFile {
@@ -50,85 +65,46 @@ impl GprFile {
             path: path.into(),
             name,
             index,
-            values: Default::default(),
-            files: Default::default(),
+            dot_replacement: ExprValue::new_with_str(*CST_MINUS),
+            exec_dir: ExprValue::new_with_str(*CST_DOT),
+            languages: ExprValue::new_with_list(&[*CST_ADA]),
+            object_dir: ExprValue::new_with_str(*CST_DOT),
+            source_dirs: ExprValue::new_with_list(&[*CST_DOT]),
+            target: ExprValue::new_with_str(*CST_X86_64_LINUX),
+            ..Default::default()
         };
-
-        // Declare the fallback value for "project'Target" attribute.
-        s.values[PackageName::None as usize].insert(
-            SimpleName::Target,
-            ExprValue::new_with_str(*CST_X86_64_LINUX),
-        );
-        s.values[PackageName::Linker as usize]
-            .insert(SimpleName::LinkerOptions, ExprValue::new_with_list(&[]));
-        s.values[PackageName::None as usize].insert(
-            SimpleName::SourceDirs,
-            ExprValue::new_with_list(&[*CST_DOT]),
-        );
-        s.values[PackageName::None as usize].insert(
-            SimpleName::ObjectDir,
-            ExprValue::new_with_list(&[*CST_DOT]),
-        );
-        s.values[PackageName::None as usize]
-            .insert(SimpleName::ExecDir, ExprValue::new_with_list(&[*CST_DOT]));
-        s.values[PackageName::None as usize].insert(
-            SimpleName::Languages,
-            ExprValue::new_with_list(&[*CST_ADA]),
-        );
-        s.values[PackageName::Naming as usize].insert(
-            SimpleName::DotReplacement,
-            ExprValue::new_with_str(*CST_MINUS),
-        );
-        s.values[PackageName::Naming as usize].insert(
-            SimpleName::SpecSuffix(*CST_ADA),
-            ExprValue::new_with_str(*CST_EXT_ADS),
-        );
-        s.values[PackageName::Naming as usize].insert(
-            SimpleName::BodySuffix(*CST_ADA),
-            ExprValue::new_with_str(*CST_EXT_ADB),
-        );
-        s.values[PackageName::Naming as usize].insert(
-            SimpleName::SpecSuffix(*CST_CPP),
-            ExprValue::new_with_str(*CST_EXT_HH),
-        );
-        s.values[PackageName::Naming as usize].insert(
-            SimpleName::BodySuffix(*CST_CPP),
-            ExprValue::new_with_str(*CST_EXT_CPP),
-        );
-        s.values[PackageName::Naming as usize].insert(
-            SimpleName::SpecSuffix(*CST_C),
-            ExprValue::new_with_str(*CST_EXT_H),
-        );
-        s.values[PackageName::Naming as usize].insert(
-            SimpleName::BodySuffix(*CST_C),
-            ExprValue::new_with_str(*CST_EXT_C),
-        );
+        s.spec_suffix.insert(*CST_ADA, ExprValue::new_with_str(*CST_EXT_ADS));
+        s.body_suffix.insert(*CST_ADA, ExprValue::new_with_str(*CST_EXT_ADB));
+        s.spec_suffix.insert(*CST_CPP, ExprValue::new_with_str(*CST_EXT_HH));
+        s.body_suffix.insert(*CST_CPP, ExprValue::new_with_str(*CST_EXT_CPP));
+        s.spec_suffix.insert(*CST_C, ExprValue::new_with_str(*CST_EXT_H));
+        s.body_suffix.insert(*CST_C, ExprValue::new_with_str(*CST_EXT_C));
         s
     }
 
     /// Trim attributes and variables that will no longer be used.
     /// This is optional, and just a way to reduce the number of combinations
     /// that we will need to look at for scenarios.
-    pub fn trim(&mut self) {
-        for pkg in 0..PACKAGE_NAME_VARIANTS {
-            self.values[pkg].retain(|name, _| {
-                matches!(
-                    name,
-                    SimpleName::BodySuffix(_)
-                        | SimpleName::Body(_)
-                        | SimpleName::ExcludedSourceFiles
-                        | SimpleName::Languages
-                        | SimpleName::Main
-                        | SimpleName::ProjectFiles
-                        | SimpleName::SourceDirs
-                        | SimpleName::SourceFiles
-                        | SimpleName::Spec(_)
-                        | SimpleName::SpecSuffix(_)
-                        | SimpleName::SourceListFile
-                )
-            });
-        }
-    }
+//    pub fn trim(&mut self) {
+//        for pkg in 0..PACKAGE_NAME_VARIANTS {
+//            self.values[pkg].retain(|name, _| {
+//                matches!(
+//                    name,
+//                    SimpleName::BodySuffix(_)
+//                        | SimpleName::Body(_)
+//                        | SimpleName::ExcludedSourceFiles
+//                        | SimpleName::Languages
+//                        | SimpleName::Main
+//                        | SimpleName::ProjectFiles
+//                        | SimpleName::SourceDirs
+//                        | SimpleName::SourceFiles
+//                        | SimpleName::Spec(_)
+//                        | SimpleName::SpecSuffix(_)
+//                        | SimpleName::SourceListFile
+//                )
+//            });
+//        }
+//    }
 
     /// Find which scenarios are actually useful for this project
     pub fn find_used_scenarios(&self, useful: &mut HashSet<Scenario>) {
@@ -164,40 +140,40 @@ impl GprFile {
     }
 
     // Retrieve the value of a string attribute
-    fn str_attr(
-        &self,
-        pkg: PackageName,
-        name: &SimpleName,
-    ) -> &HashMap<Scenario, Ustr> {
-        match self.values[pkg as usize].get(name) {
-            Some(ExprValue::Str(v)) => v,
-            v => panic!("Wrong type for attribute {}{}, {:?}", pkg, name, v),
-        }
-    }
-
-    // Retrieve the value of a string list attribute
-    fn strlist_attr(
-        &self,
-        pkg: PackageName,
-        name: &SimpleName,
-    ) -> &HashMap<Scenario, Vec<Ustr>> {
-        match self.values[pkg as usize].get(name) {
-            Some(ExprValue::StrList(v)) => v,
-            v => panic!("Wrong type for attribute {}{}, {:?}", pkg, name, v),
-        }
-    }
-
-    // Retrieve the value of a path list attribute
-    fn pathlist_attr(
-        &self,
-        pkg: PackageName,
-        name: &SimpleName,
-    ) -> &HashMap<Scenario, Vec<std::path::PathBuf>> {
-        match self.values[pkg as usize].get(name) {
-            Some(ExprValue::PathList(v)) => v,
-            v => panic!("Wrong type for attribute {}{}, {:?}", pkg, name, v),
-        }
-    }
+//    fn str_attr(
+//        &self,
+//        pkg: PackageName,
+//        name: &SimpleName,
+//    ) -> &HashMap<Scenario, Ustr> {
+//        match self.values[pkg as usize].get(name) {
+//            Some(ExprValue::Str(v)) => v,
+//            v => panic!("Wrong type for attribute {}{}, {:?}", pkg, name, v),
+//        }
+//    }
+//
+//    // Retrieve the value of a string list attribute
+//    fn strlist_attr(
+//        &self,
+//        pkg: PackageName,
+//        name: &SimpleName,
+//    ) -> &HashMap<Scenario, Vec<Ustr>> {
+//        match self.values[pkg as usize].get(name) {
+//            Some(ExprValue::StrList(v)) => v,
+//            v => panic!("Wrong type for attribute {}{}, {:?}", pkg, name, v),
+//        }
+//    }
+//
+//    // Retrieve the value of a path list attribute
+//    fn pathlist_attr(
+//        &self,
+//        pkg: PackageName,
+//        name: &SimpleName,
+//    ) -> &HashMap<Scenario, Vec<std::path::PathBuf>> {
+//        match self.values[pkg as usize].get(name) {
+//            Some(ExprValue::PathList(v)) => v,
+//            v => panic!("Wrong type for attribute {}{}, {:?}", pkg, name, v),
+//        }
+//    }
 
     //  Resolve source directories from the list of relative path names (as
     //  strings) read from the project file, into full paths.
@@ -207,6 +183,7 @@ impl GprFile {
         dirs: &mut HashSet<Directory>,
         settings: &Settings,
     ) -> Result<(), String> {
+
         let sourcedirs =
             self.strlist_attr(PackageName::None, &SimpleName::SourceDirs);
 
@@ -254,25 +231,43 @@ impl GprFile {
     fn check_file_candidates(
         scenarios: &mut AllScenarios,
         scenario: Scenario,
+        dirs_in_scenario: &Vec<PathBuf>,   // All source_dirs in this scenario
+        suffixes: &HashMap<Scenario, Ustr>,
         _lang: &str,
-        directory: &Directory,
-        spec_suffix: &str,
+        all_dirs: &HashSet<Directory>,
         files: &mut HashMap<std::path::PathBuf, Vec<Scenario>>,
     ) {
-        for (filename, f) in &directory.files {
-            if filename.as_str().ends_with(spec_suffix) {
-                let v = files.entry(f.path().clone()).or_default();
-                scenarios.union_list(v, scenario);
+        for (scenar_spec, suffix_in_scenario) in suffixes {
+            let s = scenarios.intersection(scenario, *scenar_spec);
+            if s == EMPTY_SCENARIO {
+                continue;
+            }
+            for d in dirs_in_scenario {
+                let directory = all_dirs.get(d).unwrap();
+                for (filename, f) in &directory.files {
+                    if filename.as_str().ends_with(suffix_in_scenario.as_str()) {
+                        let v = files.entry(f.path().clone()).or_default();
+                        scenarios.union_list(v, scenario);
+                    }
+                }
             }
         }
     }
 
     /// Return the list of source files for all scenarios
-    pub fn get_source_files(
+    pub fn get_source_files<'files>(
         &mut self,
-        all_dirs: &HashSet<Directory>,
+        all_dirs: &'files HashSet<Directory>,
+        all_files: &mut HashMap<PathBuf, &'files SourceFile>,
         scenarios: &mut AllScenarios,
     ) -> usize {
+
+        let source_dirs = self.values[PackageName::None as usize].get(&SimpleName::SourceDirs);
+        let languages = self.values[PackageName::None as usize].get(&SimpleName::Languages);
+
+        for (s, (dirs, langs)) in source_dirs.0.crossjoin(languages.0) {
+        }
+
         let source_dirs =
             self.pathlist_attr(PackageName::None, &SimpleName::SourceDirs);
         let languages =
@@ -289,74 +284,45 @@ impl GprFile {
                 }
 
                 for lang in langs_in_scenar {
-                    let spec_suffix = self.str_attr(
-                        PackageName::Naming,
-                        &SimpleName::SpecSuffix(*lang),
+                    GprFile::check_file_candidates(
+                        scenarios,
+                        s,
+                        dirs_in_scenar,
+                        self.str_attr(
+                            PackageName::Naming,
+                            &SimpleName::SpecSuffix(*lang),
+                        ),
+                        lang,
+                        all_dirs,
+                        &mut files,
                     );
-                    for (scenar_spec, spec_in_scenar) in spec_suffix {
-                        let s = scenarios.intersection(s, *scenar_spec);
-                        if s == EMPTY_SCENARIO {
-                            continue;
-                        }
 
-                        for d in dirs_in_scenar {
-                            GprFile::check_file_candidates(
-                                scenarios,
-                                s,
-                                lang,
-                                all_dirs.get(d).unwrap(),
-                                spec_in_scenar,
-                                &mut files,
-                            );
-                        }
-                    }
-
-                    let body_suffix = self.str_attr(
-                        PackageName::Naming,
-                        &SimpleName::BodySuffix(*lang),
+                    GprFile::check_file_candidates(
+                        scenarios,
+                        s,
+                        dirs_in_scenar,
+                        self.str_attr(
+                            PackageName::Naming,
+                            &SimpleName::BodySuffix(*lang),
+                        ),
+                        lang,
+                        all_dirs,
+                        &mut files,
                     );
-                    for (scenar_body, body_in_scenar) in body_suffix {
-                        let s = scenarios.intersection(s, *scenar_body);
-                        if s == EMPTY_SCENARIO {
-                            continue;
-                        }
-
-                        for d in dirs_in_scenar {
-                            GprFile::check_file_candidates(
-                                scenarios,
-                                s,
-                                lang,
-                                all_dirs.get(d).unwrap(),
-                                body_in_scenar,
-                                &mut files,
-                            );
-                        }
-                    }
                 }
             }
         }
-        self.files = files;
+
+        self.source_files = files;
 
         //        for (p, s) in files {
-        //            eprintln!(
+        //            println!(
         //                "MANU {}: {:?}",
         //                p.display(),
         //                s.iter().map(|s| scenarios.debug(*s)).collect::<Vec<_>>()
         //            );
         //        }
-        self.files.len()
-    }
-
-    /// Declare a new named object.
-    /// It is an error if such an object already exists.
-    pub fn declare(
-        &mut self,
-        package: PackageName,
-        name: SimpleName,
-        value: ExprValue,
-    ) -> Result<(), Error> {
-        self.values[package as usize].insert(name, value);
-        Ok(())
+        self.source_files.len()
     }
 
     /// Lookup the project file referenced by the given name, in self or its
