@@ -1,6 +1,7 @@
 use crate::directory::Directory;
 use crate::errors::Error;
 use crate::graph::NodeIndex;
+use crate::sourcefile::SourceFile;
 use crate::rawexpr::{
     PackageName, QualifiedName, SimpleName, Statement, StatementList,
     StringOrOthers, PACKAGE_NAME_VARIANTS,
@@ -10,6 +11,7 @@ use crate::scenarios::{AllScenarios, Scenario, EMPTY_SCENARIO};
 use crate::settings::Settings;
 use crate::values::ExprValue;
 use path_clean::PathClean;
+use std::path::PathBuf;
 use std::collections::{HashMap, HashSet};
 use ustr::{Ustr, UstrSet};
 use walkdir::WalkDir;
@@ -254,23 +256,34 @@ impl GprFile {
     fn check_file_candidates(
         scenarios: &mut AllScenarios,
         scenario: Scenario,
+        dirs_in_scenario: &Vec<PathBuf>,
+        suffixes: &HashMap<Scenario, Ustr>,
         _lang: &str,
-        directory: &Directory,
-        spec_suffix: &str,
+        all_dirs: &HashSet<Directory>,
         files: &mut HashMap<std::path::PathBuf, Vec<Scenario>>,
     ) {
-        for (filename, f) in &directory.files {
-            if filename.as_str().ends_with(spec_suffix) {
-                let v = files.entry(f.path().clone()).or_default();
-                scenarios.union_list(v, scenario);
+        for (scenar_spec, suffix_in_scenario) in suffixes {
+            let s = scenarios.intersection(scenario, *scenar_spec);
+            if s == EMPTY_SCENARIO {
+                continue
+            }
+            for d in dirs_in_scenario {
+                let directory = all_dirs.get(d).unwrap();
+                for (filename, f) in &directory.files {
+                    if filename.as_str().ends_with(suffix_in_scenario.as_str()) {
+                        let v = files.entry(f.path().clone()).or_default();
+                        scenarios.union_list(v, scenario);
+                    }
+                }
             }
         }
     }
 
     /// Return the list of source files for all scenarios
-    pub fn get_source_files(
+    pub fn get_source_files<'files>(
         &mut self,
-        all_dirs: &HashSet<Directory>,
+        all_dirs: &'files HashSet<Directory>,
+        all_files: &mut HashMap<PathBuf, &'files SourceFile>,
         scenarios: &mut AllScenarios,
     ) -> usize {
         let source_dirs =
@@ -289,49 +302,30 @@ impl GprFile {
                 }
 
                 for lang in langs_in_scenar {
-                    let spec_suffix = self.str_attr(
-                        PackageName::Naming,
-                        &SimpleName::SpecSuffix(*lang),
+                    GprFile::check_file_candidates(
+                        scenarios,
+                        s,
+                        dirs_in_scenar,
+                        self.str_attr(
+                            PackageName::Naming,
+                            &SimpleName::SpecSuffix(*lang),
+                        ),
+                        lang,
+                        all_dirs,
+                        &mut files,
                     );
-                    for (scenar_spec, spec_in_scenar) in spec_suffix {
-                        let s = scenarios.intersection(s, *scenar_spec);
-                        if s == EMPTY_SCENARIO {
-                            continue;
-                        }
-
-                        for d in dirs_in_scenar {
-                            GprFile::check_file_candidates(
-                                scenarios,
-                                s,
-                                lang,
-                                all_dirs.get(d).unwrap(),
-                                spec_in_scenar,
-                                &mut files,
-                            );
-                        }
-                    }
-
-                    let body_suffix = self.str_attr(
-                        PackageName::Naming,
-                        &SimpleName::BodySuffix(*lang),
+                    GprFile::check_file_candidates(
+                        scenarios,
+                        s,
+                        dirs_in_scenar,
+                        self.str_attr(
+                            PackageName::Naming,
+                            &SimpleName::BodySuffix(*lang),
+                        ),
+                        lang,
+                        all_dirs,
+                        &mut files,
                     );
-                    for (scenar_body, body_in_scenar) in body_suffix {
-                        let s = scenarios.intersection(s, *scenar_body);
-                        if s == EMPTY_SCENARIO {
-                            continue;
-                        }
-
-                        for d in dirs_in_scenar {
-                            GprFile::check_file_candidates(
-                                scenarios,
-                                s,
-                                lang,
-                                all_dirs.get(d).unwrap(),
-                                body_in_scenar,
-                                &mut files,
-                            );
-                        }
-                    }
                 }
             }
         }

@@ -87,13 +87,17 @@ impl Environment {
 
         println!("Actually used scenarios={}", useful_scenars.len());
         println!("Total source directories={}", all_source_dirs.len());
-        println!("Total files={}", files_count);
+        println!("Total files in source dirs={}", files_count);
 
         {
             let mut source_files_count = 0;
+            let mut all_source_files = HashMap::new();
             for gpr in gprs.values_mut() {
-                source_files_count +=
-                    gpr.get_source_files(&all_source_dirs, &mut self.scenarios);
+                source_files_count += gpr.get_source_files(
+                    &all_source_dirs,
+                    &mut all_source_files,
+                    &mut self.scenarios,
+                );
             }
             println!("Total source files={}", source_files_count);
         }
