@@ -101,7 +101,7 @@ impl Environment {
 
         for (filepath, lang) in &all_source_files {
             let mut s = SourceFile::new(filepath, *lang);
-            s.parse(&self.settings)?;
+            s.parse()?;
         }
 
         //    let pool = threadpool::ThreadPool::new(1);

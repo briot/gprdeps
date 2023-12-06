@@ -1,3 +1,7 @@
+mod ada_lexer;
+mod ada_scanner;
+mod cpp_lexer;
+mod cpp_scanner;
 mod directory;
 mod environment;
 mod errors;
@@ -6,7 +10,6 @@ mod findfile;
 mod gpr;
 mod gpr_scanner;
 mod graph;
-mod lexer;
 mod rawexpr;
 mod rawgpr;
 mod scenario_variables;

@@ -1,7 +1,7 @@
 use crate::errors::Error;
 use crate::files::File;
 use crate::graph::PathToIndexes;
-use crate::lexer::Lexer;
+use crate::ada_lexer::{AdaLexer, AdaLexerOptions};
 use crate::rawexpr::{
     PackageName, QualifiedName, RawExpr, SimpleName, Statement, StringOrOthers,
     WhenClause,
@@ -14,7 +14,7 @@ use std::path::PathBuf;
 use ustr::Ustr;
 
 pub struct GprScanner<'a> {
-    lex: Lexer<'a>,
+    lex: AdaLexer<'a>,
     gpr: RawGPR,
     current_pkg: PackageName, //  What are we parsing
     settings: &'a Settings,
@@ -24,7 +24,9 @@ impl<'a> GprScanner<'a> {
     pub fn new(file: &'a mut File, settings: &'a Settings) -> Self {
         Self {
             gpr: RawGPR::new(file.path()),
-            lex: Lexer::new(file),
+            lex: AdaLexer::new(file, AdaLexerOptions {
+                aggregate_is_keyword: true,
+            }),
             current_pkg: PackageName::None,
             settings,
         }

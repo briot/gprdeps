@@ -1,15 +1,21 @@
 use crate::errors::Error;
 use crate::files::File;
 use crate::tokens::{Token, TokenKind};
+use std::path::PathBuf;
 use ustr::Ustr;
 
 fn is_wordchar(c: char) -> bool {
     matches!(c, '0' ..= '9' | 'A' ..= 'Z' | 'a' ..= 'z' | '_')
 }
 
-pub struct Lexer<'a> {
-    path: std::path::PathBuf,
+pub struct AdaLexerOptions {
+    pub aggregate_is_keyword: bool,
+}
+
+pub struct AdaLexer<'a> {
+    path: PathBuf,
     input: &'a mut str,
+    options: AdaLexerOptions,
 
     line: u32,
     offset: usize,
@@ -20,8 +26,8 @@ pub struct Lexer<'a> {
                    // One symbol ahead
 }
 
-impl<'a> Lexer<'a> {
-    pub fn new(file: &'a mut File) -> Self {
+impl<'a> AdaLexer<'a> {
+    pub fn new(file: &'a mut File, options: AdaLexerOptions) -> Self {
         let path = file.path().to_owned();
         let f = file.as_mut_str();
         let mut s = Self {
@@ -30,6 +36,7 @@ impl<'a> Lexer<'a> {
             current: f.chars().next().unwrap(),
             input: f,
             offset: 0,
+            options,
             peeked: Token::new(TokenKind::EndOfFile, 0),
         };
         s.peeked = s.scan_token();
@@ -56,7 +63,7 @@ impl<'a> Lexer<'a> {
 
     #[inline]
     fn peek_char(&mut self) -> Option<char> {
-        self.input[self.offset..].chars().next()
+        self.input[self.offset + self.current.len_utf8()..].chars().next()
     }
 
     /// Peek at the next item, without consuming it
@@ -70,27 +77,18 @@ impl<'a> Lexer<'a> {
     }
 
     /// On input, self.current is the leading quote
-    fn scan_quote(&mut self) -> Token {
-        let start_line = self.line;
+    fn scan_quote(&mut self) -> TokenKind {
         self.scan_char(); // consume leading quote
         let start_offset = self.offset;
         loop {
             match self.current {
-                '\x00' => {
-                    // Unterminated string
-                    return Token {
-                        line: start_line,
-                        kind: TokenKind::EndOfFile,
-                    };
-                }
+                // Unterminated string
+                '\x00' => return TokenKind::EndOfFile,
                 '"' => {
                     let end_offset = self.offset;
                     self.scan_char();
                     let s = Ustr::from(&self.input[start_offset..end_offset]);
-                    return Token {
-                        line: start_line,
-                        kind: TokenKind::String(s),
-                    };
+                    return TokenKind::String(s);
                 }
                 _ => {}
             }
@@ -98,37 +96,23 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn scan_colon(&mut self) -> Token {
-        let start_line = self.line;
+    fn scan_colon(&mut self) -> TokenKind {
         self.scan_char();
         if self.current == '=' {
             self.scan_char();
-            Token {
-                line: start_line,
-                kind: TokenKind::Assign,
-            }
+            TokenKind::Assign
         } else {
-            Token {
-                line: start_line,
-                kind: TokenKind::Colon,
-            }
+            TokenKind::Colon
         }
     }
 
-    fn scan_equal(&mut self) -> Token {
-        let start_line = self.line;
+    fn scan_equal(&mut self) -> TokenKind {
         self.scan_char();
         if self.current == '>' {
             self.scan_char();
-            Token {
-                line: start_line,
-                kind: TokenKind::Arrow,
-            }
+            TokenKind::Arrow
         } else {
-            Token {
-                line: start_line,
-                kind: TokenKind::Equal,
-            }
+            TokenKind::Equal
         }
     }
 
@@ -156,8 +140,7 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn scan_identifier(&mut self) -> Token {
-        let start_line = self.line;
+    fn scan_identifier(&mut self) -> TokenKind {
         let start_offset = self.offset;
         loop {
             self.scan_char();
@@ -165,37 +148,39 @@ impl<'a> Lexer<'a> {
                 break;
             }
         }
-        let kind = {
-            let n: &mut str = &mut self.input[start_offset..self.offset];
-            n.make_ascii_lowercase();
-            match &*n {
-                "abstract" => TokenKind::Abstract,
-                "aggregate" => TokenKind::Aggregate,
-                "case" => TokenKind::Case,
-                "end" => TokenKind::End,
-                "extends" => TokenKind::Extends,
-                "for" => TokenKind::For,
-                "is" => TokenKind::Is,
-                "library" => TokenKind::Library,
-                "others" => TokenKind::Others,
-                "package" => TokenKind::Package,
-                "project" => TokenKind::Project,
-                "renames" => TokenKind::Renames,
-                "type" => TokenKind::Type,
-                "null" => TokenKind::Null,
-                "use" => TokenKind::Use,
-                "with" => TokenKind::With,
-                "when" => TokenKind::When,
-                _ => {
-                    // We can't just do ASCII lower-case, but instead need to do full conversion
-                    // to lower case here.
-                    TokenKind::Identifier(Ustr::from(&n.to_lowercase()))
-                }
+        let n: &mut str = &mut self.input[start_offset..self.offset];
+        n.make_ascii_lowercase();
+        match &*n {
+            "abstract" => TokenKind::Abstract,
+            "aggregate" if self.options.aggregate_is_keyword =>
+                TokenKind::Aggregate,
+            "case" => TokenKind::Case,
+            "end" => TokenKind::End,
+            "extends" => TokenKind::Extends,
+            "for" => TokenKind::For,
+            "function" => TokenKind::Function,
+            "generic" => TokenKind::Generic,
+            "is" => TokenKind::Is,
+            "library" => TokenKind::Library,
+            "limited" => TokenKind::Limited,
+            "others" => TokenKind::Others,
+            "package" => TokenKind::Package,
+            "pragma" => TokenKind::Pragma,
+            "private" => TokenKind::Private,
+            "procedure" => TokenKind::Procedure,
+            "project" => TokenKind::Project,
+            "renames" => TokenKind::Renames,
+            "separate" => TokenKind::Separate,
+            "type" => TokenKind::Type,
+            "null" => TokenKind::Null,
+            "use" => TokenKind::Use,
+            "with" => TokenKind::With,
+            "when" => TokenKind::When,
+            _ => {
+                // We can't just do ASCII lower-case, but instead need to do
+                // full conversion to lower case here.
+                TokenKind::Identifier(Ustr::from(&n.to_lowercase()))
             }
-        };
-        Token {
-            line: start_line,
-            kind,
         }
     }
 
@@ -203,12 +188,10 @@ impl<'a> Lexer<'a> {
         self.skip_non_tokens();
         let start_line = self.line;
         let kind = match self.current {
-            '\x00' => {
-                return Token {
-                    line: start_line,
-                    kind: TokenKind::EndOfFile,
-                };
-            }
+            '\x00' => return Token {
+                kind: TokenKind::EndOfFile,
+                line: start_line,
+            },
             '(' => TokenKind::OpenParenthesis,
             ')' => TokenKind::CloseParenthesis,
             ';' => TokenKind::Semicolon,
@@ -216,21 +199,45 @@ impl<'a> Lexer<'a> {
             '.' => TokenKind::Dot,
             '|' => TokenKind::Pipe,
             '&' => TokenKind::Ampersand,
-            '\'' => TokenKind::Tick,
+            '\'' => {
+                //  Either a character or a simple tick
+                let saved_offset = self.offset;
+                let c = {
+                    self.scan_char();
+                    self.current
+                };
+                if let Some('\'') = self.peek_char() {
+                    TokenKind::Character(c)
+                } else {
+                    self.offset = saved_offset;
+                    TokenKind::Tick
+                }
+            },
             '-' => TokenKind::Minus, // comments handled in skip_non_tokens
-            '"' => return self.scan_quote(),
-            ':' => return self.scan_colon(),
-            '=' => return self.scan_equal(),
-            c if is_wordchar(c) => return self.scan_identifier(),
+            '"' => return Token {
+                kind: self.scan_quote(),
+                line: start_line,
+            },
+            ':' => return Token {
+                kind: self.scan_colon(),
+                line: start_line
+            },
+            '=' => return Token {
+                kind: self.scan_equal(),
+                line: start_line,
+            },
+            c if is_wordchar(c) => return Token {
+                kind: self.scan_identifier(),
+                line: start_line,
+            },
             c => TokenKind::InvalidChar(c),
         };
 
-        let token = Token {
-            line: start_line,
-            kind,
-        };
         self.scan_char();
-        token
+        Token {
+            kind,
+            line: start_line,
+        }
     }
 
     /// Get the next token, failing with error on end of file
@@ -270,7 +277,7 @@ impl<'a> Lexer<'a> {
 
 }
 
-impl<'a> Iterator for Lexer<'a> {
+impl<'a> Iterator for AdaLexer<'a> {
     type Item = Token;
 
     /// Consume the next token in the stream

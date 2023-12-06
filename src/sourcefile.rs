@@ -1,7 +1,7 @@
 use crate::errors::Error;
 use crate::files::File;
-use crate::gpr_scanner::GprScanner;
-use crate::settings::Settings;
+use crate::ada_scanner::AdaScanner;
+use crate::cpp_scanner::CppScanner;
 use std::path::{Path, PathBuf};
 use ustr::Ustr;
 
@@ -27,11 +27,22 @@ impl SourceFile {
 
     pub fn parse(
         &mut self,
-        settings: &Settings,
     ) -> Result<(), Error> {
         let mut file = File::new(&self.path)?;
-        let scan = GprScanner::new(&mut file, settings);
-        // let raw = scan.parse()?;
+
+        match self.lang.as_str() {
+            "ada" => {
+                let scan = AdaScanner::new(&mut file);
+                scan.parse()?;
+            }
+            "c" | "c++" => {
+                let scan = CppScanner::new(&mut file);
+                scan.parse()?;
+            }
+            lang => {
+                println!("Cannot parse {} file {}", lang, self.path.display());
+            }
+        }
 
         Ok(())
     }
