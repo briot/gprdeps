@@ -1,6 +1,6 @@
 use crate::errors::Error;
 use crate::files::File;
-use crate::scanner::Scanner;
+use crate::gpr_scanner::GprScanner;
 use crate::settings::Settings;
 use std::path::{Path, PathBuf};
 use ustr::Ustr;
@@ -30,7 +30,7 @@ impl SourceFile {
         settings: &Settings,
     ) -> Result<(), Error> {
         let mut file = File::new(&self.path)?;
-        let scan = Scanner::new(&mut file, settings);
+        let scan = GprScanner::new(&mut file, settings);
         // let raw = scan.parse()?;
 
         Ok(())

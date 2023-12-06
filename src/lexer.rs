@@ -232,6 +232,42 @@ impl<'a> Lexer<'a> {
         self.scan_char();
         token
     }
+
+    /// Get the next token, failing with error on end of file
+    pub fn safe_next(&mut self) -> Result<Token, Error> {
+        self.next().ok_or(Error::UnexpectedEOF)
+    }
+
+    /// Consumes the next token from the lexer, and expect it to be a specific
+    /// token.  Raises an error otherwise.
+    pub fn expect(&mut self, token: TokenKind) -> Result<(), Error> {
+        let n = self.safe_next()?;
+        match n {
+            tk if tk.kind == token => Ok(()),
+            tk => Err(Error::wrong_token(token, tk)),
+        }
+    }
+
+    /// Consumes the next token from the lexer, and expects it to be a string,
+    /// which is returned.
+    pub fn expect_str(&mut self) -> Result<Ustr, Error> {
+        let n = self.safe_next()?;
+        match n.kind {
+            TokenKind::String(s) => Ok(s),
+            _ => Err(Error::wrong_token("string", n)),
+        }
+    }
+
+    /// Consumes the next token from the lexer, and expects it to be an identifier
+    /// which is returned.  The identifier is always lower-cased.
+    pub fn expect_identifier(&mut self) -> Result<Ustr, Error> {
+        let n = self.safe_next()?;
+        match n.kind {
+            TokenKind::Identifier(s) => Ok(s),
+            _ => Err(Error::wrong_token("identifier", n)),
+        }
+    }
+
 }
 
 impl<'a> Iterator for Lexer<'a> {
