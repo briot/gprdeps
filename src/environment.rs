@@ -1,3 +1,4 @@
+use crate::errors::Error;
 use crate::gpr::GprFile;
 use crate::graph::{DepGraph, Edge, GPRIndex, Node};
 use crate::scenarios::AllScenarios;
@@ -19,7 +20,7 @@ impl Environment {
     pub fn parse_all(
         &mut self,
         path: &std::path::Path,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), Error> {
         let mut path_to_indexes = HashMap::new();
 
         // Find all GPR files we will have to parse

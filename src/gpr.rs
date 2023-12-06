@@ -10,8 +10,8 @@ use crate::scenarios::{AllScenarios, Scenario, EMPTY_SCENARIO};
 use crate::settings::Settings;
 use crate::values::ExprValue;
 use path_clean::PathClean;
-use std::path::{PathBuf, Path};
 use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
 use ustr::{Ustr, UstrSet};
 use walkdir::WalkDir;
 
@@ -207,7 +207,7 @@ impl GprFile {
         &mut self,
         dirs: &mut HashSet<Directory>,
         settings: &Settings,
-    ) -> Result<(), String> {
+    ) -> Result<(), Error> {
         let sourcedirs =
             self.strlist_attr(PackageName::None, &SimpleName::SourceDirs);
 
