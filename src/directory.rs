@@ -1,11 +1,10 @@
-use crate::sourcefile::SourceFile;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use ustr::Ustr;
 
 pub struct Directory {
     path: PathBuf,
-    pub files: HashMap<Ustr, SourceFile>,
+    files: HashMap<Ustr, PathBuf>,   // basename -> full path
 }
 
 impl Directory {
@@ -20,7 +19,7 @@ impl Directory {
                             Some(fname) => {
                                 files.insert(
                                     Ustr::from(fname),
-                                    SourceFile::new(&entry.path()),
+                                    entry.path()
                                 );
                             }
                         }
@@ -35,6 +34,19 @@ impl Directory {
     /// The number of potential source files in the directory
     pub fn files_count(&self) -> usize {
         self.files.len()
+    }
+
+    /// Find all files matching the given suffix.
+    pub fn filter_suffix(
+        &self,
+        suffix: &str,
+        files: &mut Vec<PathBuf>,
+    ) {
+        for (filename, f) in &self.files {
+            if filename.as_str().ends_with(suffix) {
+                files.push(f.clone());
+            }
+        }
     }
 }
 

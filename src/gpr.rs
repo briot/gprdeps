@@ -1,7 +1,6 @@
 use crate::directory::Directory;
 use crate::errors::Error;
 use crate::graph::NodeIndex;
-use crate::sourcefile::SourceFile;
 use crate::rawexpr::{
     PackageName, QualifiedName, SimpleName, Statement, StatementList,
     StringOrOthers, PACKAGE_NAME_VARIANTS,
@@ -11,7 +10,7 @@ use crate::scenarios::{AllScenarios, Scenario, EMPTY_SCENARIO};
 use crate::settings::Settings;
 use crate::values::ExprValue;
 use path_clean::PathClean;
-use std::path::PathBuf;
+use std::path::{PathBuf, Path};
 use std::collections::{HashMap, HashSet};
 use ustr::{Ustr, UstrSet};
 use walkdir::WalkDir;
@@ -34,26 +33,26 @@ lazy_static::lazy_static! {
 /// A specific GPR file
 /// Such an object is independent of the scanner that created it, though it
 /// needs an Environment object to resolve paths.
+#[derive(Default)]
 pub struct GprFile {
     pub index: NodeIndex,
     pub name: Ustr,
-    path: std::path::PathBuf,
+    path: PathBuf,
     values: [HashMap<
         SimpleName, // variable or attribute name
         ExprValue,  // value for each scenario
     >; PACKAGE_NAME_VARIANTS],
 
-    files: HashMap<std::path::PathBuf, Vec<Scenario>>,
+    source_files: HashMap<Scenario, Vec<PathBuf>>,
 }
 
 impl GprFile {
-    pub fn new(path: &std::path::Path, index: NodeIndex, name: Ustr) -> Self {
+    pub fn new(path: &Path, index: NodeIndex, name: Ustr) -> Self {
         let mut s = Self {
             path: path.into(),
             name,
             index,
-            values: Default::default(),
-            files: Default::default(),
+            ..Default::default()
         };
 
         // Declare the fallback value for "project'Target" attribute.
@@ -148,7 +147,7 @@ impl GprFile {
         &self,
         path: &str,
         settings: &Settings,
-    ) -> Option<std::path::PathBuf> {
+    ) -> Option<PathBuf> {
         let p = self.path.parent().unwrap().join(path);
         if settings.resolve_symbolic_links {
             match p.canonicalize() {
@@ -194,7 +193,7 @@ impl GprFile {
         &self,
         pkg: PackageName,
         name: &SimpleName,
-    ) -> &HashMap<Scenario, Vec<std::path::PathBuf>> {
+    ) -> &HashMap<Scenario, Vec<PathBuf>> {
         match self.values[pkg as usize].get(name) {
             Some(ExprValue::PathList(v)) => v,
             v => panic!("Wrong type for attribute {}{}, {:?}", pkg, name, v),
@@ -258,21 +257,16 @@ impl GprFile {
         scenario: Scenario,
         dirs_in_scenario: &Vec<PathBuf>,
         suffixes: &HashMap<Scenario, Ustr>,
-        _lang: &str,
         all_dirs: &HashSet<Directory>,
-        files: &mut HashMap<std::path::PathBuf, Vec<Scenario>>,
+        files: &mut HashMap<Scenario, Vec<PathBuf>>,
     ) {
-        for (scenar_spec, suffix_in_scenario) in suffixes {
+        for (scenar_spec, suffix) in suffixes {
             let s = scenarios.intersection(scenario, *scenar_spec);
-            if s == EMPTY_SCENARIO {
-                continue
-            }
-            for d in dirs_in_scenario {
-                let directory = all_dirs.get(d).unwrap();
-                for (filename, f) in &directory.files {
-                    if filename.as_str().ends_with(suffix_in_scenario.as_str()) {
-                        let v = files.entry(f.path().clone()).or_default();
-                        scenarios.union_list(v, scenario);
+            if s != EMPTY_SCENARIO {
+                let sfiles = files.entry(s).or_default();
+                for d in dirs_in_scenario {
+                    if let Some(dir) = all_dirs.get(d) {
+                        dir.filter_suffix(suffix, sfiles);
                     }
                 }
             }
@@ -280,19 +274,17 @@ impl GprFile {
     }
 
     /// Return the list of source files for all scenarios
-    pub fn get_source_files<'files>(
+    pub fn resolve_source_files(
         &mut self,
-        all_dirs: &'files HashSet<Directory>,
-        all_files: &mut HashMap<PathBuf, &'files SourceFile>,
+        all_dirs: &HashSet<Directory>,
         scenarios: &mut AllScenarios,
-    ) -> usize {
+    ) {
         let source_dirs =
             self.pathlist_attr(PackageName::None, &SimpleName::SourceDirs);
         let languages =
             self.strlist_attr(PackageName::None, &SimpleName::Languages);
 
-        let mut files: HashMap<std::path::PathBuf, Vec<Scenario>> =
-            HashMap::new();
+        let mut files: HashMap<Scenario, Vec<PathBuf>> = HashMap::new();
 
         for (scenar_dir, dirs_in_scenar) in source_dirs {
             for (scenar_lang, langs_in_scenar) in languages {
@@ -310,7 +302,6 @@ impl GprFile {
                             PackageName::Naming,
                             &SimpleName::SpecSuffix(*lang),
                         ),
-                        lang,
                         all_dirs,
                         &mut files,
                     );
@@ -322,23 +313,22 @@ impl GprFile {
                             PackageName::Naming,
                             &SimpleName::BodySuffix(*lang),
                         ),
-                        lang,
                         all_dirs,
                         &mut files,
                     );
                 }
             }
         }
-        self.files = files;
 
-        //        for (p, s) in files {
-        //            eprintln!(
-        //                "MANU {}: {:?}",
-        //                p.display(),
-        //                s.iter().map(|s| scenarios.debug(*s)).collect::<Vec<_>>()
-        //            );
-        //        }
-        self.files.len()
+        self.source_files = files;
+    }
+
+    /// Add the list of source files
+    pub fn get_source_files(
+        &self,
+        all_files: &mut HashSet<PathBuf>,
+    ) {
+        all_files.extend(self.source_files.values().flatten().cloned());
     }
 
     /// Declare a new named object.

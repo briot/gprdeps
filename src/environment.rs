@@ -2,6 +2,7 @@ use crate::gpr::GprFile;
 use crate::graph::{DepGraph, Edge, GPRIndex, Node};
 use crate::scenarios::AllScenarios;
 use crate::settings::Settings;
+use crate::sourcefile::SourceFile;
 use std::collections::{HashMap, HashSet};
 
 /// The whole set of gpr files
@@ -77,10 +78,12 @@ impl Environment {
         // scenarios useless too
         let mut useful_scenars = HashSet::new();
         let mut all_source_dirs = HashSet::new();
+        let mut all_source_files = HashSet::new();
         for gpr in gprs.values_mut() {
             gpr.trim();
             gpr.find_used_scenarios(&mut useful_scenars);
             gpr.resolve_source_dirs(&mut all_source_dirs, &self.settings)?;
+            gpr.resolve_source_files(&all_source_dirs, &mut self.scenarios);
         }
         let files_count: usize =
             all_source_dirs.iter().map(|d| d.files_count()).sum();
@@ -89,17 +92,14 @@ impl Environment {
         println!("Total source directories={}", all_source_dirs.len());
         println!("Total files in source dirs={}", files_count);
 
-        {
-            let mut source_files_count = 0;
-            let mut all_source_files = HashMap::new();
-            for gpr in gprs.values_mut() {
-                source_files_count += gpr.get_source_files(
-                    &all_source_dirs,
-                    &mut all_source_files,
-                    &mut self.scenarios,
-                );
-            }
-            println!("Total source files={}", source_files_count);
+        for gpr in gprs.values() {
+            gpr.get_source_files(&mut all_source_files);
+        }
+        println!("Total source files={}", all_source_files.len());
+
+        for filepath in &all_source_files {
+            let mut s = SourceFile::new(filepath);
+            s.parse();
         }
 
         //    let pool = threadpool::ThreadPool::new(1);

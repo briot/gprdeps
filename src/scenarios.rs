@@ -347,19 +347,19 @@ impl AllScenarios {
     /// and we include "MODE=debug,CHECK=off", then we end up with
     ///    [  "MODE=debug",  "MODE=optimize,CHECK=on" ]
 
-    pub fn union_list(
-        &mut self,
-        existing: &mut Vec<Scenario>,
-        value: Scenario,
-    ) {
-        for s in existing.iter_mut() {
-            if let Some(s2) = self.union(*s, value) {
-                *s = s2; //  replace in place
-                return;
-            }
-        }
-        existing.push(value);
-    }
+//    pub fn union_list(
+//        &mut self,
+//        existing: &mut Vec<Scenario>,
+//        value: Scenario,
+//    ) {
+//        for s in existing.iter_mut() {
+//            if let Some(s2) = self.union(*s, value) {
+//                *s = s2; //  replace in place
+//                return;
+//            }
+//        }
+//        existing.push(value);
+//    }
 
     /// Declares a new scenario variables and the list of all values it can
     /// accept.  If the variable is already declared, check that we are

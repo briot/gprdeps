@@ -20,7 +20,7 @@ impl SourceFile {
         }
     }
 
-    pub fn path(&self) -> &PathBuf {
-        &self.path
+    pub fn parse(&mut self) {
+
     }
 }
