@@ -43,7 +43,7 @@ pub struct GprFile {
         ExprValue,  // value for each scenario
     >; PACKAGE_NAME_VARIANTS],
 
-    source_files: HashMap<Scenario, Vec<PathBuf>>,
+    source_files: HashMap<Scenario, Vec<(PathBuf, Ustr)>>, // path and lang
 }
 
 impl GprFile {
@@ -256,9 +256,10 @@ impl GprFile {
         scenarios: &mut AllScenarios,
         scenario: Scenario,
         dirs_in_scenario: &Vec<PathBuf>,
+        lang: Ustr,
         suffixes: &HashMap<Scenario, Ustr>,
         all_dirs: &HashSet<Directory>,
-        files: &mut HashMap<Scenario, Vec<PathBuf>>,
+        files: &mut HashMap<Scenario, Vec<(PathBuf, Ustr)>>,
     ) {
         for (scenar_spec, suffix) in suffixes {
             let s = scenarios.intersection(scenario, *scenar_spec);
@@ -266,7 +267,7 @@ impl GprFile {
                 let sfiles = files.entry(s).or_default();
                 for d in dirs_in_scenario {
                     if let Some(dir) = all_dirs.get(d) {
-                        dir.filter_suffix(suffix, sfiles);
+                        dir.filter_suffix(suffix, lang, sfiles);
                     }
                 }
             }
@@ -284,7 +285,7 @@ impl GprFile {
         let languages =
             self.strlist_attr(PackageName::None, &SimpleName::Languages);
 
-        let mut files: HashMap<Scenario, Vec<PathBuf>> = HashMap::new();
+        let mut files: HashMap<Scenario, Vec<(PathBuf, Ustr)>> = HashMap::new();
 
         for (scenar_dir, dirs_in_scenar) in source_dirs {
             for (scenar_lang, langs_in_scenar) in languages {
@@ -298,6 +299,7 @@ impl GprFile {
                         scenarios,
                         s,
                         dirs_in_scenar,
+                        *lang,
                         self.str_attr(
                             PackageName::Naming,
                             &SimpleName::SpecSuffix(*lang),
@@ -309,6 +311,7 @@ impl GprFile {
                         scenarios,
                         s,
                         dirs_in_scenar,
+                        *lang,
                         self.str_attr(
                             PackageName::Naming,
                             &SimpleName::BodySuffix(*lang),
@@ -324,11 +327,13 @@ impl GprFile {
     }
 
     /// Add the list of source files
-    pub fn get_source_files(
-        &self,
-        all_files: &mut HashSet<PathBuf>,
-    ) {
-        all_files.extend(self.source_files.values().flatten().cloned());
+    pub fn get_source_files(&self, all_files: &mut HashSet<(PathBuf, Ustr)>) {
+        all_files.extend(
+            self.source_files
+                .values()
+                .flatten()
+                .cloned(),
+        );
     }
 
     /// Declare a new named object.

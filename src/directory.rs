@@ -4,7 +4,7 @@ use ustr::Ustr;
 
 pub struct Directory {
     path: PathBuf,
-    files: HashMap<Ustr, PathBuf>,   // basename -> full path
+    files: HashMap<Ustr, PathBuf>, // basename -> full path
 }
 
 impl Directory {
@@ -17,10 +17,7 @@ impl Directory {
                         match entry.file_name().to_str() {
                             None => {}
                             Some(fname) => {
-                                files.insert(
-                                    Ustr::from(fname),
-                                    entry.path()
-                                );
+                                files.insert(Ustr::from(fname), entry.path());
                             }
                         }
                     }
@@ -40,11 +37,12 @@ impl Directory {
     pub fn filter_suffix(
         &self,
         suffix: &str,
-        files: &mut Vec<PathBuf>,
+        lang: Ustr,
+        files: &mut Vec<(PathBuf, Ustr)>   // path and lang
     ) {
         for (filename, f) in &self.files {
             if filename.as_str().ends_with(suffix) {
-                files.push(f.clone());
+                files.push((f.clone(), lang));
             }
         }
     }

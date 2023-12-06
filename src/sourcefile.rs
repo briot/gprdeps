@@ -1,10 +1,14 @@
+use crate::errors::Error;
+use crate::files::File;
+use crate::scanner::Scanner;
+use crate::settings::Settings;
 use std::path::{Path, PathBuf};
 use ustr::Ustr;
 
 #[derive(Default)]
 pub struct SourceFile {
     path: PathBuf,
-    _lang: Ustr, // Lower-case
+    lang: Ustr, // Lower-case
     _unit: Ustr, // For Ada, the package name; for C, unused
 
     _deps: Vec<Ustr>,
@@ -13,14 +17,22 @@ pub struct SourceFile {
 }
 
 impl SourceFile {
-    pub fn new(path: &Path) -> Self {
+    pub fn new(path: &Path, lang: Ustr) -> Self {
         SourceFile {
             path: path.to_owned(),
+            lang,
             ..Default::default()
         }
     }
 
-    pub fn parse(&mut self) {
+    pub fn parse(
+        &mut self,
+        settings: &Settings,
+    ) -> Result<(), Error> {
+        let mut file = File::new(&self.path)?;
+        let scan = Scanner::new(&mut file, settings);
+        // let raw = scan.parse()?;
 
+        Ok(())
     }
 }

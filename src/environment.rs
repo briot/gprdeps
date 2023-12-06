@@ -98,9 +98,9 @@ impl Environment {
         }
         println!("Total source files={}", all_source_files.len());
 
-        for filepath in &all_source_files {
-            let mut s = SourceFile::new(filepath);
-            s.parse();
+        for (filepath, lang) in &all_source_files {
+            let mut s = SourceFile::new(filepath, *lang);
+            s.parse(&self.settings)?;
         }
 
         //    let pool = threadpool::ThreadPool::new(1);
