@@ -328,12 +328,7 @@ impl GprFile {
 
     /// Add the list of source files
     pub fn get_source_files(&self, all_files: &mut HashSet<(PathBuf, Ustr)>) {
-        all_files.extend(
-            self.source_files
-                .values()
-                .flatten()
-                .cloned(),
-        );
+        all_files.extend(self.source_files.values().flatten().cloned());
     }
 
     /// Declare a new named object.

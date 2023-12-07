@@ -1,6 +1,7 @@
-use crate::gpr_scanner::GprScanner;
+use crate::ada_lexer::{AdaLexer, AdaLexerOptions};
 use crate::errors::Error;
 use crate::gpr::GprFile;
+use crate::gpr_scanner::GprScanner;
 use crate::graph::{DepGraph, Edge, GPRIndex, Node};
 use crate::scenarios::AllScenarios;
 use crate::settings::Settings;
@@ -18,10 +19,7 @@ pub struct Environment {
 impl Environment {
     /// Recursively look for all project files, parse them and prepare the
     /// dependency graph.
-    pub fn parse_all(
-        &mut self,
-        path: &std::path::Path,
-    ) -> Result<(), Error> {
+    pub fn parse_all(&mut self, path: &std::path::Path) -> Result<(), Error> {
         let mut path_to_indexes = HashMap::new();
 
         // Find all GPR files we will have to parse
@@ -44,8 +42,16 @@ impl Environment {
         let mut rawfiles = HashMap::new();
         for (path, (gpridx, nodeidx)) in &path_to_indexes {
             let mut file = crate::files::File::new(path)?;
-            let scan = GprScanner::new(&mut file, &self.settings);
-            let raw = scan.parse(&path_to_indexes)?;
+            let options = AdaLexerOptions {
+                aggregate_is_keyword: true,
+            };
+            let mut lex = AdaLexer::new(&mut file, options);
+            let raw = GprScanner::parse(
+                &mut lex,
+                path,
+                &path_to_indexes,
+                &self.settings,
+            )?;
 
             for dep in &raw.imported {
                 self.graph.add_edge(*nodeidx, *dep, Edge::Imports);

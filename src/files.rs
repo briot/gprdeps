@@ -6,9 +6,7 @@ pub struct File {
 }
 
 impl File {
-    pub fn new(
-        path: &std::path::Path,
-    ) -> std::result::Result<Self, Error> {
+    pub fn new(path: &std::path::Path) -> std::result::Result<Self, Error> {
         Ok(Self {
             path: path.to_owned(),
             buffer: std::fs::read_to_string(path)?,

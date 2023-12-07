@@ -1,92 +1,84 @@
+use crate::ada_lexer::AdaLexer;
+use crate::base_lexer::{BaseScanner, Lexer};
 use crate::errors::Error;
-use crate::files::File;
-use crate::ada_lexer::{AdaLexer, AdaLexerOptions};
 use crate::tokens::TokenKind;
 
 pub struct AdaScanner<'a> {
-    lex: AdaLexer<'a>,
+    base: BaseScanner<'a, AdaLexer<'a>>,
 }
 
 impl<'a> AdaScanner<'a> {
+    pub fn parse(lex: &'a mut AdaLexer<'a>) -> Result<(), Error> {
+        let mut scan = Self {
+            base: BaseScanner::new(lex),
+        };
 
-    pub fn new (file: &'a mut File) -> Self {
-        Self {
-            lex: AdaLexer::new(file, AdaLexerOptions {
-                aggregate_is_keyword: false,
-            }),
-        }
-    }
-
-    pub fn parse(mut self) -> Result<(), Error> {
-        self.parse_file().map_err(|e| self.lex.error_with_location(e))?;
-        Ok(())
-    }
-
-    fn parse_file(&mut self) -> Result<(), Error> {
         loop {
-            match self.lex.peek() {
+            match scan.base.peek() {
                 TokenKind::Use
-                | TokenKind::With => self.parse_with_or_use_clause()?,
-                TokenKind::Pragma => self.parse_pragma()?,
+                | TokenKind::With => scan.parse_with_or_use_clause(),
+                TokenKind::Pragma => scan.parse_pragma(),
                 TokenKind::Limited    // limited with 
                 | TokenKind::Private => {
-                    self.lex.next();  // consume keyword
+                    scan.base.next_token();  // consume keyword
+                    Ok(())
                 }
-                TokenKind::Separate => self.parse_separate()?,
-                TokenKind::Generic => self.parse_generic()?,
+                TokenKind::Separate => scan.parse_separate(),
+                TokenKind::Generic => scan.parse_generic(),
                 TokenKind::Package
                 | TokenKind::Procedure
                 | TokenKind::Function => break,
                 t => Err(Error::wrong_token(
                     "with|generic|package|pragma|private|procedure|function|use|separate",
-                    t))?
-            }
+                    t))
+            }.map_err(|e| scan.base.lex.error_with_location(e))?;
         }
         Ok(())
     }
 
     fn parse_with_or_use_clause(&mut self) -> Result<(), Error> {
-        let _ = self.lex.next();  // consume with or use
-        if TokenKind::Type == self.lex.peek() {   // use type ...;
-            let _ = self.lex.next();  // consume "type"
+        let _ = self.base.next_token(); // consume with or use
+        if TokenKind::Type == self.base.peek() {
+            // use type ...;
+            let _ = self.base.next_token(); // consume "type"
         }
         loop {
-            self.expect_qname()?;
-            let n = self.lex.safe_next()?;
+            self.base.expect_qname()?;
+            let n = self.base.safe_next()?;
             match n.kind {
                 TokenKind::Semicolon => break,
-                TokenKind::Comma => {},
-                t => Err(Error::wrong_token(",|;", t))?
+                TokenKind::Comma => {}
+                t => Err(Error::wrong_token(",|;", t))?,
             }
         }
         Ok(())
     }
 
     fn parse_separate(&mut self) -> Result<(), Error> {
-        self.lex.expect(TokenKind::Separate)?;
-        self.lex.expect(TokenKind::OpenParenthesis)?;
-        self.expect_qname()?;
-        self.lex.expect(TokenKind::CloseParenthesis)?;
+        self.base.expect(TokenKind::Separate)?;
+        self.base.expect(TokenKind::OpenParenthesis)?;
+        self.base.expect_qname()?;
+        self.base.expect(TokenKind::CloseParenthesis)?;
         Ok(())
     }
 
     fn parse_pragma(&mut self) -> Result<(), Error> {
-        self.lex.expect(TokenKind::Pragma)?;
-        let _ = self.lex.expect_identifier()?;  // name of pragma
-        self.parse_opt_arg_list()?;     // optional parameters
+        self.base.expect(TokenKind::Pragma)?;
+        let _ = self.base.expect_identifier()?; // name of pragma
+        self.parse_opt_arg_list()?; // optional parameters
         Ok(())
     }
 
     fn parse_generic(&mut self) -> Result<(), Error> {
-        self.lex.expect(TokenKind::Generic)?;
+        self.base.expect(TokenKind::Generic)?;
         loop {
-            match self.lex.peek() {
+            match self.base.peek() {
                 TokenKind::Package
                 | TokenKind::Procedure
                 | TokenKind::Function => break,
                 TokenKind::With => {
-                    let _ = self.lex.next();  // consume 'with'
-                    let n = self.lex.safe_next()?;
+                    let _ = self.base.next_token(); // consume 'with'
+                    let n = self.base.safe_next()?;
                     match n.kind {
                         TokenKind::Private   // type .. is private;
                         | TokenKind::Package
@@ -96,7 +88,7 @@ impl<'a> AdaScanner<'a> {
                     }
                 }
                 _ => {
-                    let _ = self.lex.next();  // skip
+                    let _ = self.base.next_token(); // skip
                 }
             }
         }
@@ -104,29 +96,16 @@ impl<'a> AdaScanner<'a> {
     }
 
     fn parse_opt_arg_list(&mut self) -> Result<(), Error> {
-        if self.lex.expect(TokenKind::OpenParenthesis).is_ok() {
+        if self.base.expect(TokenKind::OpenParenthesis).is_ok() {
             loop {
-                let n = self.lex.safe_next()?;
+                let n = self.base.safe_next()?;
                 if n.kind == TokenKind::CloseParenthesis {
                     break;
                 }
             }
-            self.lex.expect(TokenKind::Semicolon)?;
+            self.base.expect(TokenKind::Semicolon)?;
         }
 
         Ok(())
     }
-
-    fn expect_qname(&mut self) -> Result<(), Error> {
-        loop {
-            self.lex.expect_identifier()?;
-            if TokenKind::Dot != self.lex.peek() {
-                break;
-            }
-
-            let _ = self.lex.next();  // consume the dot
-        }
-        Ok(())
-    }
-
 }

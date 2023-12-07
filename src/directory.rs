@@ -38,7 +38,7 @@ impl Directory {
         &self,
         suffix: &str,
         lang: Ustr,
-        files: &mut Vec<(PathBuf, Ustr)>   // path and lang
+        files: &mut Vec<(PathBuf, Ustr)>, // path and lang
     ) {
         for (filename, f) in &self.files {
             if filename.as_str().ends_with(suffix) {

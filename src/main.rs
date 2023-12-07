@@ -1,5 +1,6 @@
 mod ada_lexer;
 mod ada_scanner;
+mod base_lexer;
 mod cpp_lexer;
 mod cpp_scanner;
 mod directory;

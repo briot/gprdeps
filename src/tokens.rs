@@ -1,5 +1,8 @@
 use ustr::Ustr;
 
+/// This enum includes all possible tokens for all languages.
+/// The actual lexers, though, will only return a subset of those tokens,
+/// depending on the language.
 #[derive(Clone, Debug, PartialEq)]
 pub enum TokenKind {
     EndOfFile,
@@ -21,7 +24,6 @@ pub enum TokenKind {
     Function,
     Generic,
     GreaterThan,
-    Hash,
     HashDefine,
     HashElse,
     HashEndif,
@@ -68,7 +70,7 @@ impl std::fmt::Display for TokenKind {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Token {
     pub line: u32,
     pub kind: TokenKind,
@@ -83,11 +85,5 @@ impl Token {
 impl std::fmt::Display for Token {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}:{}", self.kind, self.line)
-    }
-}
-
-impl std::fmt::Debug for Token {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self)
     }
 }
