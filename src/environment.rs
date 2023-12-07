@@ -45,13 +45,9 @@ impl Environment {
             let options = AdaLexerOptions {
                 aggregate_is_keyword: true,
             };
-            let mut lex = AdaLexer::new(&mut file, options);
-            let raw = GprScanner::parse(
-                &mut lex,
-                path,
-                &path_to_indexes,
-                &self.settings,
-            )?;
+            let lex = AdaLexer::new(&mut file, options);
+            let raw =
+                GprScanner::parse(lex, path, &path_to_indexes, &self.settings)?;
 
             for dep in &raw.imported {
                 self.graph.add_edge(*nodeidx, *dep, Edge::Imports);

@@ -4,11 +4,11 @@ use crate::errors::Error;
 use crate::tokens::TokenKind;
 
 pub struct AdaScanner<'a> {
-    base: BaseScanner<'a, AdaLexer<'a>>,
+    base: BaseScanner<AdaLexer<'a>>,
 }
 
 impl<'a> AdaScanner<'a> {
-    pub fn parse(lex: &'a mut AdaLexer<'a>) -> Result<(), Error> {
+    pub fn parse(lex: AdaLexer<'a>) -> Result<(), Error> {
         let mut scan = Self {
             base: BaseScanner::new(lex),
         };

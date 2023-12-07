@@ -5,11 +5,11 @@ use crate::tokens::TokenKind;
 use ustr::Ustr;
 
 pub struct CppScanner<'a> {
-    base: BaseScanner<'a, CppLexer<'a>>,
+    base: BaseScanner<CppLexer<'a>>,
 }
 
 impl<'a> CppScanner<'a> {
-    pub fn parse(lex: &'a mut CppLexer<'a>) -> Result<(), Error> {
+    pub fn parse(lex: CppLexer<'a>) -> Result<(), Error> {
         let mut scan = Self {
             base: BaseScanner::new(lex),
         };

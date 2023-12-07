@@ -131,7 +131,7 @@ impl<'a> BaseLexer<'a> {
     /// not be seen again.
     /// The current character is also not included in the substring.
     pub fn skip_to_char(&mut self, marker: char) -> &mut str {
-        let mut c = self.scan_char();  //  skip current character
+        let mut c = self.scan_char(); //  skip current character
         let start_offset = self.context.offset;
         loop {
             if c == marker || c == '\x00' {
@@ -172,15 +172,15 @@ pub(crate) trait Lexer {
     fn save_context(&self) -> Context;
 }
 
-pub(crate) struct BaseScanner<'a, T: Lexer> {
-    pub(crate) lex: &'a mut T,
+pub(crate) struct BaseScanner<LEXER: Lexer> {
+    pub(crate) lex: LEXER,
 
     //  One symbol ahead (??? could let users use Peekable)
     pub(crate) peeked: Token,
 }
 
-impl<'a, T: Lexer> BaseScanner<'a, T> {
-    pub fn new(lex: &'a mut T) -> Self {
+impl<LEXER: Lexer> BaseScanner<LEXER> {
+    pub fn new(lex: LEXER) -> Self {
         let mut s = Self {
             lex,
             peeked: Token::new(TokenKind::EndOfFile, 0),

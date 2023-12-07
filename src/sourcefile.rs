@@ -35,12 +35,12 @@ impl SourceFile {
                 let options = AdaLexerOptions {
                     aggregate_is_keyword: false,
                 };
-                let mut lex = AdaLexer::new(&mut file, options);
-                AdaScanner::parse(&mut lex)?;
+                let lex = AdaLexer::new(&mut file, options);
+                AdaScanner::parse(lex)?;
             }
             "c" | "c++" => {
-                let mut lex = CppLexer::new(&mut file);
-                CppScanner::parse(&mut lex)?;
+                let lex = CppLexer::new(&mut file);
+                CppScanner::parse(lex)?;
             }
             lang => {
                 println!("Cannot parse {} file {}", lang, self.path.display());

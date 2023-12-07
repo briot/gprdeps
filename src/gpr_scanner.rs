@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use ustr::Ustr;
 
 pub struct GprScanner<'a> {
-    base: BaseScanner<'a, AdaLexer<'a>>,
+    base: BaseScanner<AdaLexer<'a>>,
     gpr: RawGPR,
     current_pkg: PackageName, //  What are we parsing
     settings: &'a Settings,
@@ -23,7 +23,7 @@ pub struct GprScanner<'a> {
 impl<'a> GprScanner<'a> {
     /// Parse a whole file
     pub fn parse(
-        lex: &'a mut AdaLexer<'a>,
+        lex: AdaLexer<'a>,
         path: &Path,
         path_to_id: &PathToIndexes,
         settings: &'a Settings,
@@ -598,14 +598,10 @@ mod tests {
         let options = AdaLexerOptions {
             aggregate_is_keyword: true,
         };
-        let mut lex = AdaLexer::new(&mut file, options);
+        let lex = AdaLexer::new(&mut file, options);
         let path_to_id: PathToIndexes = Default::default();
-        let gpr = GprScanner::parse(
-            &mut lex,
-            Path::new("memory"),
-            &path_to_id,
-            &settings,
-        );
+        let gpr =
+            GprScanner::parse(lex, Path::new("memory"), &path_to_id, &settings);
         check(gpr);
     }
 
