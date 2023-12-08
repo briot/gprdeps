@@ -1,8 +1,13 @@
 use crate::errors::Error;
 use crate::files::File;
 use crate::tokens::{Token, TokenKind};
+use crate::units::QualifiedName;
 use std::path::PathBuf;
 use ustr::Ustr;
+
+lazy_static::lazy_static! {
+    static ref DOT: Ustr = Ustr::from(".");
+}
 
 #[derive(Copy, Clone)]
 pub struct Context {
@@ -99,12 +104,19 @@ impl<'a> BaseLexer<'a> {
 
     /// On input, self.current is the leading quote
     pub fn scan_quote(&mut self) -> TokenKind {
+        let endquote = match self.context.current {
+            '"' => '"',
+            '\'' => '\'',
+            '<' => '>', // for c++ #include
+            c => return TokenKind::InvalidChar(c),
+        };
         self.scan_char(); // consume leading quote
+
         let start_offset = self.context.offset;
         loop {
             match self.context.current {
                 '\x00' => return TokenKind::EndOfFile, //  Unterminated str
-                '"' => {
+                c if c == endquote => {
                     let end_offset = self.context.offset;
                     self.scan_char();
                     let s = Ustr::from(&self.input[start_offset..end_offset]);
@@ -116,32 +128,25 @@ impl<'a> BaseLexer<'a> {
         }
     }
 
-    /// Skip all characters until end of line (which is not consumed)
-    pub fn skip_to_eol(&mut self) {
+    /// Skip all characters until end of line (which is not consumed).
+    /// Returns the last character of the line
+    pub fn skip_to_eol(&mut self) -> char {
+        let mut prev = self.context.current;
         loop {
             match self.scan_char() {
-                '\n' | '\x00' => break,
+                '\n' => return prev,
+                '\x00' => return '\x00',
                 _ => {}
             }
+            prev = self.context.current;
         }
     }
 
-    /// Skip until the given character, and return the matching substring not
-    /// including the final marker.  The final marker has been skipped and will
-    /// not be seen again.
-    /// The current character is also not included in the substring.
-    pub fn skip_to_char(&mut self, marker: char) -> &mut str {
-        let mut c = self.scan_char(); //  skip current character
-        let start_offset = self.context.offset;
-        loop {
-            if c == marker || c == '\x00' {
-                break;
-            }
-            c = self.scan_char();
+    /// Skip all whitespaces
+    pub fn skip_whitespaces(&mut self) {
+        while let ' ' | '\t' | '\n' | '\r' = self.context.current {
+            self.scan_char(); // skip whitespace
         }
-        let end_offset = self.context.offset;
-        self.scan_char(); //  consume end-of-line
-        &mut self.input[start_offset..end_offset]
     }
 
     /// Get the next identifier (which might end up being a keyword, but that
@@ -176,7 +181,7 @@ pub(crate) struct BaseScanner<LEXER: Lexer> {
     pub(crate) lex: LEXER,
 
     //  One symbol ahead (??? could let users use Peekable)
-    pub(crate) peeked: Token,
+    peeked: Token,
 }
 
 impl<LEXER: Lexer> BaseScanner<LEXER> {
@@ -187,6 +192,10 @@ impl<LEXER: Lexer> BaseScanner<LEXER> {
         };
         let _ = s.next_token(); // always returns None, but sets s.peeked()
         s
+    }
+
+    pub fn error_with_location(&self, error: Error) -> Error {
+        self.lex.error_with_location(error)
     }
 
     /// Peek at the next token, without consuming it
@@ -202,6 +211,7 @@ impl<LEXER: Lexer> BaseScanner<LEXER> {
         if p.kind == TokenKind::EndOfFile {
             None
         } else {
+            // println!("MANU next token {}", p);
             Some(p)
         }
     }
@@ -241,14 +251,35 @@ impl<LEXER: Lexer> BaseScanner<LEXER> {
     }
 
     /// Expects a qualified name ("parent1.parent2.name")
-    pub fn expect_qname(&mut self) -> Result<(), Error> {
+    pub fn expect_qname(&mut self) -> Result<QualifiedName, Error> {
+        let mut result = QualifiedName::new();
         loop {
-            self.expect_identifier()?;
+            result.push(self.expect_identifier()?);
             if TokenKind::Dot != self.peek() {
                 break;
             }
+            self.next_token(); // consume the dot
+        }
+        Ok(result)
+    }
 
-            let _ = self.next_token(); // consume the dot
+    /// Skip an opening parenthesis, until the corresponding end-parenthesis
+    pub fn skip_opt_arg_list(&mut self) -> Result<(), Error> {
+        if self.expect(TokenKind::OpenParenthesis).is_ok() {
+            let mut level = 1;
+            loop {
+                match self.safe_next()?.kind {
+                    TokenKind::CloseParenthesis => {
+                        level -= 1;
+                        if level == 0 {
+                            break;
+                        }
+                    }
+                    TokenKind::OpenParenthesis => level += 1,
+                    _ => {}
+                }
+            }
+            self.expect(TokenKind::Semicolon)?;
         }
         Ok(())
     }

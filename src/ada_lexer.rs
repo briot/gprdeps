@@ -5,7 +5,8 @@ use crate::tokens::TokenKind;
 use ustr::Ustr;
 
 pub struct AdaLexerOptions {
-    pub aggregate_is_keyword: bool,
+    pub kw_aggregate: bool,
+    pub kw_body: bool,
 }
 
 pub struct AdaLexer<'a> {
@@ -45,9 +46,8 @@ impl<'a> AdaLexer<'a> {
         n.make_ascii_lowercase();
         match &*n {
             "abstract" => TokenKind::Abstract,
-            "aggregate" if self.options.aggregate_is_keyword => {
-                TokenKind::Aggregate
-            }
+            "aggregate" if self.options.kw_aggregate => TokenKind::Aggregate,
+            "body" if self.options.kw_body => TokenKind::Body,
             "case" => TokenKind::Case,
             "end" => TokenKind::End,
             "extends" => TokenKind::Extends,

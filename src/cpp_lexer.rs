@@ -28,7 +28,9 @@ impl<'a> CppLexer<'a> {
                             self.base.scan_char(); // consume '*'
                             in_comment = true;
                         }
-                        Some('/') => self.base.skip_to_eol(),
+                        Some('/') => {
+                            self.base.skip_to_eol();
+                        }
                         _ => {}
                     }
                 }
@@ -36,6 +38,26 @@ impl<'a> CppLexer<'a> {
                     if let Some('/') = self.base.peek_char() {
                         self.base.scan_char(); //  consume '/'
                         in_comment = false;
+                    }
+                }
+                ('#', false) => {
+                    // Skip all preprocessor directives, except for #include
+                    // which we need for dependencies
+                    let ctx = self.base.save_context();
+                    self.base.scan_char(); //  consume '#'
+                    self.base.skip_whitespaces();
+                    match &*self.base.scan_identifier() {
+                        "include" => {
+                            self.base.restore_context(ctx);
+                            break;
+                        }
+                        _ => loop {
+                            match self.base.skip_to_eol() {
+                                '\\' => {}
+                                '\x00' => return '\x00',
+                                _ => break,
+                            }
+                        },
                     }
                 }
                 (_, false) => break,
@@ -46,10 +68,6 @@ impl<'a> CppLexer<'a> {
         c
     }
 
-    pub fn skip_to_char(&mut self, marker: char) -> &mut str {
-        self.base.skip_to_char(marker)
-    }
-
     fn scan_identifier_or_keyword(&mut self) -> TokenKind {
         match &*self.base.scan_identifier() {
             "loop" => TokenKind::Loop,
@@ -57,24 +75,22 @@ impl<'a> CppLexer<'a> {
         }
     }
 
-    fn scan_directive(&mut self) -> TokenKind {
-        let c = self.base.scan_char(); // consume '#'
-        self.skip_non_tokens(c); // There could be spaces
-
-        match &*self.base.scan_identifier() {
-            "define" => TokenKind::HashDefine,
-            "else" => TokenKind::HashElse,
-            "endif" => TokenKind::HashEndif,
-            "if" => TokenKind::HashIf,
-            "ifdef" => {
+    fn scan_include(&mut self) -> TokenKind {
+        self.base.scan_char(); // consume '#'
+        self.base.skip_whitespaces();
+        let directive = &*self.base.scan_identifier();
+        assert_eq!(directive, "include");
+        self.base.skip_whitespaces();
+        match self.base.scan_quote() {
+            TokenKind::String(n) => TokenKind::HashInclude(n),
+            TokenKind::InvalidChar(_) => {
+                // sqlite.c has an unusual line
+                //    #  include  INC_STRINGIFY(SQLITE_CUSTOM_INCLUDE)
+                // Just ignore those for now
                 self.base.skip_to_eol();
-                TokenKind::HashIfdef
+                TokenKind::HashInclude(Ustr::default())
             }
-            "ifndef" => TokenKind::HashIfndef,
-            "include" => TokenKind::HashInclude,
-            "pragma" => TokenKind::Pragma,
-            "undef" => TokenKind::HashUndef,
-            _ => TokenKind::InvalidChar('#'),
+            _ => panic!("Unexpected path after #include"),
         }
     }
 }
@@ -100,7 +116,7 @@ impl<'a> Lexer for CppLexer<'a> {
             '-' => TokenKind::Minus,
             '(' => TokenKind::OpenParenthesis,
             ';' => TokenKind::Semicolon,
-            '#' => return self.scan_directive(),
+            '#' => return self.scan_include(),
             '"' => return self.base.scan_quote(),
             _ if self.base.is_wordchar() => {
                 return self.scan_identifier_or_keyword();

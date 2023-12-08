@@ -10,12 +10,7 @@ use ustr::Ustr;
 #[derive(Default)]
 pub struct SourceFile {
     path: PathBuf,
-    lang: Ustr,  // Lower-case
-    _unit: Ustr, // For Ada, the package name; for C, unused
-
-    _deps: Vec<Ustr>,
-    // dependencies (on package names, or paths, .. depending on the language.
-    // These are unresolved for now, so just as found in the source code.
+    lang: Ustr, // Lower-case
 }
 
 impl SourceFile {
@@ -23,7 +18,6 @@ impl SourceFile {
         SourceFile {
             path: path.to_owned(),
             lang,
-            ..Default::default()
         }
     }
 
@@ -33,14 +27,15 @@ impl SourceFile {
         match self.lang.as_str() {
             "ada" => {
                 let options = AdaLexerOptions {
-                    aggregate_is_keyword: false,
+                    kw_aggregate: false,
+                    kw_body: true,
                 };
                 let lex = AdaLexer::new(&mut file, options);
-                AdaScanner::parse(lex)?;
+                let _ = AdaScanner::parse(lex)?;
             }
             "c" | "c++" => {
                 let lex = CppLexer::new(&mut file);
-                CppScanner::parse(lex)?;
+                let _ = CppScanner::parse(lex, &self.path)?;
             }
             lang => {
                 println!("Cannot parse {} file {}", lang, self.path.display());

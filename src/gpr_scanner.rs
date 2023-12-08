@@ -1,5 +1,5 @@
 use crate::ada_lexer::AdaLexer;
-use crate::base_lexer::{BaseScanner, Lexer};
+use crate::base_lexer::BaseScanner;
 use crate::errors::Error;
 use crate::graph::PathToIndexes;
 use crate::rawexpr::{
@@ -41,7 +41,7 @@ impl<'a> GprScanner<'a> {
                 TokenKind::With => scan.parse_with_clause(path_to_id),
                 _ => scan.parse_project_declaration(path_to_id),
             }
-            .map_err(|e| scan.base.lex.error_with_location(e))?;
+            .map_err(|e| scan.base.error_with_location(e))?;
         }
         Ok(scan.gpr)
     }
@@ -596,7 +596,8 @@ mod tests {
         let mut file = crate::files::File::new_from_str(s);
         let settings = Settings::default();
         let options = AdaLexerOptions {
-            aggregate_is_keyword: true,
+            kw_aggregate: true,
+            kw_body: false,
         };
         let lex = AdaLexer::new(&mut file, options);
         let path_to_id: PathToIndexes = Default::default();

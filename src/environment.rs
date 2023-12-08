@@ -43,7 +43,8 @@ impl Environment {
         for (path, (gpridx, nodeidx)) in &path_to_indexes {
             let mut file = crate::files::File::new(path)?;
             let options = AdaLexerOptions {
-                aggregate_is_keyword: true,
+                kw_aggregate: true,
+                kw_body: false,
             };
             let lex = AdaLexer::new(&mut file, options);
             let raw =

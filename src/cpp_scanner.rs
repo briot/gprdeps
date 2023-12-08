@@ -1,7 +1,9 @@
-use crate::base_lexer::{BaseScanner, Lexer};
+use crate::base_lexer::BaseScanner;
 use crate::cpp_lexer::CppLexer;
 use crate::errors::Error;
 use crate::tokens::TokenKind;
+use crate::units::Unit;
+use std::path::Path;
 use ustr::Ustr;
 
 pub struct CppScanner<'a> {
@@ -9,36 +11,22 @@ pub struct CppScanner<'a> {
 }
 
 impl<'a> CppScanner<'a> {
-    pub fn parse(lex: CppLexer<'a>) -> Result<(), Error> {
+    pub fn parse(lex: CppLexer<'a>, path: &Path) -> Result<Unit, Error> {
         let mut scan = Self {
             base: BaseScanner::new(lex),
+        };
+        let mut unit = Unit {
+            name: vec![Ustr::from(path.as_os_str().to_str().unwrap())],
+            ..Default::default()
         };
 
         loop {
             match scan.base.peek() {
                 TokenKind::EndOfFile => break,
-                TokenKind::HashElse => {
-                    let _ = scan.base.next_token(); // consume keyword
+                TokenKind::HashInclude(path) => {
+                    scan.base.next_token(); // consume keyword
+                    unit.deps.push(vec![path]);
                     Ok(())
-                }
-                TokenKind::HashIf => break, //  already consumed end-of-line
-                TokenKind::HashInclude => {
-                    let _ = scan.base.next_token(); // consume keyword
-                    let _ = scan.expect_str_or_syspath();
-                    break;
-                }
-                TokenKind::HashIfndef
-                | TokenKind::HashIfdef
-                | TokenKind::HashDefine
-                | TokenKind::HashUndef
-                | TokenKind::Pragma => {
-                    let _ = scan.base.next_token(); // consume keyword
-                    let _ = scan.base.expect_identifier();
-                    break;
-                }
-                TokenKind::HashEndif => {
-                    let _ = scan.base.next_token(); // consume keyword
-                    break;
                 }
                 TokenKind::Identifier(_) => {
                     // Stop parsing at the first function definition.  The
@@ -50,27 +38,10 @@ impl<'a> CppScanner<'a> {
                 t => Err(Error::wrong_token(
                     "#include|#ifndef|#ifdef|#endif|#pragma",
                     t,
-                ))?,
+                )),
             }
-            .map_err(|e| scan.base.lex.error_with_location(e))?;
+            .map_err(|e| scan.base.error_with_location(e))?;
         }
-        Ok(())
-    }
-
-    /// Consumes the next token from the lexer, and expects it to be a string,
-    /// or a system path "<path.h>" which is returned.
-    fn expect_str_or_syspath(&mut self) -> Result<Ustr, Error> {
-        match self.base.peek() {
-            TokenKind::String(s) => {
-                let _ = self.base.safe_next()?; //  consume the string
-                Ok(s)
-            }
-            TokenKind::LessThan => {
-                let n = self.base.lex.skip_to_char('>');
-                let res = Ustr::from(n);
-                Ok(res)
-            }
-            t => Err(Error::wrong_token("string", t)),
-        }
+        Ok(unit)
     }
 }
