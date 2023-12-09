@@ -41,7 +41,7 @@ pub enum Error {
     )]
     ScenarioTwice(Ustr),
 
-    #[error("Wrong number of indexes for {0}")]
+    #[error("Wrong number of indices for {0}")]
     WrongIndexes(Ustr),
 
     #[error("Unknown function {0}")]

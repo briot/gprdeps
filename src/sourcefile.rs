@@ -23,25 +23,24 @@ impl SourceFile {
 
     pub fn parse(&mut self) -> Result<(), Error> {
         let mut file = File::new(&self.path)?;
-
-        match self.lang.as_str() {
+        let _ = match self.lang.as_str() {
             "ada" => {
-                let options = AdaLexerOptions {
+                AdaScanner::parse(AdaLexer::new(&mut file, AdaLexerOptions {
                     kw_aggregate: false,
                     kw_body: true,
-                };
-                let lex = AdaLexer::new(&mut file, options);
-                let _ = AdaScanner::parse(lex)?;
+                }))?
             }
             "c" | "c++" => {
-                let lex = CppLexer::new(&mut file);
-                let _ = CppScanner::parse(lex, &self.path)?;
+                CppScanner::parse(
+                    CppLexer::new(&mut file),
+                    &self.path)?
             }
             lang => {
                 println!("Cannot parse {} file {}", lang, self.path.display());
+                return Ok(());
             }
-        }
-
+        };
+//        println!("{} {:?}", self.path.display(), unit);
         Ok(())
     }
 }

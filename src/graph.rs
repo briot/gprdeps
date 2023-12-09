@@ -20,7 +20,7 @@ impl GPRIndex {
 /// The nodes of a graph
 pub enum Node {
     Project(GPRIndex),
-    _Source,
+    _Unit,
 }
 
 /// The edges of a graph

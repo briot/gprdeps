@@ -11,7 +11,18 @@
 /// crate's fully qualified name "crate::errors::Error" for instance.
 use ustr::Ustr;
 
-pub type QualifiedName = Vec<Ustr>;
+#[derive(Debug, Default)]
+pub struct QualifiedName(Vec<Ustr>);
+
+impl QualifiedName {
+    pub fn new(qname: Vec<Ustr>) -> Self {
+        QualifiedName(qname)
+    }
+
+    pub fn join(&mut self, child: QualifiedName) {
+        self.0.extend(child.0);
+    }
+}
 
 #[derive(Debug, Default)]
 pub struct Unit {

@@ -1,5 +1,5 @@
 # gprdeps
-Dependency-graph build for AdaCore's GPR files
+Dependency-graph builder for AdaCore's GPR files
 
 This is mostly a way to learn Rust.
 

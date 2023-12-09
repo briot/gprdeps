@@ -250,17 +250,24 @@ impl<LEXER: Lexer> BaseScanner<LEXER> {
         }
     }
 
-    /// Expects a qualified name ("parent1.parent2.name")
-    pub fn expect_qname(&mut self) -> Result<QualifiedName, Error> {
-        let mut result = QualifiedName::new();
+    /// Expect a fully qualified name.  Depending on the language, this might
+    /// take the form "parent.child" (e.g. Ada), or "crate::name" (e.g. Rust)
+    /// or any other.
+    pub fn expect_qname(
+        &mut self,
+        sep: TokenKind,
+    ) -> Result<QualifiedName, Error> {
+        let n = self.expect_identifier()?;
+        let mut result = vec![n];
+
         loop {
-            result.push(self.expect_identifier()?);
-            if TokenKind::Dot != self.peek() {
-                break;
+            if self.peek() != sep {
+                return Ok(QualifiedName::new(result));
             }
-            self.next_token(); // consume the dot
+            self.safe_next()?;
+            let n = self.expect_identifier()?;
+            result.push(n);
         }
-        Ok(result)
     }
 
     /// Skip an opening parenthesis, until the corresponding end-parenthesis

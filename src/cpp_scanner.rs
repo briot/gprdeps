@@ -2,7 +2,7 @@ use crate::base_lexer::BaseScanner;
 use crate::cpp_lexer::CppLexer;
 use crate::errors::Error;
 use crate::tokens::TokenKind;
-use crate::units::Unit;
+use crate::units::{QualifiedName, Unit};
 use std::path::Path;
 use ustr::Ustr;
 
@@ -16,7 +16,8 @@ impl<'a> CppScanner<'a> {
             base: BaseScanner::new(lex),
         };
         let mut unit = Unit {
-            name: vec![Ustr::from(path.as_os_str().to_str().unwrap())],
+            name: QualifiedName::new(
+                vec![Ustr::from(path.as_os_str().to_str().unwrap())]),
             ..Default::default()
         };
 
@@ -25,7 +26,7 @@ impl<'a> CppScanner<'a> {
                 TokenKind::EndOfFile => break,
                 TokenKind::HashInclude(path) => {
                     scan.base.next_token(); // consume keyword
-                    unit.deps.push(vec![path]);
+                    unit.deps.push(QualifiedName::new(vec![path]));
                     Ok(())
                 }
                 TokenKind::Identifier(_) => {

@@ -2,8 +2,7 @@ use crate::ada_lexer::AdaLexer;
 use crate::base_lexer::BaseScanner;
 use crate::errors::Error;
 use crate::tokens::TokenKind;
-use crate::units::Unit;
-use ustr::Ustr;
+use crate::units::{QualifiedName, Unit};
 
 pub struct AdaScanner<'a> {
     base: BaseScanner<AdaLexer<'a>>,
@@ -30,8 +29,8 @@ impl<'a> AdaScanner<'a> {
                 TokenKind::Separate => {
                     match scan.parse_separate() {
                         Ok(sep) => {
-                           unit.name.extend(sep);
-                           Ok(())
+                            unit.name = sep;
+                            Ok(())
                         }
                         Err(e) => Err(e)
                     }
@@ -44,9 +43,9 @@ impl<'a> AdaScanner<'a> {
                         scan.base.safe_next()?;
                     }
 
-                    match scan.base.expect_qname() {
+                    match scan.base.expect_qname(TokenKind::Dot) {
                         Ok(n) => {
-                            unit.name.extend(n);
+                            unit.name.join(n);
                             break;
                         }
                         Err(e) => Err(e)
@@ -63,13 +62,13 @@ impl<'a> AdaScanner<'a> {
     fn parse_with_or_use_clause(
         &mut self,
         kind: TokenKind,
-        deps: &mut Vec<Vec<Ustr>>,
+        deps: &mut Vec<QualifiedName>,
     ) -> Result<(), Error> {
         if kind == TokenKind::Use && TokenKind::Type == self.base.peek() {
             self.base.next_token(); // consume "use type"
         }
         loop {
-            let d = self.base.expect_qname()?;
+            let d = self.base.expect_qname(TokenKind::Dot)?;
             if kind == TokenKind::With {
                 deps.push(d);
             }
@@ -83,9 +82,9 @@ impl<'a> AdaScanner<'a> {
         Ok(())
     }
 
-    fn parse_separate(&mut self) -> Result<Vec<Ustr>, Error> {
+    fn parse_separate(&mut self) -> Result<QualifiedName, Error> {
         self.base.expect(TokenKind::OpenParenthesis)?;
-        let sep = self.base.expect_qname()?;
+        let sep = self.base.expect_qname(TokenKind::Dot)?;
         self.base.expect(TokenKind::CloseParenthesis)?;
         Ok(sep)
     }
