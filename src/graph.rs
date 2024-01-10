@@ -2,6 +2,7 @@ use petgraph::algo::toposort;
 use petgraph::graph::Graph;
 use petgraph::visit::Bfs;
 use petgraph::Directed;
+use crate::units::Unit;
 
 pub type NodeIndex = petgraph::graph::NodeIndex<u32>;
 pub type PathToIndexes =
@@ -20,7 +21,7 @@ impl GPRIndex {
 /// The nodes of a graph
 pub enum Node {
     Project(GPRIndex),
-    _Unit,
+    Unit(Unit),
 }
 
 /// The edges of a graph

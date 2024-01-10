@@ -2,7 +2,7 @@ use crate::ada_lexer::AdaLexer;
 use crate::base_lexer::BaseScanner;
 use crate::errors::Error;
 use crate::tokens::TokenKind;
-use crate::units::{QualifiedName, Unit};
+use crate::units::{QualifiedName, SourceKind, SourceInfo};
 
 pub struct AdaScanner<'a> {
     base: BaseScanner<AdaLexer<'a>>,
@@ -10,18 +10,22 @@ pub struct AdaScanner<'a> {
 
 impl<'a> AdaScanner<'a> {
     /// Parse an Ada source file, and return the unit name
-    pub fn parse(lex: AdaLexer<'a>) -> Result<Unit, Error> {
+    pub fn parse(lex: AdaLexer<'a>) -> Result<SourceInfo, Error> {
         let mut scan = Self {
             base: BaseScanner::new(lex),
         };
-        let mut unit = Unit::default();
+        let mut info = SourceInfo {
+            unitname: QualifiedName::default(),
+            kind: SourceKind::Spec,
+            deps: Default::default(),
+        };
 
         loop {
             let n = scan.base.safe_next()?;
             match n.kind {
                 TokenKind::Use
                 | TokenKind::With => {
-                    scan.parse_with_or_use_clause(n.kind, &mut unit.deps)
+                    scan.parse_with_or_use_clause(n.kind, &mut info)
                 }
                 TokenKind::Pragma => scan.parse_pragma(),
                 TokenKind::Limited    // limited with 
@@ -29,8 +33,14 @@ impl<'a> AdaScanner<'a> {
                 TokenKind::Separate => {
                     match scan.parse_separate() {
                         Ok(sep) => {
-                            unit.name = sep;
-                            Ok(())
+                            info.kind = SourceKind::Separate;
+                            info.unitname = sep;
+
+                            // We are done with the parsing: the "unit" is the
+                            // toplevel package we want to compile, so any
+                            // separate (even if they are themselves packages)
+                            // are just nested
+                            break;
                         }
                         Err(e) => Err(e)
                     }
@@ -40,12 +50,23 @@ impl<'a> AdaScanner<'a> {
                 | TokenKind::Procedure
                 | TokenKind::Function => {
                     if scan.base.peek() == TokenKind::Body {
+                        //  Unless we have found before that it was a separate
+                        match (n.kind, &info.kind) {
+                           (TokenKind::Package, SourceKind::Spec) => {
+                               info.kind = SourceKind::Implementation;
+                           },
+                           (_, SourceKind::Separate) => {},
+                           (TokenKind::Package, _) => {
+                               info.kind = SourceKind::Spec;
+                           },
+                           _ => {},
+                        };
                         scan.base.safe_next()?;
                     }
 
                     match scan.base.expect_qname(TokenKind::Dot) {
                         Ok(n) => {
-                            unit.name.join(n);
+                            info.unitname.join(n);
                             break;
                         }
                         Err(e) => Err(e)
@@ -56,13 +77,13 @@ impl<'a> AdaScanner<'a> {
                     t))
             }.map_err(|e| scan.base.error_with_location(e))?;
         }
-        Ok(unit)
+        Ok(info)
     }
 
     fn parse_with_or_use_clause(
         &mut self,
         kind: TokenKind,
-        deps: &mut Vec<QualifiedName>,
+        info: &mut SourceInfo,
     ) -> Result<(), Error> {
         if kind == TokenKind::Use && TokenKind::Type == self.base.peek() {
             self.base.next_token(); // consume "use type"
@@ -70,7 +91,7 @@ impl<'a> AdaScanner<'a> {
         loop {
             let d = self.base.expect_qname(TokenKind::Dot)?;
             if kind == TokenKind::With {
-                deps.push(d);
+                info.deps.insert(d);
             }
             let n = self.base.safe_next()?;
             match n.kind {

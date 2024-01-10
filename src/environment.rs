@@ -6,6 +6,7 @@ use crate::graph::{DepGraph, Edge, GPRIndex, Node};
 use crate::scenarios::AllScenarios;
 use crate::settings::Settings;
 use crate::sourcefile::SourceFile;
+use crate::units::{AllUnits, UnitSource};
 use std::collections::{HashMap, HashSet};
 
 /// The whole set of gpr files
@@ -97,6 +98,8 @@ impl Environment {
         println!("Total source directories={}", all_source_dirs.len());
         println!("Total files in source dirs={}", files_count);
 
+        let mut units = AllUnits::default();
+
         for gpr in gprs.values() {
             gpr.get_source_files(&mut all_source_files);
         }
@@ -104,7 +107,23 @@ impl Environment {
 
         for (filepath, lang) in &all_source_files {
             let mut s = SourceFile::new(filepath, *lang);
-            s.parse()?;
+            let info = s.parse()?;
+            let u = units.entry(info.unitname).or_default();
+            u.sources.push(UnitSource {
+                path: filepath.clone(),
+                kind: info.kind,
+            });
+            u.deps.extend(info.deps);
+        }
+        println!("Total units={}", units.len());
+
+        for (unitname, unit) in units {
+            if unitname.0.last().unwrap().as_str() == "sockets" {
+                println!("MANU unit {:?} {:?}", unitname, unit.sources);
+            }
+
+//            let _ = self.graph.add_node(Node::Unit(unit));
+//            self.graph.add_edge(*nodeidx, *dep, Edge::Imports);
         }
 
         //    let pool = threadpool::ThreadPool::new(1);

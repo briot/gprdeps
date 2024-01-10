@@ -11,8 +11,8 @@
 /// crate's fully qualified name "crate::errors::Error" for instance.
 use ustr::Ustr;
 
-#[derive(Debug, Default)]
-pub struct QualifiedName(Vec<Ustr>);
+#[derive(Debug, Default, Hash, Eq, PartialEq)]
+pub struct QualifiedName(pub Vec<Ustr>);
 
 impl QualifiedName {
     pub fn new(qname: Vec<Ustr>) -> Self {
@@ -24,10 +24,38 @@ impl QualifiedName {
     }
 }
 
+#[derive(Debug)]
+pub struct UnitSource {
+    pub path: std::path::PathBuf,
+    pub kind: SourceKind,
+}
+
 #[derive(Debug, Default)]
 pub struct Unit {
-    pub name: QualifiedName,
+    pub sources: Vec<UnitSource>,
 
     // The list of dependencies as fully qualified names
-    pub deps: Vec<QualifiedName>,
+    pub deps: std::collections::HashSet<QualifiedName>,
 }
+
+/// What is the semantic of a source file within a unit.
+/// In C, units are made up of a single file, so this is always the
+/// implementation.
+#[derive(Debug, Copy, Clone)]
+pub enum SourceKind {
+    Spec,
+    Implementation,
+    Separate,
+}
+
+/// The data structure returned when parsing one source file.
+/// All SourceInfo with the same unitname will be merged.
+#[derive(Debug)]
+pub struct SourceInfo {
+    pub unitname: QualifiedName,
+    pub kind: SourceKind,
+    pub deps: std::collections::HashSet<QualifiedName>,
+}
+
+/// The key is the unit name, which is unique in the whole application.
+pub type AllUnits = std::collections::HashMap<QualifiedName, Unit>;

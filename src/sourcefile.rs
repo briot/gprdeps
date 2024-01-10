@@ -4,6 +4,7 @@ use crate::cpp_lexer::CppLexer;
 use crate::cpp_scanner::CppScanner;
 use crate::errors::Error;
 use crate::files::File;
+use crate::units::SourceInfo;
 use std::path::{Path, PathBuf};
 use ustr::Ustr;
 
@@ -21,26 +22,26 @@ impl SourceFile {
         }
     }
 
-    pub fn parse(&mut self) -> Result<(), Error> {
+    pub fn parse(&mut self) -> Result<SourceInfo, Error> {
         let mut file = File::new(&self.path)?;
-        let _ = match self.lang.as_str() {
+        match self.lang.as_str() {
             "ada" => {
                 AdaScanner::parse(AdaLexer::new(&mut file, AdaLexerOptions {
                     kw_aggregate: false,
                     kw_body: true,
-                }))?
+                }))
             }
             "c" | "c++" => {
                 CppScanner::parse(
                     CppLexer::new(&mut file),
-                    &self.path)?
+                    &self.path)
             }
             lang => {
-                println!("Cannot parse {} file {}", lang, self.path.display());
-                return Ok(());
+                Err(Error::CannotParse {
+                    path: self.path.clone(),
+                    lang: lang.into(),
+                })
             }
-        };
-//        println!("{} {:?}", self.path.display(), unit);
-        Ok(())
+        }
     }
 }

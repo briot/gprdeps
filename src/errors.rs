@@ -21,6 +21,9 @@ pub enum Error {
     #[error("Expected {expected}, got {got}")]
     WrongToken { expected: String, got: String },
 
+    #[error("Cannot parse {path}, language {lang}")]
+    CannotParse { path: std::path::PathBuf, lang: String },
+
     #[error("Invalid package name {0}")]
     InvalidPackageName(Ustr),
 
