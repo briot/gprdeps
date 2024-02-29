@@ -20,6 +20,7 @@ impl GPRIndex {
 }
 
 /// The nodes of a graph
+#[derive(Debug)]
 pub enum Node {
     Project(GPRIndex),
     Unit(QualifiedName),
@@ -81,6 +82,7 @@ impl DepGraph {
     /// B, which both import a common C, then C is only returned once).
     /// The returned value does not include start itself.
     pub fn gpr_dependencies(&self, start: NodeIndex) -> Vec<GPRIndex> {
+
         let mut bfs = Bfs::new(&self.0, start);
         let mut result = Vec::new();
         while let Some(node) = bfs.next(&self.0) {
@@ -95,5 +97,17 @@ impl DepGraph {
 impl Default for DepGraph {
     fn default() -> Self {
         Self(Graph::new())
+    }
+}
+
+impl std::fmt::Debug for DepGraph {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f, "{:?}",
+            petgraph::dot::Dot::with_config(
+                &self.0,
+                &[petgraph::dot::Config::EdgeNoLabel]
+            )
+        )
     }
 }
