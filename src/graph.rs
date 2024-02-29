@@ -2,6 +2,7 @@ use petgraph::algo::toposort;
 use petgraph::graph::Graph;
 use petgraph::visit::Bfs;
 use petgraph::Directed;
+use crate::errors::Error;
 use crate::scenarios::Scenario;
 use crate::units::QualifiedName;
 
@@ -50,12 +51,19 @@ pub enum Edge {
 }
 
 /// A unified dependency graph, for both projects and source files
-pub struct DepGraph(Graph<Node, Edge, Directed, u32>);
+pub struct DepGraph(pub Graph<Node, Edge, Directed, u32>);
 impl DepGraph {
     pub fn get_project(&self, idx: NodeIndex) -> GPRIndex {
         match self.0[idx] {
             Node::Project(gpr) => gpr,
             _ => panic!("Invalid project reference {:?}", idx),
+        }
+    }
+
+    pub fn get_unit_name(&self, idx: NodeIndex) -> Result<QualifiedName, Error> {
+        match &self.0[idx] {
+            Node::Unit(qname) => Ok(qname.clone()),
+            u => Err(Error::InvalidGraphNode(format!("{:?}", u))),
         }
     }
 
@@ -82,7 +90,6 @@ impl DepGraph {
     /// B, which both import a common C, then C is only returned once).
     /// The returned value does not include start itself.
     pub fn gpr_dependencies(&self, start: NodeIndex) -> Vec<GPRIndex> {
-
         let mut bfs = Bfs::new(&self.0, start);
         let mut result = Vec::new();
         while let Some(node) = bfs.next(&self.0) {

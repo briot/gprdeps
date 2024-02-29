@@ -6,7 +6,8 @@ use crate::graph::{DepGraph, Edge, GPRIndex, Node};
 use crate::scenarios::AllScenarios;
 use crate::settings::Settings;
 use crate::sourcefile::SourceFile;
-use crate::units::{SourceKind};
+use crate::units::SourceKind;
+use petgraph::visit::EdgeRef;
 use std::collections::{HashMap, HashSet};
 
 /// The whole set of gpr files
@@ -197,6 +198,36 @@ impl Environment {
         println!(
             "Nodes in graph after adding files and units: {}",
             self.graph.node_count());
+
+        // println!("{:?}", self.graph);
+
+        // Example: find all direct dependencies for servers-sockets.adb
+
+        let path = "/home/briot/dbc/deepblue/General/Networking/private/servers-sockets.adb";
+        let (sidx, lang, opt_kind_and_uidx) = all_source_files.get(
+             &std::path::PathBuf::from(path)
+        ).ok_or(Error::NotFound("File not found in graph".into()))?;
+
+        println!("File: {}", path);
+        println!("Language: {}", lang);
+        match opt_kind_and_uidx {
+            None => println!("Unit: unknown"),
+            Some((kind, uidx)) => {
+                println!("Source kind: {:?}", kind);
+                println!("Unit: {}", self.graph.get_unit_name(*uidx)?);
+            }
+        }
+
+        // ??? Implementation implicitly depends on spec and separates
+        println!("Direct dependencies:");
+        let mut direct_deps = self.graph.0.edges(*sidx)
+           .filter(|e| matches!(e.weight(), Edge::Imports))
+           .filter_map(|e| self.graph.get_unit_name(e.target()).ok())
+           .map(|e| format!("   {}", e))
+           .collect::<Vec<_>>();
+        direct_deps.sort();
+        println!("{}", direct_deps.join("\n"));
+
 
         //    let pool = threadpool::ThreadPool::new(1);
         //    for gpr in list_of_gpr {

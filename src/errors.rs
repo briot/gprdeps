@@ -88,6 +88,9 @@ pub enum Error {
         source: std::io::Error,
         //  backtrace: std::backtrace::Backtrace,
     },
+
+    #[error("Invalid graph node type {0}")]
+    InvalidGraphNode(String),
 }
 
 impl Error {

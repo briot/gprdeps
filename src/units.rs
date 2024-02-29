@@ -24,6 +24,16 @@ impl QualifiedName {
     }
 }
 
+impl std::fmt::Display for QualifiedName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0
+            .iter()
+            .map(|n| format!("{}", n))
+            .collect::<Vec<_>>()
+            .join("."))
+    }
+}
+
 #[derive(Debug)]
 pub struct UnitSource {
     pub path: std::path::PathBuf,
