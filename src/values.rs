@@ -3,7 +3,6 @@ use crate::gpr::GprFile;
 use crate::rawexpr::{PackageName, QualifiedName, RawExpr, SimpleName};
 use crate::scenarios::{AllScenarios, Scenario};
 use std::collections::HashMap;
-use std::collections::HashSet;
 use ustr::{Ustr, UstrMap, UstrSet};
 
 #[derive(Clone, Debug, PartialEq)]
@@ -74,13 +73,13 @@ impl ExprValue {
     }
 
     /// List all scenarios that have an impact on the variable's value
-    pub fn find_used_scenarios(&self, useful: &mut HashSet<Scenario>) {
-        match self {
-            ExprValue::Str(v) => useful.extend(v.keys()),
-            ExprValue::StrList(v) => useful.extend(v.keys()),
-            ExprValue::PathList(v) => useful.extend(v.keys()),
-        }
-    }
+    //    pub fn find_used_scenarios(&self, useful: &mut HashSet<Scenario>) {
+    //        match self {
+    //            ExprValue::Str(v) => useful.extend(v.keys()),
+    //            ExprValue::StrList(v) => useful.extend(v.keys()),
+    //            ExprValue::PathList(v) => useful.extend(v.keys()),
+    //        }
+    //    }
 
     /// Given a scenario variable, as setup via new_with_variable, prepares
     /// a mapping from one string value to the corresponding scenario.

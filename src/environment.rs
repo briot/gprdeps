@@ -2,13 +2,28 @@ use crate::ada_lexer::{AdaLexer, AdaLexerOptions};
 use crate::errors::Error;
 use crate::gpr::GprFile;
 use crate::gpr_scanner::GprScanner;
-use crate::graph::{DepGraph, Edge, GPRIndex, Node};
+use crate::graph::{DepGraph, Edge, GPRIndex, Node, NodeIndex, PathToIndexes};
+use crate::rawgpr::RawGPR;
 use crate::scenarios::AllScenarios;
 use crate::settings::Settings;
 use crate::sourcefile::SourceFile;
-use crate::units::SourceKind;
+use crate::units::{QualifiedName, SourceKind};
 use petgraph::visit::EdgeRef;
 use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
+use ustr::Ustr;
+
+type GPRDetails<'a> = HashMap<GPRIndex, (&'a PathBuf, RawGPR)>;
+type GPRIdxToFile = HashMap<GPRIndex, GprFile>;
+type UnitsMap = HashMap<QualifiedName, NodeIndex>;
+type SourceFilesMap = HashMap<
+    PathBuf,
+    (
+        NodeIndex, // Node for the source file
+        Ustr,      // Language of the source file
+        Option<(SourceKind, NodeIndex)>,
+    ), // unit, and role played by the file
+>;
 
 /// The whole set of gpr files
 #[derive(Default)]
@@ -16,63 +31,76 @@ pub struct Environment {
     settings: Settings,
     scenarios: AllScenarios,
     graph: DepGraph,
+    files: SourceFilesMap,
+    units: UnitsMap,
 }
 
 impl Environment {
-    /// Recursively look for all project files, parse them and prepare the
-    /// dependency graph.
-    pub fn parse_all(&mut self, path: &std::path::Path) -> Result<(), Error> {
-        let mut gprpath_to_indexes = HashMap::new();
+    /// Add a project that is implicitly imported by all projects.
+    /// This is mostly meant for projects that include runtime files for
+    /// various languages.
 
-        // Find all GPR files we will have to parse
-        // Insert dummy nodes in the graph, so that we have an index
-        for (gpridx, gpr) in crate::findfile::FileFind::new(path).enumerate() {
-            let gpridx = GPRIndex::new(gpridx);
-            let nodeidx = self.graph.add_node(Node::Project(gpridx));
-            let path = gpr.to_path_buf();
+    pub fn add_implicit_project(&mut self, path: &Path) {}
+
+    /// Find all GPR files that need to be parsed, in either root directory
+    /// or one of its child directories.
+    /// Insert dummy nodes in the graph, so that we have an index
+
+    fn find_all_gpr(&mut self, root: &Path) -> PathToIndexes {
+        let mut gprpath_to_indexes = HashMap::new();
+        for (gpridx, gpr) in crate::findfile::FileFind::new(root).enumerate() {
             if gprpath_to_indexes.contains_key(&gpr) {
                 // ??? We could instead reuse the same gpridx and nodeidx, but
                 // this is unexpected.
+                let path = gpr.to_path_buf();
                 panic!("Project file found multiple times: {}", path.display());
             }
+            let gpridx = GPRIndex::new(gpridx);
+            let nodeidx = self.graph.add_node(Node::Project(gpridx));
             gprpath_to_indexes.insert(gpr, (gpridx, nodeidx));
         }
-        println!(
-            "Nodes in graph after adding gpr: {}",
-            self.graph.node_count()
-        );
+        gprpath_to_indexes
+    }
 
-        // Parse the raw GPR files, but do not analyze them yet.
-        // We can however setup dependencies in the graph already.
+    /// Parse the raw GPR files, but do not analyze them yet.
+    /// We can however setup dependencies in the graph already, so that we can
+    /// do topological sort later and parse them in the correct order.
 
+    fn parse_raw_gprs<'b>(
+        &mut self,
+        gprs: &'b PathToIndexes,
+    ) -> Result<GPRDetails<'b>, Error> {
         let mut rawfiles = HashMap::new();
-        for (path, (gpridx, nodeidx)) in &gprpath_to_indexes {
+        for (path, (gpridx, nodeidx)) in gprs {
             let mut file = crate::files::File::new(path)?;
             let options = AdaLexerOptions {
                 kw_aggregate: true,
                 kw_body: false,
             };
-            let lex = AdaLexer::new(&mut file, options);
             let raw = GprScanner::parse(
-                lex,
+                AdaLexer::new(&mut file, options),
                 path,
-                &gprpath_to_indexes,
+                gprs,
                 &self.settings,
             )?;
-
             for dep in &raw.imported {
                 self.graph.add_edge(*nodeidx, *dep, Edge::GPRImports);
             }
             if let Some(ext) = raw.extends {
                 self.graph.add_edge(*nodeidx, ext, Edge::GPRExtends);
             }
-
             rawfiles.insert(*gpridx, (path, raw));
         }
+        Ok(rawfiles)
+    }
 
-        // Process the projects in topological order, so that any reference to a
-        // variable or attribute in another project is found.
+    /// Process the projects in topological order, so that any reference to a
+    /// variable or attribute in another project is found.
 
+    fn process_projects(
+        &mut self,
+        rawfiles: &GPRDetails,
+    ) -> Result<GPRIdxToFile, Error> {
         let mut gprs = HashMap::new();
         for nodeidx in self.graph.toposort().iter().rev() {
             let gpridx = self.graph.get_project(*nodeidx);
@@ -88,134 +116,115 @@ impl Environment {
             )?;
             gprs.insert(gpridx, gpr);
         }
+        Ok(gprs)
+    }
 
-        // Remove all attributes we do not actually need, which makes some
-        // scenarios useless too
-        let mut useful_scenars = HashSet::new();
+    /// Resolve all source dirs and source files as found in the project, once
+    /// we have processed all projects.
+    /// Remove all attributes we do not actually need, which makes some
+    /// scenarios useless too.
+
+    fn find_sources(&mut self, gprs: &mut GPRIdxToFile) -> Result<(), Error> {
         let mut all_source_dirs = HashSet::new();
         for gpr in gprs.values_mut() {
             gpr.trim();
-            gpr.find_used_scenarios(&mut useful_scenars);
             gpr.resolve_source_dirs(&mut all_source_dirs, &self.settings)?;
             gpr.resolve_source_files(&all_source_dirs, &mut self.scenarios);
         }
-        let files_count: usize =
-            all_source_dirs.iter().map(|d| d.files_count()).sum();
+        Ok(())
+    }
 
-        println!("Actually used scenarios={}", useful_scenars.len());
-        println!("Total source directories={}", all_source_dirs.len());
-        println!("Total files in source dirs={}", files_count);
+    /// Add a unit to the graph, if not there yet
 
-        // Create graph nodes for the source files, and group the files into
-        // logical units.
+    fn add_unit(&mut self, unitname: QualifiedName) -> NodeIndex {
+        // ??? Can we avoid the clone here if the unit is already there
+        *self
+            .units
+            .entry(unitname.clone())
+            .or_insert_with(|| self.graph.add_node(Node::Unit(unitname)))
+    }
 
-        let mut all_source_files = HashMap::new();
-        let mut units = HashMap::new();
+    /// Add a new dependency from the source to a given unit
 
+    fn add_source_import(&mut self, source: NodeIndex, unit: QualifiedName) {
+        let u = self.add_unit(unit);
+        self.graph.add_edge(source, u, Edge::SourceImports);
+    }
+
+    /// Retrieve or add source file to the graph.
+    /// Returns the node for the source, and information about the unit.
+
+    fn add_source(
+        &mut self,
+        path: &PathBuf,
+        lang: Ustr,
+    ) -> (NodeIndex, Option<(SourceKind, NodeIndex)>) {
+        match self.files.get(path) {
+            Some((s1, _, ku1)) => (*s1, *ku1),
+            None => {
+                let sidx = self.graph.add_node(Node::Source(path.clone()));
+                let mut s = SourceFile::new(path, lang);
+                let opt_kind_and_uidx = match s.parse() {
+                    Err(e) => {
+                        println!("Failed to parse {}: {}", path.display(), e);
+                        None
+                    }
+                    Ok(info) => {
+                        for dep in info.deps {
+                            self.add_source_import(sidx, dep);
+                        }
+
+                        // Automatically depend on parent unit
+                        if let Some(parent) = info.unitname.parent() {
+                            self.add_source_import(sidx, parent);
+                        }
+
+                        // An implementation or separate depends on everything
+                        // from the same unit, but the spec doesn't.
+                        let uidx = self.add_unit(info.unitname);
+                        match info.kind {
+                            SourceKind::Spec => {}
+                            SourceKind::Implementation
+                            | SourceKind::Separate => self.graph.add_edge(
+                                sidx,
+                                uidx,
+                                Edge::SourceImports,
+                            ),
+                        }
+                        Some((info.kind, uidx))
+                    }
+                };
+                self.files
+                    .insert(path.clone(), (sidx, lang, opt_kind_and_uidx));
+                (sidx, opt_kind_and_uidx)
+            }
+        }
+    }
+
+    /// Create graph nodes for the source files, and group the files into
+    /// logical units.
+
+    fn add_sources_to_graph(
+        &mut self,
+        gprs: &mut GPRIdxToFile,
+    ) -> Result<(), Error> {
         for gpr in gprs.values() {
             for (scenario, sources) in &gpr.source_files {
                 for (path, lang) in sources {
-                    // Create a new graph node for the source file if needed
-                    let (sidx, _, opt_kind_and_uidx) =
-                        all_source_files.entry(path).or_insert_with(|| {
-                            // Create a new node, since the file is not in the
-                            // graph yet
-                            let sidx =
-                                self.graph.add_node(Node::Source(path.clone()));
-
-                            // Parse the source files to find the unit and
-                            // its dependencies.
-                            let mut s = SourceFile::new(path, *lang);
-                            let info = s.parse();
-                            let opt_kind_and_uidx = match info {
-                                Err(e) => {
-                                    println!(
-                                        "Failed to parse {}: {}",
-                                        path.display(),
-                                        e
-                                    );
-                                    None
-                                }
-                                Ok(info) => {
-                                    let parent = info.unitname.parent();
-
-                                    let uidx = *units
-                                        .entry(info.unitname.clone())
-                                        .or_insert_with(|| {
-                                            self.graph.add_node(Node::Unit(
-                                                info.unitname,
-                                            ))
-                                        });
-
-                                    // If we have a parent unit, we automatically
-                                    // depend on it
-                                    if let Some(parent) = parent {
-                                        let parent_uidx = *units
-                                            .entry(parent.clone())
-                                            .or_insert_with(|| {
-                                                self.graph.add_node(Node::Unit(
-                                                    parent,
-                                                ))
-                                            });
-                                        self.graph.add_edge(
-                                            sidx,
-                                            parent_uidx,
-                                            Edge::SourceImports,
-                                        );
-                                    }
-
-                                    // We have now found what the source file
-                                    // depends on (??? though that should depend
-                                    // on the scenario in the case of C).  We
-                                    // can register those dependencies in the
-                                    // graph.
-
-                                    for dep in info.deps {
-                                        let imported_uidx = units
-                                            .entry(dep.clone())
-                                            .or_insert_with(|| {
-                                                self.graph
-                                                    .add_node(Node::Unit(dep))
-                                            });
-                                        self.graph.add_edge(
-                                            sidx,
-                                            *imported_uidx,
-                                            Edge::SourceImports,
-                                        );
-                                    }
-
-                                    // An implementation or separate depends on
-                                    // everything from the same unit, but the
-                                    // spec doesn't.
-                                    match info.kind {
-                                        SourceKind::Spec => {}
-                                        SourceKind::Implementation
-                                        | SourceKind::Separate => {
-                                            self.graph.add_edge(
-                                                sidx,
-                                                uidx,
-                                                Edge::SourceImports,
-                                            );
-                                        }
-                                    }
-                                    Some((info.kind, uidx))
-                                }
-                            };
-
-                            (sidx, lang, opt_kind_and_uidx)
-                        });
+                    let (sidx, opt_kind_and_uidx) =
+                        self.add_source(path, *lang);
 
                     // Add edges
                     self.graph.add_edge(
                         gpr.index,
-                        *sidx,
+                        sidx,
                         Edge::ProjectSource(*scenario),
                     );
 
                     if let Some((kind, uidx)) = opt_kind_and_uidx {
                         self.graph.add_edge(
-                            *uidx,
-                            *sidx,
+                            uidx,
+                            sidx,
                             match kind {
                                 SourceKind::Spec => Edge::UnitSpec(*scenario),
                                 SourceKind::Implementation => {
@@ -230,10 +239,10 @@ impl Environment {
                         // Duplicate the source-level dependencies as unit-level
                         // dependencies.  This makes traversing the graph much
                         // easier.
-                        let source_deps = self
+                        let source_deps = self //  Need tmp vector
                             .graph
                             .0
-                            .edges(*sidx)
+                            .edges(sidx)
                             .filter(|e| {
                                 matches!(e.weight(), Edge::SourceImports)
                             })
@@ -241,7 +250,7 @@ impl Environment {
                             .collect::<Vec<_>>();
                         for d in source_deps {
                             self.graph.add_edge(
-                                *uidx,
+                                uidx,
                                 d,
                                 Edge::UnitImports(*scenario),
                             );
@@ -250,33 +259,36 @@ impl Environment {
                 }
             }
         }
-        println!("Total source files={}", all_source_files.len());
-        println!("Total units={}", units.len());
+        Ok(())
+    }
+
+    /// Recursively look for all project files, parse them and prepare the
+    /// dependency graph.
+
+    pub fn parse_all(&mut self, path: &Path) -> Result<(), Error> {
+        let gprpath_to_indexes = self.find_all_gpr(path);
+        let rawfiles = self.parse_raw_gprs(&gprpath_to_indexes)?;
+        let mut gprs = self.process_projects(&rawfiles)?;
+        self.find_sources(&mut gprs)?;
+        self.add_sources_to_graph(&mut gprs)?;
+
+        println!("Total source files={}", self.files.len());
+        println!("Total units={}", self.units.len());
         println!(
             "Nodes in graph after adding files and units: {}",
             self.graph.node_count()
         );
 
-        // println!("{:?}", self.graph);
+        Ok(())
+    }
 
-        // Example: find all direct dependencies for servers-sockets.adb
+    /// Report the list of units directly imported by the given file
 
-        let path = "/home/briot/dbc/deepblue/General/Networking/private/servers-sockets.adb";
-        let (sidx, lang, opt_kind_and_uidx) = all_source_files
+    pub fn show_direct_dependencies(&self, path: &Path) -> Result<(), Error> {
+        let (sidx, _, _) = self
+            .files
             .get(&std::path::PathBuf::from(path))
             .ok_or(Error::NotFound("File not found in graph".into()))?;
-
-        println!("File: {}", path);
-        println!("Language: {}", lang);
-        match opt_kind_and_uidx {
-            None => println!("Unit: unknown"),
-            Some((kind, uidx)) => {
-                println!("Source kind: {:?}", kind);
-                println!("Unit: {}", self.graph.get_unit_name(*uidx)?);
-            }
-        }
-
-        println!("Direct dependencies:");
         let mut direct_deps = self
             .graph
             .0
@@ -287,8 +299,19 @@ impl Environment {
             .collect::<Vec<_>>();
         direct_deps.sort();
         println!("{}", direct_deps.join("\n"));
+        Ok(())
+    }
 
-        println!("Indirect dependencies:");
+    /// Report all dependencies of the given source file
+
+    pub fn show_indirect_dependencies(
+        &mut self,
+        path: &Path,
+    ) -> Result<(), Error> {
+        let (sidx, _, opt_kind_and_uidx) = self
+            .files
+            .get(&std::path::PathBuf::from(path))
+            .ok_or(Error::NotFound("File not found in graph".into()))?;
         let filtered =
             petgraph::visit::EdgeFiltered::from_fn(&self.graph.0, |e| {
                 matches!(e.weight(), Edge::UnitImports(_))
@@ -321,28 +344,6 @@ impl Environment {
             deps.sort();
             println!("{}", deps.join("\n"));
         }
-
-        // TODO:
-        // should simplify edges to merge scenarios when possible.  Currently,
-        // this merging is done in get_specs(), but it would be better to have
-        // it directly in the graph instead.  See scenario in get_specs()
-
-        // TODO:
-        // Also missing deps on servers-sockets-impl.adb, which depends on the
-        // scenario.
-
-        // TODO:
-        // should also parse standard runtime, otherwise we have no filenames
-        // for it.
-
-        //    let pool = threadpool::ThreadPool::new(1);
-        //    for gpr in list_of_gpr {
-        //        let gpr = gpr.clone();
-        //        pool.execute(move || {
-        //            let _ = parse_gpr_file(&gpr);
-        //        });
-        //    }
-        //    pool.join();
         Ok(())
     }
 }

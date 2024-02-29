@@ -132,13 +132,13 @@ impl GprFile {
     }
 
     /// Find which scenarios are actually useful for this project
-    pub fn find_used_scenarios(&self, useful: &mut HashSet<Scenario>) {
-        for pkg in 0..PACKAGE_NAME_VARIANTS {
-            for v in self.values[pkg].values() {
-                v.find_used_scenarios(useful);
-            }
-        }
-    }
+    //    pub fn find_used_scenarios(&self, useful: &mut HashSet<Scenario>) {
+    //        for pkg in 0..PACKAGE_NAME_VARIANTS {
+    //            for v in self.values[pkg].values() {
+    //                v.find_used_scenarios(useful);
+    //            }
+    //        }
+    //    }
 
     /// Resolve relative paths, and cleanup ".." from the name.
     /// It optionally resolves symbolic links, in which case it might fail if
