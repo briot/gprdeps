@@ -198,7 +198,6 @@ impl Environment {
                                             );
                                         }
                                     }
-
                                     Some((info.kind, uidx))
                                 }
                             };
@@ -299,18 +298,21 @@ impl Environment {
             let mut deps = Vec::new();
             while let Some(node) = dfs.next(&filtered) {
                 if node != *sidx {
-                    let mut d: String = format!(
-                        "   {}",
-                        self.graph.get_unit_name(node)?
-                    );
+                    let mut d: String =
+                        format!("   {}", self.graph.get_unit_name(node)?);
 
-                    for (nodeidx, scenar) in self.graph.get_specs(node) {
+                    for (nodeidx, scenars) in
+                        self.graph.get_specs(&mut self.scenarios, node)
+                    {
                         d.push('\n');
-                        d.push_str(
-                            &format!("      {} ",
-                               self.graph.get_source_path(nodeidx)?.display())
-                        );
-                        d.push_str(&self.scenarios.describe(scenar));
+                        d.push_str(&format!(
+                            "      {} ",
+                            self.graph.get_source_path(nodeidx)?.display()
+                        ));
+                        for s in scenars {
+                            d.push(' ');
+                            d.push_str(&self.scenarios.describe(s));
+                        }
                     }
 
                     deps.push(d);
@@ -319,6 +321,19 @@ impl Environment {
             deps.sort();
             println!("{}", deps.join("\n"));
         }
+
+        // TODO:
+        // should simplify edges to merge scenarios when possible.  Currently,
+        // this merging is done in get_specs(), but it would be better to have
+        // it directly in the graph instead.  See scenario in get_specs()
+
+        // TODO:
+        // Also missing deps on servers-sockets-impl.adb, which depends on the
+        // scenario.
+
+        // TODO:
+        // should also parse standard runtime, otherwise we have no filenames
+        // for it.
 
         //    let pool = threadpool::ThreadPool::new(1);
         //    for gpr in list_of_gpr {

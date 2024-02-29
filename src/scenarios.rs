@@ -129,14 +129,19 @@ impl std::fmt::Display for ScenarioDetails {
         let mut varnames = self.vars.keys().collect::<Vec<_>>();
         varnames.sort();
 
-        for n in varnames {
-            let mut vals =
-                self.vars[n].iter().map(|s| s.as_str()).collect::<Vec<_>>();
-            vals.sort();
+        if varnames.is_empty() {
+            Ok(())
+            //  write!(f, "all scenarios")
+        } else {
+            for n in varnames {
+                let mut vals =
+                    self.vars[n].iter().map(|s| s.as_str()).collect::<Vec<_>>();
+                vals.sort();
 
-            write!(f, "{}={},", n, vals.join("|"))?
+                write!(f, "{}={},", n, vals.join("|"))?
+            }
+            Ok(())
         }
-        Ok(())
     }
 }
 
@@ -278,7 +283,6 @@ impl AllScenarios {
     ///
 
     pub fn union(&mut self, s1: Scenario, s2: Scenario) -> Option<Scenario> {
-        //  The variable on which the two scenarios differ
         let mut diffcount = 0;
 
         let mut d1 = self.scenarios[s1.0].clone();
