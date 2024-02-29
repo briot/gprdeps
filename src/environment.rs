@@ -132,13 +132,31 @@ impl Environment {
                                     None
                                 },
                                 Ok(info) => {
+                                    let parent = info.unitname.parent();
+
                                     let uidx = *units
                                         .entry(info.unitname.clone())
                                         .or_insert_with(|| {
                                             self.graph.add_node(
-                                                Node::Unit(
-                                                    info.unitname.clone()))
+                                                Node::Unit(info.unitname))
                                         });
+
+                                    // If we have a parent unit, we automatically
+                                    // depend on it
+                                    if let Some(parent) = parent {
+                                        let parent_uidx = *units
+                                            .entry(parent.clone())
+                                            .or_insert_with(|| {
+                                                self.graph.add_node(
+                                                    Node::Unit(parent))
+                                            });
+
+                                        self.graph.add_edge(
+                                            sidx,
+                                            parent_uidx,
+                                            Edge::Imports,
+                                        );
+                                    }
 
                                     // We have now found what the source file
                                     // depends on (??? though that should depend
@@ -151,7 +169,7 @@ impl Environment {
                                             .entry(dep.clone())
                                             .or_insert_with(|| {
                                                 self.graph.add_node(
-                                                    Node::Unit(dep.clone()))
+                                                    Node::Unit(dep))
                                             });
                                         self.graph.add_edge(
                                             sidx,

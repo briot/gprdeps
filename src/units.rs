@@ -18,10 +18,21 @@ impl QualifiedName {
     pub fn new(qname: Vec<Ustr>) -> Self {
         QualifiedName(qname)
     }
+    pub fn from_slice(qname: &[Ustr]) -> Self {
+        QualifiedName(qname.to_vec())
+    }
 
     pub fn join(&mut self, child: QualifiedName) {
         self.0.extend(child.0);
     }
+
+    pub fn parent(&self) -> Option<QualifiedName> {
+        match self.0.len() {
+            0 => None,
+            s => Some(QualifiedName::from_slice(&self.0[0 .. s - 1]))
+        }
+    }
+
 }
 
 impl std::fmt::Display for QualifiedName {
