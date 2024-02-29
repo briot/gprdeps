@@ -43,7 +43,7 @@ pub struct GprFile {
         ExprValue,  // value for each scenario
     >; PACKAGE_NAME_VARIANTS],
 
-    source_files: HashMap<Scenario, Vec<(PathBuf, Ustr)>>, // path and lang
+    pub source_files: HashMap<Scenario, Vec<(PathBuf, Ustr)>>, // path and lang
 }
 
 impl GprFile {
@@ -324,11 +324,6 @@ impl GprFile {
         }
 
         self.source_files = files;
-    }
-
-    /// Add the list of source files
-    pub fn get_source_files(&self, all_files: &mut HashSet<(PathBuf, Ustr)>) {
-        all_files.extend(self.source_files.values().flatten().cloned());
     }
 
     /// Declare a new named object.

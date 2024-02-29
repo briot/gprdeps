@@ -11,7 +11,7 @@
 /// crate's fully qualified name "crate::errors::Error" for instance.
 use ustr::Ustr;
 
-#[derive(Debug, Default, Hash, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, Hash, Eq, PartialEq)]
 pub struct QualifiedName(pub Vec<Ustr>);
 
 impl QualifiedName {
@@ -56,6 +56,3 @@ pub struct SourceInfo {
     pub kind: SourceKind,
     pub deps: std::collections::HashSet<QualifiedName>,
 }
-
-/// The key is the unit name, which is unique in the whole application.
-pub type AllUnits = std::collections::HashMap<QualifiedName, Unit>;

@@ -2,7 +2,8 @@ use petgraph::algo::toposort;
 use petgraph::graph::Graph;
 use petgraph::visit::Bfs;
 use petgraph::Directed;
-use crate::units::Unit;
+use crate::scenarios::Scenario;
+use crate::units::QualifiedName;
 
 pub type NodeIndex = petgraph::graph::NodeIndex<u32>;
 pub type PathToIndexes =
@@ -21,14 +22,30 @@ impl GPRIndex {
 /// The nodes of a graph
 pub enum Node {
     Project(GPRIndex),
-    Unit(Unit),
+    Unit(QualifiedName),
+    Source(std::path::PathBuf),
 }
 
 /// The edges of a graph
+///  - A project might depend on other projects, to import source files
+///  - A project includes zero or more source files
+///  - Source files are grouped into logical units (Ada: packages), though a
+///    whole unit is not necessary contained in the same project, though that is
+///    a rare case in practice.
+///  - A given source file could in theory be part of two different projects,
+///    though for two non-overlapping scenarios.
+///  - Source files import zero or more units (in C, we import a source file
+///    directly, but then a unit is the same as a source file in this case).
 #[derive(Debug)]
 pub enum Edge {
-    Extends,
-    Imports,
+    GPRExtends,               // for project files
+    GPRImports,               // between project files
+    ProjectSource(Scenario),  // from project to source file
+    UnitSpec(Scenario),       // from unit to source files
+    UnitImpl(Scenario),       // from unit to source files
+    UnitSeparate(Scenario),   // from unit to source files
+    Imports,                  // from source file to unit
+                              // (??? should depend on scenario)
 }
 
 /// A unified dependency graph, for both projects and source files
@@ -39,6 +56,10 @@ impl DepGraph {
             Node::Project(gpr) => gpr,
             _ => panic!("Invalid project reference {:?}", idx),
         }
+    }
+
+    pub fn node_count(&self) -> usize {
+        self.0.node_count()
     }
 
     pub fn add_node(&mut self, node: Node) -> NodeIndex {
