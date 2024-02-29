@@ -1,10 +1,10 @@
-use petgraph::algo::toposort;
-use petgraph::graph::Graph;
-use petgraph::visit::Bfs;
-use petgraph::Directed;
 use crate::errors::Error;
 use crate::scenarios::Scenario;
 use crate::units::QualifiedName;
+use petgraph::algo::toposort;
+use petgraph::graph::Graph;
+use petgraph::visit::{Bfs, EdgeRef};
+use petgraph::Directed;
 
 pub type NodeIndex = petgraph::graph::NodeIndex<u32>;
 pub type PathToIndexes =
@@ -25,7 +25,7 @@ impl GPRIndex {
 pub enum Node {
     Project(GPRIndex),
     Unit(QualifiedName),
-    Source(std::path::PathBuf),
+    Source(std::path::PathBuf),   //  ??? Should be UStr
 }
 
 /// The edges of a graph
@@ -38,16 +38,21 @@ pub enum Node {
 ///    though for two non-overlapping scenarios.
 ///  - Source files import zero or more units (in C, we import a source file
 ///    directly, but then a unit is the same as a source file in this case).
+///  - A source file depends on the parent unit implicitly.
+///  - An implementation or a separate source file depend on all files from the
+///    same unit.  A Spec however doesn't (so that modifying the body doesn't
+///    require recompiling the spec for instance).
 #[derive(Debug)]
 pub enum Edge {
-    GPRExtends,               // for project files
-    GPRImports,               // between project files
-    ProjectSource(Scenario),  // from project to source file
-    UnitSpec(Scenario),       // from unit to source files
-    UnitImpl(Scenario),       // from unit to source files
-    UnitSeparate(Scenario),   // from unit to source files
-    Imports,                  // from source file to unit
-                              // (??? should depend on scenario)
+    GPRExtends,              // for project files
+    GPRImports,              // between project files
+    ProjectSource(Scenario), // from project to source file
+    UnitSpec(Scenario),      // from unit to source files
+    UnitImpl(Scenario),      // from unit to source files
+    UnitSeparate(Scenario),  // from unit to source files
+    SourceImports, // from source file to unit (??? should depend on scenario)
+    UnitImports(Scenario), // from unit to unit
+                   // duplicates the SourceImporte edges
 }
 
 /// A unified dependency graph, for both projects and source files
@@ -60,10 +65,39 @@ impl DepGraph {
         }
     }
 
-    pub fn get_unit_name(&self, idx: NodeIndex) -> Result<QualifiedName, Error> {
+    pub fn get_unit_name(
+        &self,
+        idx: NodeIndex,
+    ) -> Result<QualifiedName, Error> {
         match &self.0[idx] {
             Node::Unit(qname) => Ok(qname.clone()),
             u => Err(Error::InvalidGraphNode(format!("{:?}", u))),
+        }
+    }
+
+    pub fn get_source_path(
+        &self,
+        idx: NodeIndex,
+    ) -> Result<&std::path::PathBuf, Error> {
+        match &self.0[idx] {
+            Node::Source(path) => Ok(path),
+            u => Err(Error::InvalidGraphNode(format!("{:?}", u))),
+        }
+    }
+
+
+    /// Given a unit, returns the list of specification files for it
+    pub fn get_specs(&self, idx: NodeIndex) -> Vec<(NodeIndex, Scenario)> {
+        match &self.0[idx] {
+            Node::Unit(_) => self
+                .0
+                .edges(idx)
+                .filter_map(|e| match e.weight() {
+                    Edge::UnitSpec(s) => Some((e.target(), *s)),
+                    _ => None,
+                })
+                .collect(),
+            _ => Vec::new(),
         }
     }
 
@@ -110,7 +144,8 @@ impl Default for DepGraph {
 impl std::fmt::Debug for DepGraph {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
-            f, "{:?}",
+            f,
+            "{:?}",
             petgraph::dot::Dot::with_config(
                 &self.0,
                 &[petgraph::dot::Config::EdgeNoLabel]

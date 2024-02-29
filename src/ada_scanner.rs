@@ -2,7 +2,7 @@ use crate::ada_lexer::AdaLexer;
 use crate::base_lexer::BaseScanner;
 use crate::errors::Error;
 use crate::tokens::TokenKind;
-use crate::units::{QualifiedName, SourceKind, SourceInfo};
+use crate::units::{QualifiedName, SourceInfo, SourceKind};
 
 pub struct AdaScanner<'a> {
     base: BaseScanner<AdaLexer<'a>>,

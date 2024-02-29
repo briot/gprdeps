@@ -29,19 +29,22 @@ impl QualifiedName {
     pub fn parent(&self) -> Option<QualifiedName> {
         match self.0.len() {
             0 => None,
-            s => Some(QualifiedName::from_slice(&self.0[0 .. s - 1]))
+            s => Some(QualifiedName::from_slice(&self.0[0..s - 1])),
         }
     }
-
 }
 
 impl std::fmt::Display for QualifiedName {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0
-            .iter()
-            .map(|n| format!("{}", n))
-            .collect::<Vec<_>>()
-            .join("."))
+        write!(
+            f,
+            "{}",
+            self.0
+                .iter()
+                .map(|n| format!("{}", n))
+                .collect::<Vec<_>>()
+                .join(".")
+        )
     }
 }
 

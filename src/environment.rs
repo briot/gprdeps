@@ -38,7 +38,9 @@ impl Environment {
             gprpath_to_indexes.insert(gpr, (gpridx, nodeidx));
         }
         println!(
-            "Nodes in graph after adding gpr: {}", self.graph.node_count());
+            "Nodes in graph after adding gpr: {}",
+            self.graph.node_count()
+        );
 
         // Parse the raw GPR files, but do not analyze them yet.
         // We can however setup dependencies in the graph already.
@@ -51,8 +53,12 @@ impl Environment {
                 kw_body: false,
             };
             let lex = AdaLexer::new(&mut file, options);
-            let raw =
-                GprScanner::parse(lex, path, &gprpath_to_indexes, &self.settings)?;
+            let raw = GprScanner::parse(
+                lex,
+                path,
+                &gprpath_to_indexes,
+                &self.settings,
+            )?;
 
             for dep in &raw.imported {
                 self.graph.add_edge(*nodeidx, *dep, Edge::GPRImports);
@@ -110,14 +116,12 @@ impl Environment {
             for (scenario, sources) in &gpr.source_files {
                 for (path, lang) in sources {
                     // Create a new graph node for the source file if needed
-                    let (sidx, _, opt_kind_and_uidx) = all_source_files
-                        .entry(path)
-                        .or_insert_with(|| {
-
+                    let (sidx, _, opt_kind_and_uidx) =
+                        all_source_files.entry(path).or_insert_with(|| {
                             // Create a new node, since the file is not in the
                             // graph yet
-                            let sidx = self.graph.add_node(
-                                Node::Source(path.clone()));
+                            let sidx =
+                                self.graph.add_node(Node::Source(path.clone()));
 
                             // Parse the source files to find the unit and
                             // its dependencies.
@@ -127,18 +131,20 @@ impl Environment {
                                 Err(e) => {
                                     println!(
                                         "Failed to parse {}: {}",
-                                        path.display(), e
+                                        path.display(),
+                                        e
                                     );
                                     None
-                                },
+                                }
                                 Ok(info) => {
                                     let parent = info.unitname.parent();
 
                                     let uidx = *units
                                         .entry(info.unitname.clone())
                                         .or_insert_with(|| {
-                                            self.graph.add_node(
-                                                Node::Unit(info.unitname))
+                                            self.graph.add_node(Node::Unit(
+                                                info.unitname,
+                                            ))
                                         });
 
                                     // If we have a parent unit, we automatically
@@ -147,14 +153,14 @@ impl Environment {
                                         let parent_uidx = *units
                                             .entry(parent.clone())
                                             .or_insert_with(|| {
-                                                self.graph.add_node(
-                                                    Node::Unit(parent))
+                                                self.graph.add_node(Node::Unit(
+                                                    parent,
+                                                ))
                                             });
-
                                         self.graph.add_edge(
                                             sidx,
                                             parent_uidx,
-                                            Edge::Imports,
+                                            Edge::SourceImports,
                                         );
                                     }
 
@@ -168,21 +174,34 @@ impl Environment {
                                         let imported_uidx = units
                                             .entry(dep.clone())
                                             .or_insert_with(|| {
-                                                self.graph.add_node(
-                                                    Node::Unit(dep))
+                                                self.graph
+                                                    .add_node(Node::Unit(dep))
                                             });
                                         self.graph.add_edge(
                                             sidx,
                                             *imported_uidx,
-                                            Edge::Imports,
+                                            Edge::SourceImports,
                                         );
                                     }
 
+                                    // An implementation or separate depends on
+                                    // everything from the same unit, but the
+                                    // spec doesn't.
+                                    match info.kind {
+                                        SourceKind::Spec => {}
+                                        SourceKind::Implementation
+                                        | SourceKind::Separate => {
+                                            self.graph.add_edge(
+                                                sidx,
+                                                uidx,
+                                                Edge::SourceImports,
+                                            );
+                                        }
+                                    }
+
                                     Some((info.kind, uidx))
-                                },
+                                }
                             };
-
-
 
                             (sidx, lang, opt_kind_and_uidx)
                         });
@@ -199,14 +218,35 @@ impl Environment {
                             *uidx,
                             *sidx,
                             match kind {
-                                SourceKind::Spec           =>
-                                    Edge::UnitSpec(*scenario),
-                                SourceKind::Implementation =>
-                                    Edge::UnitImpl(*scenario),
-                                SourceKind::Separate       =>
-                                    Edge::UnitSeparate(*scenario),
-                            }
+                                SourceKind::Spec => Edge::UnitSpec(*scenario),
+                                SourceKind::Implementation => {
+                                    Edge::UnitImpl(*scenario)
+                                }
+                                SourceKind::Separate => {
+                                    Edge::UnitSeparate(*scenario)
+                                }
+                            },
                         );
+
+                        // Duplicate the source-level dependencies as unit-level
+                        // dependencies.  This makes traversing the graph much
+                        // easier.
+                        let source_deps = self
+                            .graph
+                            .0
+                            .edges(*sidx)
+                            .filter(|e| {
+                                matches!(e.weight(), Edge::SourceImports)
+                            })
+                            .map(|e| e.target())
+                            .collect::<Vec<_>>();
+                        for d in source_deps {
+                            self.graph.add_edge(
+                                *uidx,
+                                d,
+                                Edge::UnitImports(*scenario),
+                            );
+                        }
                     }
                 }
             }
@@ -215,16 +255,17 @@ impl Environment {
         println!("Total units={}", units.len());
         println!(
             "Nodes in graph after adding files and units: {}",
-            self.graph.node_count());
+            self.graph.node_count()
+        );
 
         // println!("{:?}", self.graph);
 
         // Example: find all direct dependencies for servers-sockets.adb
 
         let path = "/home/briot/dbc/deepblue/General/Networking/private/servers-sockets.adb";
-        let (sidx, lang, opt_kind_and_uidx) = all_source_files.get(
-             &std::path::PathBuf::from(path)
-        ).ok_or(Error::NotFound("File not found in graph".into()))?;
+        let (sidx, lang, opt_kind_and_uidx) = all_source_files
+            .get(&std::path::PathBuf::from(path))
+            .ok_or(Error::NotFound("File not found in graph".into()))?;
 
         println!("File: {}", path);
         println!("Language: {}", lang);
@@ -236,16 +277,48 @@ impl Environment {
             }
         }
 
-        // ??? Implementation implicitly depends on spec and separates
         println!("Direct dependencies:");
-        let mut direct_deps = self.graph.0.edges(*sidx)
-           .filter(|e| matches!(e.weight(), Edge::Imports))
-           .filter_map(|e| self.graph.get_unit_name(e.target()).ok())
-           .map(|e| format!("   {}", e))
-           .collect::<Vec<_>>();
+        let mut direct_deps = self
+            .graph
+            .0
+            .edges(*sidx)
+            .filter(|e| matches!(e.weight(), Edge::SourceImports))
+            .filter_map(|e| self.graph.get_unit_name(e.target()).ok())
+            .map(|e| format!("   {}", e))
+            .collect::<Vec<_>>();
         direct_deps.sort();
         println!("{}", direct_deps.join("\n"));
 
+        println!("Indirect dependencies:");
+        let filtered =
+            petgraph::visit::EdgeFiltered::from_fn(&self.graph.0, |e| {
+                matches!(e.weight(), Edge::UnitImports(_))
+            });
+        if let Some((_, uidx)) = opt_kind_and_uidx {
+            let mut dfs = petgraph::visit::Dfs::new(&filtered, *uidx);
+            let mut deps = Vec::new();
+            while let Some(node) = dfs.next(&filtered) {
+                if node != *sidx {
+                    let mut d: String = format!(
+                        "   {}",
+                        self.graph.get_unit_name(node)?
+                    );
+
+                    for (nodeidx, scenar) in self.graph.get_specs(node) {
+                        d.push('\n');
+                        d.push_str(
+                            &format!("      {} ",
+                               self.graph.get_source_path(nodeidx)?.display())
+                        );
+                        d.push_str(&self.scenarios.describe(scenar));
+                    }
+
+                    deps.push(d);
+                }
+            }
+            deps.sort();
+            println!("{}", deps.join("\n"));
+        }
 
         //    let pool = threadpool::ThreadPool::new(1);
         //    for gpr in list_of_gpr {

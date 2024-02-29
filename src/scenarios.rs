@@ -194,7 +194,6 @@ impl AllScenarios {
         //        let details_str = format!("{}", details);
         self.scenarios.push(details);
         let s = self.scenarios.len() - 1;
-        //        println!("MANU create scenario {} as {}", s, details_str);
         Scenario(s)
     }
 
@@ -391,6 +390,10 @@ impl AllScenarios {
                 }
             }
         }
+    }
+
+    pub fn describe(&self, scenario: Scenario) -> String {
+        format!("{}", self.scenarios[scenario.0])
     }
 
     #[cfg(test)]

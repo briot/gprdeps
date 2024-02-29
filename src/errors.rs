@@ -22,7 +22,10 @@ pub enum Error {
     WrongToken { expected: String, got: String },
 
     #[error("Cannot parse {path}, language {lang}")]
-    CannotParse { path: std::path::PathBuf, lang: String },
+    CannotParse {
+        path: std::path::PathBuf,
+        lang: String,
+    },
 
     #[error("Invalid package name {0}")]
     InvalidPackageName(Ustr),
