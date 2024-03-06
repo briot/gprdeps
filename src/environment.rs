@@ -16,14 +16,18 @@ use ustr::Ustr;
 type GPRDetails<'a> = HashMap<GPRIndex, (&'a PathBuf, RawGPR)>;
 type GPRIdxToFile = HashMap<GPRIndex, GprFile>;
 type UnitsMap = HashMap<QualifiedName, NodeIndex>;
-type SourceFilesMap = HashMap<
-    PathBuf,
-    (
-        NodeIndex, // Node for the source file
-        Ustr,      // Language of the source file
-        Option<(SourceKind, NodeIndex)>,
-    ), // unit, and role played by the file
->;
+
+#[derive(Clone)]
+struct FileInfo {
+    file_node: NodeIndex,    // Node for the source file
+    _lang: Ustr,             // Language of the source file
+    kind: SourceKind,        // Role the file plays in its unit
+    unit_node: NodeIndex,    // The node for the unit in the graph
+}
+
+// Maps files to details about the file.  Contains None when the file is to
+// be ignored for some reason
+type SourceFilesMap = HashMap<PathBuf, Option<FileInfo>>;
 
 /// The whole set of gpr files
 #[derive(Default)]
@@ -188,15 +192,21 @@ impl Environment {
         &mut self,
         path: &PathBuf,
         lang: Ustr,
-    ) -> (NodeIndex, Option<(SourceKind, NodeIndex)>) {
+    ) -> Option<FileInfo> {
         match self.files.get(path) {
-            Some((s1, _, ku1)) => (*s1, *ku1),
+            Some(None) => None,
+            Some(Some(info)) => Some(info.clone()),
             None => {
                 let sidx = self.graph.add_node(Node::Source(path.clone()));
                 let mut s = SourceFile::new(path, lang);
-                let opt_kind_and_uidx = match s.parse() {
+                match s.parse() {
                     Err(e) => {
                         println!("Failed to parse {}: {}", path.display(), e);
+                        self.files.insert(path.clone(), None);
+                        None
+                    }
+                    Ok(info) if info.unitname == QualifiedName::default() => {
+                        self.files.insert(path.clone(), None);
                         None
                     }
                     Ok(info) => {
@@ -221,12 +231,16 @@ impl Environment {
                                 Edge::SourceImports,
                             ),
                         }
-                        Some((info.kind, uidx))
+                        let details = FileInfo {
+                            file_node: sidx,
+                            _lang: lang,
+                            kind: info.kind,
+                            unit_node: uidx,
+                        };
+                        self.files.insert(path.clone(), Some(details.clone()));
+                        Some(details)
                     }
-                };
-                self.files
-                    .insert(path.clone(), (sidx, lang, opt_kind_and_uidx));
-                (sidx, opt_kind_and_uidx)
+                }
             }
         }
     }
@@ -241,49 +255,52 @@ impl Environment {
         for gpr in gprs.values() {
             for (scenario, sources) in &gpr.source_files {
                 for (path, lang) in sources {
-                    let (sidx, opt_kind_and_uidx) =
-                        self.add_source(path, *lang);
-
-                    // Add edges
-                    self.graph.add_edge(
-                        gpr.index,
-                        sidx,
-                        Edge::ProjectSource(*scenario),
-                    );
-
-                    if let Some((kind, uidx)) = opt_kind_and_uidx {
-                        self.graph.add_edge(
-                            uidx,
-                            sidx,
-                            match kind {
-                                SourceKind::Spec => Edge::UnitSpec(*scenario),
-                                SourceKind::Implementation => {
-                                    Edge::UnitImpl(*scenario)
-                                }
-                                SourceKind::Separate => {
-                                    Edge::UnitSeparate(*scenario)
-                                }
-                            },
-                        );
-
-                        // Duplicate the source-level dependencies as unit-level
-                        // dependencies.  This makes traversing the graph much
-                        // easier.
-                        let source_deps = self //  Need tmp vector
-                            .graph
-                            .0
-                            .edges(sidx)
-                            .filter(|e| {
-                                matches!(e.weight(), Edge::SourceImports)
-                            })
-                            .map(|e| e.target())
-                            .collect::<Vec<_>>();
-                        for d in source_deps {
+                    match self.add_source(path, *lang) {
+                        None => {
+                           // File is being discarded for some reason
+                        }
+                        Some(info) => {
+                            // Add edges
                             self.graph.add_edge(
-                                uidx,
-                                d,
-                                Edge::UnitImports(*scenario),
+                                gpr.index,
+                                info.file_node,
+                                Edge::ProjectSource(*scenario),
                             );
+
+                            self.graph.add_edge(
+                                info.unit_node,
+                                info.file_node,
+                                match info.kind {
+                                    SourceKind::Spec =>
+                                        Edge::UnitSpec(*scenario),
+                                    SourceKind::Implementation => {
+                                        Edge::UnitImpl(*scenario)
+                                    }
+                                    SourceKind::Separate => {
+                                        Edge::UnitSeparate(*scenario)
+                                    }
+                                },
+                            );
+
+                            // Duplicate the source-level dependencies as
+                            // unit-level dependencies. This makes traversing
+                            // the graph much easier.
+                            let source_deps = self //  Need tmp vector
+                                .graph
+                                .0
+                                .edges(info.file_node)
+                                .filter(|e| {
+                                    matches!(e.weight(), Edge::SourceImports)
+                                })
+                                .map(|e| e.target())
+                                .collect::<Vec<_>>();
+                            for d in source_deps {
+                                self.graph.add_edge(
+                                    info.unit_node,
+                                    d,
+                                    Edge::UnitImports(*scenario),
+                                );
+                            }
                         }
                     }
                 }
@@ -315,14 +332,17 @@ impl Environment {
     /// Report the list of units directly imported by the given file
 
     pub fn show_direct_dependencies(&self, path: &Path) -> Result<(), Error> {
-        let (sidx, _, _) = self
+        let info = self
             .files
             .get(&std::path::PathBuf::from(path))
-            .ok_or(Error::NotFound("File not found in graph".into()))?;
+            .ok_or(Error::NotFound("File not found in graph".into()))?
+            .clone()
+            .ok_or(Error::NotFound("File has no relevant content".into()))?
+            .clone();
         let mut direct_deps = self
             .graph
             .0
-            .edges(*sidx)
+            .edges(info.file_node)
             .filter(|e| matches!(e.weight(), Edge::SourceImports))
             .filter_map(|e| self.graph.get_unit_name(e.target()).ok())
             .map(|e| format!("   {}", e))
@@ -338,42 +358,42 @@ impl Environment {
         &mut self,
         path: &Path,
     ) -> Result<(), Error> {
-        let (sidx, _, opt_kind_and_uidx) = self
+        let info = self
             .files
             .get(&std::path::PathBuf::from(path))
-            .ok_or(Error::NotFound("File not found in graph".into()))?;
+            .ok_or(Error::NotFound("File not found in graph".into()))?
+            .clone()
+            .ok_or(Error::NotFound("File has no relevant content".into()))?;
         let filtered =
             petgraph::visit::EdgeFiltered::from_fn(&self.graph.0, |e| {
                 matches!(e.weight(), Edge::UnitImports(_))
             });
-        if let Some((_, uidx)) = opt_kind_and_uidx {
-            let mut dfs = petgraph::visit::Dfs::new(&filtered, *uidx);
-            let mut deps = Vec::new();
-            while let Some(node) = dfs.next(&filtered) {
-                if node != *sidx {
-                    let mut d: String =
-                        format!("   {}", self.graph.get_unit_name(node)?);
+        let mut dfs = petgraph::visit::Dfs::new(&filtered, info.unit_node);
+        let mut deps = Vec::new();
+        while let Some(node) = dfs.next(&filtered) {
+            if node != info.file_node {
+                let mut d: String =
+                    format!("   {}", self.graph.get_unit_name(node)?);
 
-                    for (nodeidx, scenars) in
-                        self.graph.get_specs(&mut self.scenarios, node)
-                    {
-                        d.push('\n');
-                        d.push_str(&format!(
-                            "      {} ",
-                            self.graph.get_source_path(nodeidx)?.display()
-                        ));
-                        for s in scenars {
-                            d.push(' ');
-                            d.push_str(&self.scenarios.describe(s));
-                        }
+                for (nodeidx, scenars) in
+                    self.graph.get_specs(&mut self.scenarios, node)
+                {
+                    d.push('\n');
+                    d.push_str(&format!(
+                        "      {} ",
+                        self.graph.get_source_path(nodeidx)?.display()
+                    ));
+                    for s in scenars {
+                        d.push(' ');
+                        d.push_str(&self.scenarios.describe(s));
                     }
-
-                    deps.push(d);
                 }
+
+                deps.push(d);
             }
-            deps.sort();
-            println!("{}", deps.join("\n"));
         }
+        deps.sort();
+        println!("{}", deps.join("\n"));
         Ok(())
     }
 }

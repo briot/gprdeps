@@ -22,6 +22,10 @@ impl SourceFile {
         }
     }
 
+    /// Parse the source file to extract the unit name and the dependencies.
+    /// It should return an empty unit name if the file should be ignored (for instance in Ada
+    /// there is a `pragma no_body`, or in C there are preprocessor directives that make the file
+    /// empty for the compiler).
     pub fn parse(&mut self) -> Result<SourceInfo, Error> {
         let mut file = File::new(&self.path)?;
         match self.lang.as_str() {

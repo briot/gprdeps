@@ -9,7 +9,7 @@ lazy_static::lazy_static! {
     static ref DOT: Ustr = Ustr::from(".");
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub struct Context {
     // The next character to process, the source line it is at, and the
     // offset at which we read it.
@@ -132,6 +132,9 @@ impl<'a> BaseLexer<'a> {
     /// Returns the last character of the line
     pub fn skip_to_eol(&mut self) -> char {
         let mut prev = self.context.current;
+        if prev == '\n' {
+            return prev;
+        }
         loop {
             match self.scan_char() {
                 '\n' => return prev,
@@ -211,7 +214,6 @@ impl<LEXER: Lexer> BaseScanner<LEXER> {
         if p.kind == TokenKind::EndOfFile {
             None
         } else {
-            // println!("MANU next token {}", p);
             Some(p)
         }
     }

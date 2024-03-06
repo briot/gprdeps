@@ -20,7 +20,7 @@ impl<'a> CppLexer<'a> {
         let mut c = current;
         loop {
             match (c, in_comment) {
-                ('\n' | ' ' | '\t' | '\r', _) => {}
+                ('\n' | ' ' | '\t' | '\r' | '\x0c', _) => {}
                 ('/', false) => {
                     match self.base.peek_char() {
                         Some('*') => {
@@ -31,7 +31,7 @@ impl<'a> CppLexer<'a> {
                         Some('/') => {
                             self.base.skip_to_eol();
                         }
-                        _ => {}
+                        _ => break,
                     }
                 }
                 ('*', true) => {
@@ -53,7 +53,9 @@ impl<'a> CppLexer<'a> {
                         }
                         _ => loop {
                             match self.base.skip_to_eol() {
-                                '\\' => {}
+                                '\\' => {
+                                    self.base.scan_char();  // skip newline
+                                }
                                 '\x00' => return '\x00',
                                 _ => break,
                             }
@@ -61,7 +63,7 @@ impl<'a> CppLexer<'a> {
                     }
                 }
                 (_, false) => break,
-                _ => {}
+                (_, true) => {}
             }
             c = self.base.scan_char();
         }

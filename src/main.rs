@@ -47,12 +47,6 @@ fn main() -> Result<(), Error> {
     // it directly in the graph instead.  See scenario in get_specs()
 
     // TODO:
-    // should also parse standard runtime, otherwise we have no filenames
-    // for it.  But this requires knowing the "objects" directory, which is
-    // computed in dbc.
-    // + various errors while parsing runtime files
-    
-    // TODO:
     // option to resolve pathnames (in particular for runtime files)
 
     // TODO:

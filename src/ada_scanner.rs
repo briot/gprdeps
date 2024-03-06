@@ -3,6 +3,7 @@ use crate::base_lexer::BaseScanner;
 use crate::errors::Error;
 use crate::tokens::TokenKind;
 use crate::units::{QualifiedName, SourceInfo, SourceKind};
+use ustr::Ustr;
 
 pub struct AdaScanner<'a> {
     base: BaseScanner<AdaLexer<'a>>,
@@ -27,7 +28,14 @@ impl<'a> AdaScanner<'a> {
                 | TokenKind::With => {
                     scan.parse_with_or_use_clause(n.kind, &mut info)
                 }
-                TokenKind::Pragma => scan.parse_pragma(),
+                TokenKind::Pragma => {
+                    let name = scan.parse_pragma()?;
+                    if name == "no_body" {
+                        info.unitname = QualifiedName::default();
+                        break;
+                    }
+                    Ok(())
+                }
                 TokenKind::Limited    // limited with 
                 | TokenKind::Private => Ok(()),
                 TokenKind::Separate => {
@@ -110,10 +118,11 @@ impl<'a> AdaScanner<'a> {
         Ok(sep)
     }
 
-    fn parse_pragma(&mut self) -> Result<(), Error> {
-        let _ = self.base.expect_identifier()?; // name of pragma
+    /// Parse a `pragma name(args)` and return the name
+    fn parse_pragma(&mut self) -> Result<Ustr, Error> {
+        let name = self.base.expect_identifier()?; // name of pragma
         self.base.skip_opt_arg_list()?; // optional parameters
-        Ok(())
+        Ok(name)
     }
 
     fn parse_generic(&mut self) -> Result<(), Error> {
