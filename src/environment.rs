@@ -19,10 +19,10 @@ type UnitsMap = HashMap<QualifiedName, NodeIndex>;
 
 #[derive(Clone)]
 struct FileInfo {
-    file_node: NodeIndex,    // Node for the source file
-    _lang: Ustr,             // Language of the source file
-    kind: SourceKind,        // Role the file plays in its unit
-    unit_node: NodeIndex,    // The node for the unit in the graph
+    file_node: NodeIndex, // Node for the source file
+    _lang: Ustr,          // Language of the source file
+    kind: SourceKind,     // Role the file plays in its unit
+    unit_node: NodeIndex, // The node for the unit in the graph
 }
 
 // Maps files to details about the file.  Contains None when the file is to
@@ -32,7 +32,6 @@ type SourceFilesMap = HashMap<PathBuf, Option<FileInfo>>;
 /// The whole set of gpr files
 #[derive(Default)]
 pub struct Environment {
-    settings: Settings,
     scenarios: AllScenarios,
     graph: DepGraph,
     files: SourceFilesMap,
@@ -85,6 +84,7 @@ impl Environment {
         &self,
         path: &Path,
         gprs: &PathToIndexes,
+        settings: &Settings,
     ) -> Result<RawGPR, Error> {
         let mut file = crate::files::File::new(path)?;
         let options = AdaLexerOptions {
@@ -95,7 +95,7 @@ impl Environment {
             AdaLexer::new(&mut file, options),
             path,
             gprs,
-            &self.settings,
+            settings,
         )
     }
 
@@ -106,10 +106,11 @@ impl Environment {
     fn parse_raw_gprs<'b>(
         &mut self,
         gprs: &'b PathToIndexes,
+        settings: &Settings,
     ) -> Result<GPRDetails<'b>, Error> {
         let mut rawfiles = HashMap::new();
         for (path, (gpridx, nodeidx)) in gprs {
-            let raw = self.parse_project(path, gprs)?;
+            let raw = self.parse_project(path, gprs, settings)?;
 
             if !raw.is_abstract && !self.implicit_projects.contains(nodeidx) {
                 for imp in &self.implicit_projects {
@@ -158,11 +159,15 @@ impl Environment {
     /// Remove all attributes we do not actually need, which makes some
     /// scenarios useless too.
 
-    fn find_sources(&mut self, gprs: &mut GPRIdxToFile) -> Result<(), Error> {
+    fn find_sources(
+        &mut self,
+        gprs: &mut GPRIdxToFile,
+        settings: &Settings,
+    ) -> Result<(), Error> {
         let mut all_source_dirs = HashSet::new();
         for gpr in gprs.values_mut() {
             gpr.trim();
-            gpr.resolve_source_dirs(&mut all_source_dirs, &self.settings)?;
+            gpr.resolve_source_dirs(&mut all_source_dirs, settings)?;
             gpr.resolve_source_files(&all_source_dirs, &mut self.scenarios);
         }
         Ok(())
@@ -188,11 +193,7 @@ impl Environment {
     /// Retrieve or add source file to the graph.
     /// Returns the node for the source, and information about the unit.
 
-    fn add_source(
-        &mut self,
-        path: &PathBuf,
-        lang: Ustr,
-    ) -> Option<FileInfo> {
+    fn add_source(&mut self, path: &PathBuf, lang: Ustr) -> Option<FileInfo> {
         match self.files.get(path) {
             Some(None) => None,
             Some(Some(info)) => Some(info.clone()),
@@ -257,7 +258,7 @@ impl Environment {
                 for (path, lang) in sources {
                     match self.add_source(path, *lang) {
                         None => {
-                           // File is being discarded for some reason
+                            // File is being discarded for some reason
                         }
                         Some(info) => {
                             // Add edges
@@ -271,8 +272,9 @@ impl Environment {
                                 info.unit_node,
                                 info.file_node,
                                 match info.kind {
-                                    SourceKind::Spec =>
-                                        Edge::UnitSpec(*scenario),
+                                    SourceKind::Spec => {
+                                        Edge::UnitSpec(*scenario)
+                                    }
                                     SourceKind::Implementation => {
                                         Edge::UnitImpl(*scenario)
                                     }
@@ -285,15 +287,19 @@ impl Environment {
                             // Duplicate the source-level dependencies as
                             // unit-level dependencies. This makes traversing
                             // the graph much easier.
-                            let source_deps = self //  Need tmp vector
-                                .graph
-                                .0
-                                .edges(info.file_node)
-                                .filter(|e| {
-                                    matches!(e.weight(), Edge::SourceImports)
-                                })
-                                .map(|e| e.target())
-                                .collect::<Vec<_>>();
+                            let source_deps =
+                                self //  Need tmp vector
+                                    .graph
+                                    .0
+                                    .edges(info.file_node)
+                                    .filter(|e| {
+                                        matches!(
+                                            e.weight(),
+                                            Edge::SourceImports
+                                        )
+                                    })
+                                    .map(|e| e.target())
+                                    .collect::<Vec<_>>();
                             for d in source_deps {
                                 self.graph.add_edge(
                                     info.unit_node,
@@ -312,11 +318,15 @@ impl Environment {
     /// Recursively look for all project files, parse them and prepare the
     /// dependency graph.
 
-    pub fn parse_all(&mut self, path: &Path) -> Result<(), Error> {
+    pub fn parse_all(
+        &mut self,
+        path: &Path,
+        settings: &Settings,
+    ) -> Result<(), Error> {
         let gprpath_to_indexes = self.find_all_gpr(path);
-        let rawfiles = self.parse_raw_gprs(&gprpath_to_indexes)?;
+        let rawfiles = self.parse_raw_gprs(&gprpath_to_indexes, settings)?;
         let mut gprs = self.process_projects(&rawfiles)?;
-        self.find_sources(&mut gprs)?;
+        self.find_sources(&mut gprs, settings)?;
         self.add_sources_to_graph(&mut gprs)?;
 
         println!("Total source files={}", self.files.len());

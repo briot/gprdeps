@@ -23,16 +23,24 @@ mod values;
 
 use crate::environment::Environment;
 use crate::errors::Error;
+use crate::settings::Settings;
 use std::path::{Path, PathBuf};
 
 fn main() -> Result<(), Error> {
     let mut env = Environment::default();
 
+    let settings = Settings {
+        report_missing_source_dirs: false,
+        resolve_symbolic_links: true,
+    };
+
     env.add_implicit_project(PathBuf::from(
         "/home/briot/dbc/deepblue/External/Ada_Run_Time/adalib.gpr",
     ));
 
-    if let Err(e) = env.parse_all(Path::new("/home/briot/dbc/deepblue")) {
+    if let Err(e) =
+        env.parse_all(Path::new("/home/briot/dbc/deepblue"), &settings)
+    {
         println!("ERROR: {}", e);
     }
 
@@ -45,9 +53,6 @@ fn main() -> Result<(), Error> {
     // should simplify edges to merge scenarios when possible.  Currently,
     // this merging is done in get_specs(), but it would be better to have
     // it directly in the graph instead.  See scenario in get_specs()
-
-    // TODO:
-    // option to resolve pathnames (in particular for runtime files)
 
     // TODO:
     // unit tasking_mode is not resolved properly because it uses a special

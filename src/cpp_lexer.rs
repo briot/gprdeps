@@ -54,7 +54,7 @@ impl<'a> CppLexer<'a> {
                         _ => loop {
                             match self.base.skip_to_eol() {
                                 '\\' => {
-                                    self.base.scan_char();  // skip newline
+                                    self.base.scan_char(); // skip newline
                                 }
                                 '\x00' => return '\x00',
                                 _ => break,
