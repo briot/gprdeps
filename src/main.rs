@@ -23,12 +23,12 @@ mod values;
 
 use crate::environment::Environment;
 use crate::errors::Error;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 fn main() -> Result<(), Error> {
     let mut env = Environment::default();
 
-    env.add_implicit_project(Path::new(
+    env.add_implicit_project(PathBuf::from(
         "/home/briot/dbc/deepblue/External/Ada_Run_Time/adalib.gpr",
     ));
 
@@ -48,7 +48,16 @@ fn main() -> Result<(), Error> {
 
     // TODO:
     // should also parse standard runtime, otherwise we have no filenames
-    // for it.
+    // for it.  But this requires knowing the "objects" directory, which is
+    // computed in dbc.
+    // + various errors while parsing runtime files
+    
+    // TODO:
+    // option to resolve pathnames (in particular for runtime files)
+
+    // TODO:
+    // unit tasking_mode is not resolved properly because it uses a special
+    // naming scheme.
 
     //    let pool = threadpool::ThreadPool::new(1);
     //    for gpr in list_of_gpr {

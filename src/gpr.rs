@@ -324,6 +324,7 @@ impl GprFile {
         }
 
         self.source_files = files;
+
     }
 
     /// Declare a new named object.

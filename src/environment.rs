@@ -33,6 +33,9 @@ pub struct Environment {
     graph: DepGraph,
     files: SourceFilesMap,
     units: UnitsMap,
+
+    implicit_projects_paths: Vec<PathBuf>,
+    implicit_projects: Vec<NodeIndex>,
 }
 
 impl Environment {
@@ -40,26 +43,56 @@ impl Environment {
     /// This is mostly meant for projects that include runtime files for
     /// various languages.
 
-    pub fn add_implicit_project(&mut self, path: &Path) {}
+    pub fn add_implicit_project(&mut self, path: PathBuf) {
+        self.implicit_projects_paths.push(path);
+    }
 
     /// Find all GPR files that need to be parsed, in either root directory
     /// or one of its child directories.
     /// Insert dummy nodes in the graph, so that we have an index
 
     fn find_all_gpr(&mut self, root: &Path) -> PathToIndexes {
-        let mut gprpath_to_indexes = HashMap::new();
-        for (gpridx, gpr) in crate::findfile::FileFind::new(root).enumerate() {
-            if gprpath_to_indexes.contains_key(&gpr) {
-                // ??? We could instead reuse the same gpridx and nodeidx, but
-                // this is unexpected.
-                let path = gpr.to_path_buf();
-                panic!("Project file found multiple times: {}", path.display());
-            }
-            let gpridx = GPRIndex::new(gpridx);
+        let mut gprs = HashMap::new();
+        let mut gpridx = GPRIndex::new(0);
+
+        for imp in &self.implicit_projects_paths {
             let nodeidx = self.graph.add_node(Node::Project(gpridx));
-            gprpath_to_indexes.insert(gpr, (gpridx, nodeidx));
+            gprs.insert(imp.clone(), (gpridx, nodeidx));
+            self.implicit_projects.push(nodeidx);
+            gpridx.0 += 1;
         }
-        gprpath_to_indexes
+
+        for gpr in crate::findfile::FileFind::new(root) {
+            // Implicit projects might be found a second time
+            if let std::collections::hash_map::Entry::Vacant(e) =
+                gprs.entry(gpr)
+            {
+                let nodeidx = self.graph.add_node(Node::Project(gpridx));
+                e.insert((gpridx, nodeidx));
+                gpridx.0 += 1;
+            }
+        }
+        gprs
+    }
+
+    /// Parse a project file
+
+    fn parse_project(
+        &self,
+        path: &Path,
+        gprs: &PathToIndexes,
+    ) -> Result<RawGPR, Error> {
+        let mut file = crate::files::File::new(path)?;
+        let options = AdaLexerOptions {
+            kw_aggregate: true,
+            kw_body: false,
+        };
+        GprScanner::parse(
+            AdaLexer::new(&mut file, options),
+            path,
+            gprs,
+            &self.settings,
+        )
     }
 
     /// Parse the raw GPR files, but do not analyze them yet.
@@ -72,17 +105,14 @@ impl Environment {
     ) -> Result<GPRDetails<'b>, Error> {
         let mut rawfiles = HashMap::new();
         for (path, (gpridx, nodeidx)) in gprs {
-            let mut file = crate::files::File::new(path)?;
-            let options = AdaLexerOptions {
-                kw_aggregate: true,
-                kw_body: false,
-            };
-            let raw = GprScanner::parse(
-                AdaLexer::new(&mut file, options),
-                path,
-                gprs,
-                &self.settings,
-            )?;
+            let raw = self.parse_project(path, gprs)?;
+
+            if !raw.is_abstract && !self.implicit_projects.contains(nodeidx) {
+                for imp in &self.implicit_projects {
+                    self.graph.add_edge(*nodeidx, *imp, Edge::GPRImports);
+                }
+            }
+
             for dep in &raw.imported {
                 self.graph.add_edge(*nodeidx, *dep, Edge::GPRImports);
             }
