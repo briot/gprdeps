@@ -46,6 +46,23 @@ impl Directory {
             }
         }
     }
+
+    /// If the given basename matches a file from the directory, add its full
+    /// path to the list of files in `files`.
+    /// Return true if the file was found
+    pub fn add_if_found(
+        &self,
+        basename: &Ustr,
+        lang: Ustr,
+        files: &mut Vec<(PathBuf, Ustr)>,
+    ) -> bool {
+        if let Some(path) = self.files.get(basename) {
+            files.push((path.clone(), lang));
+            true
+        } else {
+            false
+        }
+    }
 }
 
 // So that a HashSet can be checked by passing a &PathBuf

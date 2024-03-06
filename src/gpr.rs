@@ -252,7 +252,7 @@ impl GprFile {
     /// Given a directory, find all source files matching the naming scheme,
     /// and add them to `files`.  The naming scheme is for one specific
     /// scenario.
-    fn check_file_candidates(
+    fn check_file_candidates_suffixes(
         scenarios: &mut AllScenarios,
         scenario: Scenario,
         dirs_in_scenario: &Vec<PathBuf>,
@@ -295,7 +295,7 @@ impl GprFile {
                 }
 
                 for lang in langs_in_scenar {
-                    GprFile::check_file_candidates(
+                    GprFile::check_file_candidates_suffixes(
                         scenarios,
                         s,
                         dirs_in_scenar,
@@ -307,7 +307,7 @@ impl GprFile {
                         all_dirs,
                         &mut files,
                     );
-                    GprFile::check_file_candidates(
+                    GprFile::check_file_candidates_suffixes(
                         scenarios,
                         s,
                         dirs_in_scenar,
@@ -319,6 +319,33 @@ impl GprFile {
                         all_dirs,
                         &mut files,
                     );
+                }
+            }
+
+            // Support the Spec and Body suffixes attributes for Ada
+
+            for (name, val) in &self.values[PackageName::Naming as usize] {
+                match name {
+                    SimpleName::Spec(_) | SimpleName::Body(_) => {
+                        if let ExprValue::Str(v) = val {
+                            for (scenar_attr, basename) in v {
+                                for d in dirs_in_scenar {
+                                    if let Some(dir) = all_dirs.get(d) {
+                                        let s = scenarios.intersection(
+                                            *scenar_attr,
+                                            *scenar_dir,
+                                        );
+                                        let sfiles =
+                                            files.entry(s).or_default();
+                                        dir.add_if_found(
+                                            basename, *CST_ADA, sfiles,
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    _ => {}
                 }
             }
         }

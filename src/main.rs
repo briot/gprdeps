@@ -54,10 +54,6 @@ fn main() -> Result<(), Error> {
     // this merging is done in get_specs(), but it would be better to have
     // it directly in the graph instead.  See scenario in get_specs()
 
-    // TODO:
-    // unit tasking_mode is not resolved properly because it uses a special
-    // naming scheme.
-
     //    let pool = threadpool::ThreadPool::new(1);
     //    for gpr in list_of_gpr {
     //        let gpr = gpr.clone();
