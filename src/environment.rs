@@ -37,28 +37,23 @@ pub struct Environment {
     files: SourceFilesMap,
     units: UnitsMap,
 
-    implicit_projects_paths: Vec<PathBuf>,
     implicit_projects: Vec<NodeIndex>,
 }
 
 impl Environment {
-    /// Add a project that is implicitly imported by all projects.
-    /// This is mostly meant for projects that include runtime files for
-    /// various languages.
-
-    pub fn add_implicit_project(&mut self, path: PathBuf) {
-        self.implicit_projects_paths.push(path);
-    }
-
     /// Find all GPR files that need to be parsed, in either root directory
     /// or one of its child directories.
     /// Insert dummy nodes in the graph, so that we have an index
 
-    fn find_all_gpr(&mut self, root: &Path) -> PathToIndexes {
+    fn find_all_gpr(
+        &mut self,
+        root: &Path,
+        settings: &Settings,
+    ) -> PathToIndexes {
         let mut gprs = HashMap::new();
         let mut gpridx = GPRIndex::new(0);
 
-        for imp in &self.implicit_projects_paths {
+        for imp in &settings.runtime_gpr {
             let nodeidx = self.graph.add_node(Node::Project(gpridx));
             gprs.insert(imp.clone(), (gpridx, nodeidx));
             self.implicit_projects.push(nodeidx);
@@ -311,7 +306,7 @@ impl Environment {
         path: &Path,
         settings: &Settings,
     ) -> Result<(), Error> {
-        let gprpath_to_indexes = self.find_all_gpr(path);
+        let gprpath_to_indexes = self.find_all_gpr(path, settings);
         let rawfiles = self.parse_raw_gprs(&gprpath_to_indexes, settings)?;
         let mut gprs = self.process_projects(&rawfiles)?;
         self.find_sources(&mut gprs, settings)?;

@@ -28,19 +28,9 @@ use crate::errors::Error;
 use std::path::{Path, PathBuf};
 
 fn main() -> Result<(), Error> {
-    let (settings, action) = parse_cli();
-
+    let (settings, action) = parse_cli()?;
     let mut env = Environment::default();
-
-    env.add_implicit_project(PathBuf::from(
-        "/home/briot/dbc/deepblue/External/Ada_Run_Time/adalib.gpr",
-    ));
-
-    if let Err(e) =
-        env.parse_all(Path::new("/home/briot/dbc/deepblue"), &settings)
-    {
-        println!("ERROR: {}", e);
-    }
+    env.parse_all(Path::new("/home/briot/dbc/deepblue"), &settings)?;
 
     match action {
         Action::Stats => {
