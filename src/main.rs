@@ -54,6 +54,11 @@ fn main() -> Result<(), Error> {
     // this merging is done in get_specs(), but it would be better to have
     // it directly in the graph instead.  See scenario in get_specs()
 
+    // TODO:
+    // scenarios for valgrind unit are wrong.  We get 
+    //    checking=off,tasking=on    and checking=on,tasking=off
+    // when it should be for all scenarios
+
     //    let pool = threadpool::ThreadPool::new(1);
     //    for gpr in list_of_gpr {
     //        let gpr = gpr.clone();

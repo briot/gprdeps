@@ -165,16 +165,16 @@ impl GprFile {
     }
 
     // Retrieve the value of a string attribute
-    fn str_attr(
-        &self,
-        pkg: PackageName,
-        name: &SimpleName,
-    ) -> &HashMap<Scenario, Ustr> {
-        match self.values[pkg as usize].get(name) {
-            Some(ExprValue::Str(v)) => v,
-            v => panic!("Wrong type for attribute {}{}, {:?}", pkg, name, v),
-        }
-    }
+    //    fn str_attr(
+    //        &self,
+    //        pkg: PackageName,
+    //        name: &SimpleName,
+    //    ) -> &HashMap<Scenario, Ustr> {
+    //        match self.values[pkg as usize].get(name) {
+    //            Some(ExprValue::Str(v)) => v,
+    //            v => panic!("Wrong type for attribute {}{}, {:?}", pkg, name, v),
+    //        }
+    //    }
 
     // Retrieve the value of a string list attribute
     fn strlist_attr(
@@ -249,31 +249,6 @@ impl GprFile {
         Ok(())
     }
 
-    /// Given a directory, find all source files matching the naming scheme,
-    /// and add them to `files`.  The naming scheme is for one specific
-    /// scenario.
-    fn check_file_candidates_suffixes(
-        scenarios: &mut AllScenarios,
-        scenario: Scenario,
-        dirs_in_scenario: &Vec<PathBuf>,
-        lang: Ustr,
-        suffixes: &HashMap<Scenario, Ustr>,
-        all_dirs: &HashSet<Directory>,
-        files: &mut HashMap<Scenario, Vec<(PathBuf, Ustr)>>,
-    ) {
-        for (scenar_spec, suffix) in suffixes {
-            let s = scenarios.intersection(scenario, *scenar_spec);
-            if s != EMPTY_SCENARIO {
-                let sfiles = files.entry(s).or_default();
-                for d in dirs_in_scenario {
-                    if let Some(dir) = all_dirs.get(d) {
-                        dir.filter_suffix(suffix, lang, sfiles);
-                    }
-                }
-            }
-        }
-    }
-
     /// Return the list of source files for all scenarios
     pub fn resolve_source_files(
         &mut self,
@@ -282,65 +257,49 @@ impl GprFile {
     ) {
         let source_dirs =
             self.pathlist_attr(PackageName::None, &SimpleName::SourceDirs);
-        let languages =
-            self.strlist_attr(PackageName::None, &SimpleName::Languages);
-
         let mut files: HashMap<Scenario, Vec<(PathBuf, Ustr)>> = HashMap::new();
 
         for (scenar_dir, dirs_in_scenar) in source_dirs {
-            for (scenar_lang, langs_in_scenar) in languages {
-                let s = scenarios.intersection(*scenar_dir, *scenar_lang);
-                if s == EMPTY_SCENARIO {
-                    continue;
-                }
-
-                for lang in langs_in_scenar {
-                    GprFile::check_file_candidates_suffixes(
-                        scenarios,
-                        s,
-                        dirs_in_scenar,
-                        *lang,
-                        self.str_attr(
-                            PackageName::Naming,
-                            &SimpleName::SpecSuffix(*lang),
-                        ),
-                        all_dirs,
-                        &mut files,
-                    );
-                    GprFile::check_file_candidates_suffixes(
-                        scenarios,
-                        s,
-                        dirs_in_scenar,
-                        *lang,
-                        self.str_attr(
-                            PackageName::Naming,
-                            &SimpleName::BodySuffix(*lang),
-                        ),
-                        all_dirs,
-                        &mut files,
-                    );
-                }
-            }
-
-            // Support the Spec and Body suffixes attributes for Ada
-
             for (name, val) in &self.values[PackageName::Naming as usize] {
-                match name {
-                    SimpleName::Spec(_) | SimpleName::Body(_) => {
-                        if let ExprValue::Str(v) = val {
-                            for (scenar_attr, basename) in v {
-                                for d in dirs_in_scenar {
-                                    if let Some(dir) = all_dirs.get(d) {
-                                        let s = scenarios.intersection(
-                                            *scenar_attr,
-                                            *scenar_dir,
-                                        );
-                                        let sfiles =
-                                            files.entry(s).or_default();
-                                        dir.add_if_found(
-                                            basename, *CST_ADA, sfiles,
-                                        );
-                                    }
+                match (name, val) {
+                    (
+                        SimpleName::SpecSuffix(lang)
+                        | SimpleName::BodySuffix(lang),
+                        ExprValue::Str(v),
+                    ) => {
+                        for (scenar_attr, suffix) in v {
+                            let s = scenarios
+                                .intersection(*scenar_attr, *scenar_dir);
+                            if s == EMPTY_SCENARIO {
+                                continue;
+                            }
+                            let sfiles = files.entry(s).or_default();
+
+                            for d in dirs_in_scenar {
+                                if let Some(dir) = all_dirs.get(d) {
+                                    dir.filter_suffix(suffix, *lang, sfiles);
+                                }
+                            }
+                        }
+                    }
+
+                    (
+                        SimpleName::Spec(_) | SimpleName::Body(_),
+                        ExprValue::Str(v),
+                    ) => {
+                        for (scenar_attr, basename) in v {
+                            let s = scenarios
+                                .intersection(*scenar_attr, *scenar_dir);
+                            if s == EMPTY_SCENARIO {
+                                continue;
+                            }
+                            let sfiles = files.entry(s).or_default();
+
+                            for d in dirs_in_scenar {
+                                if let Some(dir) = all_dirs.get(d) {
+                                    dir.add_if_found(
+                                        basename, *CST_ADA, sfiles,
+                                    );
                                 }
                             }
                         }
