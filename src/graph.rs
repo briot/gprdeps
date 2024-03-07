@@ -160,6 +160,10 @@ impl DepGraph {
         self.0.node_count()
     }
 
+    pub fn edge_count(&self) -> usize {
+        self.0.edge_count()
+    }
+
     pub fn add_node(&mut self, node: Node) -> NodeIndex {
         self.0.add_node(node)
     }

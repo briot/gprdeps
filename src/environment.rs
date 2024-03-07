@@ -78,27 +78,6 @@ impl Environment {
         gprs
     }
 
-    /// Parse a project file
-
-    fn parse_project(
-        &self,
-        path: &Path,
-        gprs: &PathToIndexes,
-        settings: &Settings,
-    ) -> Result<RawGPR, Error> {
-        let mut file = crate::files::File::new(path)?;
-        let options = AdaLexerOptions {
-            kw_aggregate: true,
-            kw_body: false,
-        };
-        GprScanner::parse(
-            AdaLexer::new(&mut file, options),
-            path,
-            gprs,
-            settings,
-        )
-    }
-
     /// Parse the raw GPR files, but do not analyze them yet.
     /// We can however setup dependencies in the graph already, so that we can
     /// do topological sort later and parse them in the correct order.
@@ -110,14 +89,23 @@ impl Environment {
     ) -> Result<GPRDetails<'b>, Error> {
         let mut rawfiles = HashMap::new();
         for (path, (gpridx, nodeidx)) in gprs {
-            let raw = self.parse_project(path, gprs, settings)?;
+            let mut file = crate::files::File::new(path)?;
+            let options = AdaLexerOptions {
+                kw_aggregate: true,
+                kw_body: false,
+            };
+            let raw = GprScanner::parse(
+                AdaLexer::new(&mut file, options),
+                path,
+                gprs,
+                settings,
+            )?;
 
             if !raw.is_abstract && !self.implicit_projects.contains(nodeidx) {
                 for imp in &self.implicit_projects {
                     self.graph.add_edge(*nodeidx, *imp, Edge::GPRImports);
                 }
             }
-
             for dep in &raw.imported {
                 self.graph.add_edge(*nodeidx, *dep, Edge::GPRImports);
             }
@@ -328,15 +316,16 @@ impl Environment {
         let mut gprs = self.process_projects(&rawfiles)?;
         self.find_sources(&mut gprs, settings)?;
         self.add_sources_to_graph(&mut gprs)?;
-
-        println!("Total source files={}", self.files.len());
-        println!("Total units={}", self.units.len());
-        println!(
-            "Nodes in graph after adding files and units: {}",
-            self.graph.node_count()
-        );
-
         Ok(())
+    }
+
+    /// Displays some stats about the graph
+
+    pub fn print_stats(&self) {
+        println!("Graph nodes:  {:-6}", self.graph.node_count());
+        println!("Graph edges:  {:-6}", self.graph.edge_count());
+        println!("Units:        {:-6}", self.units.len());
+        println!("Source files: {:-6}", self.files.len());
     }
 
     /// Report the list of units directly imported by the given file

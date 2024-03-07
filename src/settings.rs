@@ -1,4 +1,4 @@
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct Settings {
     pub report_missing_source_dirs: bool,
     // Whether to display error messages when source directories referenced
