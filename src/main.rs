@@ -25,12 +25,11 @@ mod values;
 use crate::cli::{parse_cli, Action};
 use crate::environment::Environment;
 use crate::errors::Error;
-use std::path::{Path, PathBuf};
 
 fn main() -> Result<(), Error> {
     let (settings, action) = parse_cli()?;
     let mut env = Environment::default();
-    env.parse_all(Path::new("/home/briot/dbc/deepblue"), &settings)?;
+    env.parse_all(&settings.root, &settings)?;
 
     match action {
         Action::Stats => {
@@ -43,20 +42,26 @@ fn main() -> Result<(), Error> {
                 env.show_indirect_dependencies(&path)?;
             }
         }
-        Action::GprShow { gprpath } => {}
+        Action::GprShow { .. } => {}
     }
 
-    // TODO:
-    // should simplify edges to merge scenarios when possible.  Currently,
-    // this merging is done in get_specs(), but it would be better to have
-    // it directly in the graph instead.  See scenario in get_specs()
+    // TODO: should simplify edges to merge scenarios when possible.  Currently,
+    // this merging is done in get_specs(), but it would be better to have it
+    // directly in the graph instead.  See scenario in get_specs()
 
-    // TODO:
+    // TODO: support for --root as a gpr project, and only load its deps
+    // TODO: support for GPR_PROJECT_PATH
+
+    // BUG:
     // scenarios for valgrind unit are wrong.  We get
     //    checking=off,tasking=on    and checking=on,tasking=off
     // when it should be for all scenarios
     // Similar for task_initialization:
     //    checking=off   /  tasking=off  / checking=on,tasking=on
+
+    // BUG: We should not be able to resolve system files, unless we use
+    // --runtime. As if we were looking up dependencies from projects we do not
+    // import.
 
     //    let pool = threadpool::ThreadPool::new(1);
     //    for gpr in list_of_gpr {
