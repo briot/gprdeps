@@ -42,13 +42,15 @@ fn main() -> Result<(), Error> {
                 env.show_indirect_dependencies(&path)?;
             }
         }
-        Action::GprShow { .. } => {}
+        Action::GprShow { gprpath } => {
+            let gpr = env.get_gpr(&gprpath).expect("Project not found in graph");
+            println!("{:?}", gpr);
+        }
     }
 
     // TODO: should simplify edges to merge scenarios when possible.  Currently,
-    // this merging is done in get_specs(), but it would be better to have it
-    // directly in the graph instead.  See scenario in get_specs()
-
+    //    this merging is done in get_specs(), but it would be better to have it
+    //    directly in the graph instead.  See scenario in get_specs()
     // TODO: support for --root as a gpr project, and only load its deps
     // TODO: support for GPR_PROJECT_PATH
 

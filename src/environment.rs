@@ -1,8 +1,8 @@
 use crate::ada_lexer::{AdaLexer, AdaLexerOptions};
 use crate::errors::Error;
 use crate::gpr::GprFile;
-use crate::gpr_scanner::GprScanner;
-use crate::graph::{DepGraph, Edge, GPRIndex, Node, NodeIndex, PathToIndexes};
+use crate::gpr_scanner::{GprScanner, PathToIndexes};
+use crate::graph::{DepGraph, Edge, Node, NodeIndex};
 use crate::rawgpr::RawGPR;
 use crate::scenarios::AllScenarios;
 use crate::settings::Settings;
@@ -13,9 +13,10 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use ustr::Ustr;
 
-type GPRDetails<'a> = HashMap<GPRIndex, (&'a PathBuf, RawGPR)>;
-type GPRIdxToFile = HashMap<GPRIndex, GprFile>;
+type GPRDetails = HashMap<NodeIndex, RawGPR>;
+type GPRIdxToFile = HashMap<NodeIndex, GprFile>;
 type UnitsMap = HashMap<QualifiedName, NodeIndex>;
+type GprMap = HashMap<PathBuf, GprFile>;
 
 #[derive(Clone)]
 struct FileInfo {
@@ -34,6 +35,7 @@ type SourceFilesMap = HashMap<PathBuf, Option<FileInfo>>;
 pub struct Environment {
     scenarios: AllScenarios,
     graph: DepGraph,
+    gprs: GprMap,
     files: SourceFilesMap,
     units: UnitsMap,
 
@@ -50,14 +52,12 @@ impl Environment {
         root: &Path,
         settings: &Settings,
     ) -> PathToIndexes {
-        let mut gprs = HashMap::new();
-        let mut gpridx = GPRIndex::new(0);
+        let mut gprs = PathToIndexes::new();
 
         for imp in &settings.runtime_gpr {
-            let nodeidx = self.graph.add_node(Node::Project(gpridx));
-            gprs.insert(imp.clone(), (gpridx, nodeidx));
+            let nodeidx = self.graph.add_node(Node::Project(0));
+            gprs.insert(imp.clone(), nodeidx);
             self.implicit_projects.push(nodeidx);
-            gpridx.0 += 1;
         }
 
         for gpr in crate::findfile::FileFind::new(root) {
@@ -65,9 +65,8 @@ impl Environment {
             if let std::collections::hash_map::Entry::Vacant(e) =
                 gprs.entry(gpr)
             {
-                let nodeidx = self.graph.add_node(Node::Project(gpridx));
-                e.insert((gpridx, nodeidx));
-                gpridx.0 += 1;
+                let nodeidx = self.graph.add_node(Node::Project(0));
+                e.insert(nodeidx);
             }
         }
         gprs
@@ -81,9 +80,9 @@ impl Environment {
         &mut self,
         gprs: &'b PathToIndexes,
         settings: &Settings,
-    ) -> Result<GPRDetails<'b>, Error> {
-        let mut rawfiles = HashMap::new();
-        for (path, (gpridx, nodeidx)) in gprs {
+    ) -> Result<GPRDetails, Error> {
+        let mut rawfiles = GPRDetails::new();
+        for (path, nodeidx) in gprs {
             let mut file = crate::files::File::new(path)?;
             let options = AdaLexerOptions {
                 kw_aggregate: true,
@@ -107,7 +106,7 @@ impl Environment {
             if let Some(ext) = raw.extends {
                 self.graph.add_edge(*nodeidx, ext, Edge::GPRExtends);
             }
-            rawfiles.insert(*gpridx, (path, raw));
+            rawfiles.insert(*nodeidx, raw);
         }
         Ok(rawfiles)
     }
@@ -119,20 +118,19 @@ impl Environment {
         &mut self,
         rawfiles: &GPRDetails,
     ) -> Result<GPRIdxToFile, Error> {
-        let mut gprs = HashMap::new();
+        let mut gprs = GPRIdxToFile::new();
         for nodeidx in self.graph.toposort().iter().rev() {
-            let gpridx = self.graph.get_project(*nodeidx);
-            let (path, raw) = &rawfiles[&gpridx];
+            let raw = &rawfiles[nodeidx];
             let deps = self.graph.gpr_dependencies(*nodeidx);
             let gprdeps = deps.iter().map(|i| &gprs[i]).collect::<Vec<_>>();
-            let mut gpr = GprFile::new(path, *nodeidx, raw.name);
+            let mut gpr = GprFile::new(&raw.path, *nodeidx, raw.name);
             gpr.process(
                 raw,
-                raw.extends.map(|i| &gprs[&self.graph.get_project(i)]),
+                raw.extends.map(|e| &gprs[&e]),
                 &gprdeps,
                 &mut self.scenarios,
             )?;
-            gprs.insert(gpridx, gpr);
+            gprs.insert(*nodeidx, gpr);
         }
         Ok(gprs)
     }
@@ -311,16 +309,22 @@ impl Environment {
         let mut gprs = self.process_projects(&rawfiles)?;
         self.find_sources(&mut gprs, settings)?;
         self.add_sources_to_graph(&mut gprs)?;
+
+        for (path, nodeidx) in gprpath_to_indexes {
+            self.gprs.insert(path, gprs.remove(&nodeidx).unwrap());
+        }
+
         Ok(())
     }
 
     /// Displays some stats about the graph
 
     pub fn print_stats(&self) {
-        println!("Graph nodes:  {:-6}", self.graph.node_count());
-        println!("Graph edges:  {:-6}", self.graph.edge_count());
-        println!("Units:        {:-6}", self.units.len());
-        println!("Source files: {:-6}", self.files.len());
+        println!("Graph nodes:  {:-7}", self.graph.node_count());
+        println!("   Projects:     = {:-6}", self.gprs.len());
+        println!("   Units:        + {:-6}", self.units.len());
+        println!("   Source files: + {:-6}", self.files.len());
+        println!("Graph edges:  {:-7}", self.graph.edge_count());
     }
 
     /// Report the list of units directly imported by the given file
@@ -389,5 +393,11 @@ impl Environment {
         deps.sort();
         println!("{}", deps.join("\n"));
         Ok(())
+    }
+
+    /// Retrieve the node for a project node
+
+    pub fn get_gpr(&self, gprpath: &Path) -> Option<&GprFile> {
+        self.gprs.get(gprpath)
     }
 }

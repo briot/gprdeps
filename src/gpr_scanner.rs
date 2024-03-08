@@ -1,7 +1,7 @@
 use crate::ada_lexer::AdaLexer;
 use crate::base_lexer::BaseScanner;
 use crate::errors::Error;
-use crate::graph::PathToIndexes;
+use crate::graph::NodeIndex;
 use crate::rawexpr::{
     PackageName, QualifiedName, RawExpr, SimpleName, Statement, StringOrOthers,
     WhenClause,
@@ -10,8 +10,11 @@ use crate::rawgpr::RawGPR;
 use crate::settings::Settings;
 use crate::tokens::{Token, TokenKind};
 use path_clean::PathClean;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use ustr::Ustr;
+
+pub type PathToIndexes = HashMap<std::path::PathBuf, NodeIndex>;
 
 pub struct GprScanner<'a> {
     base: BaseScanner<AdaLexer<'a>>,
@@ -159,7 +162,7 @@ impl<'a> GprScanner<'a> {
         let normalized = self.normalize_gpr_path(path.as_str())?;
         match path_to_id.get(&normalized) {
             None => Err(Error::not_found(normalized.display()))?,
-            Some(idx) => self.gpr.imported.push(idx.1),
+            Some(idx) => self.gpr.imported.push(*idx),
         }
 
         self.base.expect(TokenKind::Semicolon)?;
@@ -189,7 +192,7 @@ impl<'a> GprScanner<'a> {
         self.gpr.extends = if self.base.peek() == TokenKind::Extends {
             let ext = self.parse_project_extension()?;
             let normalized = self.normalize_gpr_path(ext.as_str())?;
-            Some(path_to_id[&normalized].1)
+            Some(path_to_id[&normalized])
         } else {
             None
         };
@@ -577,8 +580,7 @@ impl<'a> GprScanner<'a> {
 mod tests {
     use crate::ada_lexer::{AdaLexer, AdaLexerOptions};
     use crate::errors::Error;
-    use crate::gpr_scanner::GprScanner;
-    use crate::graph::PathToIndexes;
+    use crate::gpr_scanner::{GprScanner, PathToIndexes};
     use crate::rawexpr::tests::build_expr_list;
     use crate::rawexpr::{
         PackageName, QualifiedName, RawExpr, SimpleName, Statement,

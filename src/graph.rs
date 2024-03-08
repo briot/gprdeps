@@ -8,23 +8,11 @@ use petgraph::Directed;
 use std::collections::HashMap;
 
 pub type NodeIndex = petgraph::graph::NodeIndex<u32>;
-pub type PathToIndexes =
-    std::collections::HashMap<std::path::PathBuf, (GPRIndex, NodeIndex)>;
-
-/// A reference to a project file.
-/// The actual project must be stored in a separate vec.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub struct GPRIndex(pub usize);
-impl GPRIndex {
-    pub fn new(idx: usize) -> GPRIndex {
-        GPRIndex(idx)
-    }
-}
 
 /// The nodes of a graph
 #[derive(Debug)]
 pub enum Node {
-    Project(GPRIndex),
+    Project(usize),
     Unit(QualifiedName),
     Source(std::path::PathBuf), //  ??? Should be UStr
 }
@@ -59,13 +47,6 @@ pub enum Edge {
 /// A unified dependency graph, for both projects and source files
 pub struct DepGraph(pub Graph<Node, Edge, Directed, u32>);
 impl DepGraph {
-    pub fn get_project(&self, idx: NodeIndex) -> GPRIndex {
-        match self.0[idx] {
-            Node::Project(gpr) => gpr,
-            _ => panic!("Invalid project reference {:?}", idx),
-        }
-    }
-
     pub fn get_unit_name(
         &self,
         idx: NodeIndex,
@@ -182,12 +163,12 @@ impl DepGraph {
     /// Each dependency is reported only once (so if a project imports both A and
     /// B, which both import a common C, then C is only returned once).
     /// The returned value does not include start itself.
-    pub fn gpr_dependencies(&self, start: NodeIndex) -> Vec<GPRIndex> {
+    pub fn gpr_dependencies(&self, start: NodeIndex) -> Vec<NodeIndex> {
         let mut bfs = Bfs::new(&self.0, start);
         let mut result = Vec::new();
         while let Some(node) = bfs.next(&self.0) {
             if node != start {
-                result.push(self.get_project(node));
+                result.push(node);
             }
         }
         result
