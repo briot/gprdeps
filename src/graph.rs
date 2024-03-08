@@ -6,15 +6,16 @@ use petgraph::graph::Graph;
 use petgraph::visit::{Bfs, EdgeRef};
 use petgraph::Directed;
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 pub type NodeIndex = petgraph::graph::NodeIndex<u32>;
 
 /// The nodes of a graph
 #[derive(Debug)]
 pub enum Node {
-    Project(usize),
+    Project(PathBuf),
     Unit(QualifiedName),
-    Source(std::path::PathBuf), //  ??? Should be UStr
+    Source(PathBuf), //  ??? Should be UStr
 }
 
 /// The edges of a graph
@@ -47,6 +48,13 @@ pub enum Edge {
 /// A unified dependency graph, for both projects and source files
 pub struct DepGraph(pub Graph<Node, Edge, Directed, u32>);
 impl DepGraph {
+    pub fn get_project(&self, idx: NodeIndex) -> Result<&PathBuf, Error> {
+        match &self.0[idx] {
+            Node::Project(g) => Ok(g),
+            u => Err(Error::InvalidGraphNode(format!("{:?}", u))),
+        }
+    }
+
     pub fn get_unit_name(
         &self,
         idx: NodeIndex,
@@ -57,10 +65,7 @@ impl DepGraph {
         }
     }
 
-    pub fn get_source_path(
-        &self,
-        idx: NodeIndex,
-    ) -> Result<&std::path::PathBuf, Error> {
+    pub fn get_source_path(&self, idx: NodeIndex) -> Result<&PathBuf, Error> {
         match &self.0[idx] {
             Node::Source(path) => Ok(path),
             u => Err(Error::InvalidGraphNode(format!("{:?}", u))),

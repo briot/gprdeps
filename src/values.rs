@@ -335,7 +335,6 @@ impl ExprValue {
 mod tests {
     use crate::errors::Error;
     use crate::gpr::GprFile;
-    use crate::graph::NodeIndex;
     use crate::rawexpr::tests::{build_expr_list, build_expr_str};
     use crate::rawexpr::{PackageName, QualifiedName, RawExpr, SimpleName};
     use crate::scenarios::tests::{split, try_add_variable};
@@ -346,11 +345,7 @@ mod tests {
 
     #[test]
     fn test_eval() -> Result<(), Error> {
-        let mut gpr = GprFile::new(
-            std::path::Path::new("/"),
-            NodeIndex::default(),
-            Ustr::from("dummy"),
-        );
+        let mut gpr = GprFile::new(std::path::Path::new("/"));
         let mut scenars = AllScenarios::default();
         let scenar = Scenario::default();
         let pkg = PackageName::None;
@@ -487,11 +482,7 @@ mod tests {
 
     #[test]
     fn test_eval_scenario() -> Result<(), Error> {
-        let mut gpr = GprFile::new(
-            std::path::Path::new("/"),
-            NodeIndex::default(),
-            Ustr::from("dummy"),
-        );
+        let mut gpr = GprFile::new(std::path::Path::new("/"));
         let mut scenars = AllScenarios::default();
         try_add_variable(&mut scenars, "MODE", &["debug", "optimize", "lto"])?;
         try_add_variable(&mut scenars, "CHECK", &["none", "some", "most"])?;

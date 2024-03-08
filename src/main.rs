@@ -43,7 +43,8 @@ fn main() -> Result<(), Error> {
             }
         }
         Action::GprShow { gprpath } => {
-            let gpr = env.get_gpr(&gprpath).expect("Project not found in graph");
+            let gpr =
+                env.get_gpr(&gprpath).expect("Project not found in graph");
             println!("{:?}", gpr);
         }
     }

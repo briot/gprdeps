@@ -14,7 +14,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use ustr::Ustr;
 
-pub type PathToIndexes = HashMap<std::path::PathBuf, NodeIndex>;
+pub type GprPathToIndex = HashMap<std::path::PathBuf, NodeIndex>;
 
 pub struct GprScanner<'a> {
     base: BaseScanner<AdaLexer<'a>>,
@@ -28,7 +28,7 @@ impl<'a> GprScanner<'a> {
     pub fn parse(
         lex: AdaLexer<'a>,
         path: &Path,
-        path_to_id: &PathToIndexes,
+        path_to_id: &GprPathToIndex,
         settings: &'a Settings,
     ) -> Result<RawGPR, Error> {
         let mut scan = Self {
@@ -154,7 +154,7 @@ impl<'a> GprScanner<'a> {
     /// Expect a with_clause
     fn parse_with_clause(
         &mut self,
-        path_to_id: &PathToIndexes,
+        path_to_id: &GprPathToIndex,
     ) -> Result<(), Error> {
         self.base.expect(TokenKind::With)?;
 
@@ -172,7 +172,7 @@ impl<'a> GprScanner<'a> {
     /// Parses the declaration of the project, directly into self.gpr
     fn parse_project_declaration(
         &mut self,
-        path_to_id: &PathToIndexes,
+        path_to_id: &GprPathToIndex,
     ) -> Result<(), Error> {
         loop {
             let n = self.base.safe_next()?;
@@ -580,7 +580,7 @@ impl<'a> GprScanner<'a> {
 mod tests {
     use crate::ada_lexer::{AdaLexer, AdaLexerOptions};
     use crate::errors::Error;
-    use crate::gpr_scanner::{GprScanner, PathToIndexes};
+    use crate::gpr_scanner::{GprPathToIndex, GprScanner};
     use crate::rawexpr::tests::build_expr_list;
     use crate::rawexpr::{
         PackageName, QualifiedName, RawExpr, SimpleName, Statement,
@@ -602,7 +602,7 @@ mod tests {
             kw_body: false,
         };
         let lex = AdaLexer::new(&mut file, options);
-        let path_to_id: PathToIndexes = Default::default();
+        let path_to_id: GprPathToIndex = Default::default();
         let gpr =
             GprScanner::parse(lex, Path::new("memory"), &path_to_id, &settings);
         check(gpr);

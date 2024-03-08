@@ -1,6 +1,5 @@
 use crate::directory::Directory;
 use crate::errors::Error;
-use crate::graph::NodeIndex;
 use crate::rawexpr::{
     PackageName, QualifiedName, SimpleName, Statement, StatementList,
     StringOrOthers, PACKAGE_NAME_VARIANTS,
@@ -35,7 +34,6 @@ lazy_static::lazy_static! {
 /// needs an Environment object to resolve paths.
 #[derive(Default)]
 pub struct GprFile {
-    pub index: NodeIndex,
     pub name: Ustr,
     path: PathBuf,
     values: [HashMap<
@@ -47,11 +45,9 @@ pub struct GprFile {
 }
 
 impl GprFile {
-    pub fn new(path: &Path, index: NodeIndex, name: Ustr) -> Self {
+    pub fn new(path: &Path) -> Self {
         let mut s = Self {
-            path: path.into(),
-            name,
-            index,
+            path: path.to_path_buf(),
             ..Default::default()
         };
 
@@ -564,6 +560,8 @@ impl GprFile {
         dependencies: &[&GprFile],
         scenarios: &mut AllScenarios,
     ) -> std::result::Result<(), Error> {
+        self.name = raw.name;
+
         if let Some(ext) = extends {
             for v in 0..PACKAGE_NAME_VARIANTS {
                 self.values[v] = ext.values[v].clone();
