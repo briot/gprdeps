@@ -55,17 +55,14 @@ impl DepGraph {
         }
     }
 
-    pub fn get_unit_name(
-        &self,
-        idx: NodeIndex,
-    ) -> Result<QualifiedName, Error> {
+    pub fn get_unit(&self, idx: NodeIndex) -> Result<QualifiedName, Error> {
         match &self.0[idx] {
             Node::Unit(qname) => Ok(qname.clone()),
             u => Err(Error::InvalidGraphNode(format!("{:?}", u))),
         }
     }
 
-    pub fn get_source_path(&self, idx: NodeIndex) -> Result<&PathBuf, Error> {
+    pub fn get_source(&self, idx: NodeIndex) -> Result<&PathBuf, Error> {
         match &self.0[idx] {
             Node::Source(path) => Ok(path),
             u => Err(Error::InvalidGraphNode(format!("{:?}", u))),

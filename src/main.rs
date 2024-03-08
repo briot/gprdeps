@@ -29,13 +29,14 @@ use crate::errors::Error;
 fn main() -> Result<(), Error> {
     let (settings, action) = parse_cli()?;
     let mut env = Environment::default();
-    env.parse_all(&settings.root, &settings)?;
 
     match action {
         Action::Stats => {
+            env.parse_all(&settings.root, &settings, true)?;
             env.print_stats();
         }
         Action::Dependencies { direct_only, path } => {
+            env.parse_all(&settings.root, &settings, true)?;
             if direct_only {
                 env.show_direct_dependencies(&path)?;
             } else {
@@ -43,9 +44,10 @@ fn main() -> Result<(), Error> {
             }
         }
         Action::GprShow { gprpath } => {
+            env.parse_all(&settings.root, &settings, false)?;
             let gpr =
                 env.get_gpr(&gprpath).expect("Project not found in graph");
-            println!("{:?}", gpr);
+            gpr.print_details(&env.scenarios);
         }
     }
 
@@ -54,6 +56,9 @@ fn main() -> Result<(), Error> {
     //    directly in the graph instead.  See scenario in get_specs()
     // TODO: support for --root as a gpr project, and only load its deps
     // TODO: support for GPR_PROJECT_PATH
+    // TODO: instead of trimming projects, just don't insert attributes
+    //    This fails on general.gpr, because a variable references an attribute
+    //    that we are not keeping.
 
     // BUG:
     // scenarios for valgrind unit are wrong.  We get

@@ -32,7 +32,7 @@ type SourceFilesMap = HashMap<PathBuf, Option<FileInfo>>;
 /// The whole set of gpr files
 #[derive(Default)]
 pub struct Environment {
-    scenarios: AllScenarios,
+    pub scenarios: AllScenarios,
     graph: DepGraph,
     gprs: GprMap,
     files: SourceFilesMap,
@@ -145,10 +145,13 @@ impl Environment {
         &mut self,
         gprs: &mut GprMap,
         settings: &Settings,
+        trim_attributes: bool,
     ) -> Result<(), Error> {
         let mut all_source_dirs = HashSet::new();
         for gpr in gprs.values_mut() {
-            gpr.trim();
+            if trim_attributes {
+                gpr.trim();
+            }
             gpr.resolve_source_dirs(&mut all_source_dirs, settings)?;
             gpr.resolve_source_files(&all_source_dirs, &mut self.scenarios);
         }
@@ -307,11 +310,12 @@ impl Environment {
         &mut self,
         path: &Path,
         settings: &Settings,
+        trim_attributes: bool,
     ) -> Result<(), Error> {
         let gprindexes: GprPathToIndex = self.find_all_gpr(path, settings);
         let rawfiles: RawGPRs = self.parse_raw_gprs(&gprindexes, settings)?;
         let mut gprmap: GprMap = self.process_projects(rawfiles)?;
-        self.find_sources(&mut gprmap, settings)?;
+        self.find_sources(&mut gprmap, settings, trim_attributes)?;
         self.add_sources_to_graph(gprindexes, &mut gprmap)?;
 
         self.gprs = gprmap;
@@ -343,7 +347,7 @@ impl Environment {
             .0
             .edges(info.file_node)
             .filter(|e| matches!(e.weight(), Edge::SourceImports))
-            .filter_map(|e| self.graph.get_unit_name(e.target()).ok())
+            .filter_map(|e| self.graph.get_unit(e.target()).ok())
             .map(|e| format!("   {}", e))
             .collect::<Vec<_>>();
         direct_deps.sort();
@@ -372,7 +376,7 @@ impl Environment {
         while let Some(node) = dfs.next(&filtered) {
             if node != info.file_node {
                 let mut d: String =
-                    format!("   {}", self.graph.get_unit_name(node)?);
+                    format!("   {}", self.graph.get_unit(node)?);
 
                 for (nodeidx, scenars) in
                     self.graph.get_specs(&mut self.scenarios, node)
@@ -380,7 +384,7 @@ impl Environment {
                     d.push('\n');
                     d.push_str(&format!(
                         "      {} ",
-                        self.graph.get_source_path(nodeidx)?.display()
+                        self.graph.get_source(nodeidx)?.display()
                     ));
                     for s in scenars {
                         d.push(' ');

@@ -50,7 +50,10 @@ lazy_static::lazy_static! {
     static ref NAMING:Ustr = Ustr::from("naming");
 }
 
+// ??? Should implement std::ops::Index so that we can use it directly to
+// index arrays.
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[repr(usize)]
 pub enum PackageName {
     None = 0,
     Binder,

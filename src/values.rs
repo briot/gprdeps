@@ -5,6 +5,27 @@ use crate::scenarios::{AllScenarios, Scenario};
 use std::collections::HashMap;
 use ustr::{Ustr, UstrMap, UstrSet};
 
+fn two_columns<T>(
+    map: &HashMap<Scenario, T>,
+    scenarios: &AllScenarios,
+    indent: &str,
+    eol: &str,
+    fmt: fn(&T) -> String,
+) -> String {
+    let mut col1 = Vec::new();
+    for scenario in map.keys() {
+        col1.push(scenarios.describe(*scenario));
+    }
+    let max = col1.iter().map(|s| s.len()).max().unwrap_or(0);
+    map.iter()
+        .enumerate()
+        .map(|(idx, (_, val))| {
+            format!("{}{:width$} {}", indent, col1[idx], fmt(val), width = max)
+        })
+        .collect::<Vec<_>>()
+        .join(eol)
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum ExprValue {
     Str(HashMap<Scenario, Ustr>),
@@ -327,6 +348,36 @@ impl ExprValue {
                 ExprValue::merge_internal(v_self, v_right, scenars)
             }
             (s, r) => Err(Error::type_mismatch(s, r)),
+        }
+    }
+
+    /// Display the expression
+    pub fn format(
+        &self,
+        scenarios: &AllScenarios,
+        indent: &str,
+        eol: &str,
+    ) -> String {
+        match self {
+            ExprValue::Str(map) => {
+                two_columns(map, scenarios, indent, eol, |s| format!("\"{}\"", s))
+            }
+            ExprValue::StrList(map) => {
+                two_columns(map, scenarios, indent, eol, |s| {
+                    s.iter()
+                        .map(|s| format!("\"{}\"", s))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                })
+            }
+            ExprValue::PathList(map) => {
+                two_columns(map, scenarios, indent, eol, |s| {
+                    s.iter()
+                        .map(|s| format!("\"{}\"", s.display()))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                })
+            }
         }
     }
 }

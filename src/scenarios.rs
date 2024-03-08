@@ -133,14 +133,19 @@ impl std::fmt::Display for ScenarioDetails {
             Ok(())
             //  write!(f, "all scenarios")
         } else {
-            for n in varnames {
-                let mut vals =
-                    self.vars[n].iter().map(|s| s.as_str()).collect::<Vec<_>>();
-                vals.sort();
-
-                write!(f, "{}={},", n, vals.join("|"))?
-            }
-            Ok(())
+            let s = varnames
+                .iter()
+                .map(|n| {
+                    let mut vals = self.vars[n]
+                        .iter()
+                        .map(|s| s.as_str())
+                        .collect::<Vec<_>>();
+                    vals.sort();
+                    format!("{}={}", n, vals.join("|"))
+                })
+                .collect::<Vec<_>>()
+                .join(",");
+            write!(f, "{}", s)
         }
     }
 }

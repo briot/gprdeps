@@ -29,6 +29,24 @@ lazy_static::lazy_static! {
     static ref CST_EXT_CPP: Ustr = Ustr::from(".cpp");
 }
 
+/// Is this an attribute we want to keep in the project ?
+fn keep_attribute(name: &SimpleName) -> bool {
+    matches!(
+        name,
+        SimpleName::BodySuffix(_)
+            | SimpleName::Body(_)
+            | SimpleName::ExcludedSourceFiles
+            | SimpleName::Languages
+            | SimpleName::Main
+            | SimpleName::ProjectFiles
+            | SimpleName::SourceDirs
+            | SimpleName::SourceFiles
+            | SimpleName::Spec(_)
+            | SimpleName::SpecSuffix(_)
+            | SimpleName::SourceListFile
+    )
+}
+
 /// A specific GPR file
 /// Such an object is independent of the scanner that created it, though it
 /// needs an Environment object to resolve paths.
@@ -108,22 +126,7 @@ impl GprFile {
     /// that we will need to look at for scenarios.
     pub fn trim(&mut self) {
         for pkg in 0..PACKAGE_NAME_VARIANTS {
-            self.values[pkg].retain(|name, _| {
-                matches!(
-                    name,
-                    SimpleName::BodySuffix(_)
-                        | SimpleName::Body(_)
-                        | SimpleName::ExcludedSourceFiles
-                        | SimpleName::Languages
-                        | SimpleName::Main
-                        | SimpleName::ProjectFiles
-                        | SimpleName::SourceDirs
-                        | SimpleName::SourceFiles
-                        | SimpleName::Spec(_)
-                        | SimpleName::SpecSuffix(_)
-                        | SimpleName::SourceListFile
-                )
-            });
+            self.values[pkg].retain(|name, _| keep_attribute(name));
         }
     }
 
@@ -431,18 +434,19 @@ impl GprFile {
                 }
             }
 
-            Statement::AttributeDecl { name, value } => self.declare(
-                current_pkg,
-                name.clone(),
-                ExprValue::new_with_raw(
-                    value,
-                    self,
-                    dependencies,
-                    scenarios,
-                    current_scenario,
+            Statement::AttributeDecl { name, value } => 
+                self.declare(
                     current_pkg,
+                    name.clone(),
+                    ExprValue::new_with_raw(
+                        value,
+                        self,
+                        dependencies,
+                        scenarios,
+                        current_scenario,
+                        current_pkg,
+                    )?,
                 )?,
-            )?,
 
             Statement::Package {
                 name,
@@ -579,6 +583,30 @@ impl GprFile {
             path: self.path.clone(),
             error: Box::new(e),
         })
+    }
+
+    /// Print details about the project
+    pub fn print_details(&self, scenarios: &AllScenarios) {
+        println!("file: {}", self.path.display());
+        println!("project {} is", self.name);
+
+        for pkgidx in 0..PACKAGE_NAME_VARIANTS {
+            if self.values[pkgidx].is_empty() {
+                continue;
+            }
+            let pkg: PackageName = unsafe { std::mem::transmute(pkgidx) };
+            for (attrname, value) in &self.values[pkgidx] {
+                println!(
+                    "   for {}{}\n{}",
+                    pkg,
+                    attrname,
+                    value.format(scenarios, "      ", "\n"),
+                );
+            }
+        }
+        println!("end project;");
+
+        //    pub source_files: HashMap<Scenario, Vec<(PathBuf, Ustr)>>, // path and lang
     }
 }
 
