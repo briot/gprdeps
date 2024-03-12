@@ -77,8 +77,9 @@ impl ExprValue {
         for v in valid {
             let mut onevalue = UstrSet::default();
             onevalue.insert(*v);
-            let s1 = scenarios.split(s0, varname, onevalue);
-            m.insert(s1, *v);
+            if let Some(s1) = scenarios.split(s0, varname, onevalue) {
+                m.insert(s1, *v);
+            }
         }
         ExprValue::Str(m)
     }
@@ -208,10 +209,11 @@ impl ExprValue {
                                 for (s1, v1) in &m {
                                     let mut v = v1.clone();
                                     v.push(v2);
-                                    new_m.insert(
-                                        scenars.intersection(*s1, s2),
-                                        v,
-                                    );
+                                    if let Some(s) =
+                                        scenars.intersection(*s1, s2)
+                                    {
+                                        new_m.insert(s, v);
+                                    }
                                 }
                             }
                             m = new_m;
@@ -250,10 +252,9 @@ impl ExprValue {
                                 // empty string.
                                 let mut res = v1.as_str().to_string();
                                 res.push_str(v2.as_str());
-                                m.insert(
-                                    scenars.intersection(s1, *s2),
-                                    Ustr::from(&res),
-                                );
+                                if let Some(s) = scenars.intersection(s1, *s2) {
+                                    m.insert(s, Ustr::from(&res));
+                                }
                             }
                         }
                         Ok(ExprValue::Str(m))
@@ -267,7 +268,9 @@ impl ExprValue {
                             for (s2, v2) in &rs {
                                 let mut res = v1.clone();
                                 res.push(*v2);
-                                m.insert(scenars.intersection(s1, *s2), res);
+                                if let Some(s) = scenars.intersection(s1, *s2) {
+                                    m.insert(s, res);
+                                }
                             }
                         }
                         Ok(ExprValue::StrList(m))
@@ -279,7 +282,9 @@ impl ExprValue {
                             for (s2, v2) in &rs {
                                 let mut res = v1.clone();
                                 res.extend(v2.clone());
-                                m.insert(scenars.intersection(s1, *s2), res);
+                                if let Some(s) = scenars.intersection(s1, *s2) {
+                                    m.insert(s, res);
+                                }
                             }
                         }
                         Ok(ExprValue::StrList(m))
@@ -360,7 +365,9 @@ impl ExprValue {
     ) -> String {
         match self {
             ExprValue::Str(map) => {
-                two_columns(map, scenarios, indent, eol, |s| format!("\"{}\"", s))
+                two_columns(map, scenarios, indent, eol, |s| {
+                    format!("\"{}\"", s)
+                })
             }
             ExprValue::StrList(map) => {
                 two_columns(map, scenarios, indent, eol, |s| {
@@ -539,10 +546,11 @@ mod tests {
         try_add_variable(&mut scenars, "CHECK", &["none", "some", "most"])?;
         let pkg = PackageName::None;
         let s0 = Scenario::default();
-        let s2 = split(&mut scenars, s0, "MODE", &["debug", "optimize"]);
-        let s3 = split(&mut scenars, s0, "MODE", &["lto"]);
-        let s4 = split(&mut scenars, s0, "CHECK", &["some"]);
-        let s5 = split(&mut scenars, s0, "CHECK", &["most", "none"]);
+        let s2 =
+            split(&mut scenars, s0, "MODE", &["debug", "optimize"]).unwrap();
+        let s3 = split(&mut scenars, s0, "MODE", &["lto"]).unwrap();
+        let s4 = split(&mut scenars, s0, "CHECK", &["some"]).unwrap();
+        let s5 = split(&mut scenars, s0, "CHECK", &["most", "none"]).unwrap();
 
         // Assume a variable has different values in two modes
         //     s2=[MODE=debug|optimize]      => "val2"
@@ -606,10 +614,10 @@ mod tests {
         //   s2*s5=s8=[MODE=debug|optimize, CHECK=most|none] => "val2val5"
         //   s3*s4=s5=[MODE=lto,            CHECK=some]      => "val3val4"
         //   s3*s4=s6=[MODE=lto,            CHECK=most|none] => "val3val5"
-        let s5 = split(&mut scenars, s3, "CHECK", &["some"]);
-        let s6 = split(&mut scenars, s3, "CHECK", &["most", "none"]);
-        let s7 = split(&mut scenars, s2, "CHECK", &["some"]);
-        let s8 = split(&mut scenars, s2, "CHECK", &["most", "none"]);
+        let s5 = split(&mut scenars, s3, "CHECK", &["some"]).unwrap();
+        let s6 = split(&mut scenars, s3, "CHECK", &["most", "none"]).unwrap();
+        let s7 = split(&mut scenars, s2, "CHECK", &["some"]).unwrap();
+        let s8 = split(&mut scenars, s2, "CHECK", &["most", "none"]).unwrap();
 
         let var1_ref = RawExpr::Name(QualifiedName {
             project: None,

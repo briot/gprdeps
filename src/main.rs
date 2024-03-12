@@ -59,6 +59,9 @@ fn main() -> Result<(), Error> {
     // TODO: instead of trimming projects, just don't insert attributes
     //    This fails on general.gpr, because a variable references an attribute
     //    that we are not keeping.
+    // TODO: improve performance for scenario: should use a bitmask to known
+    //    which values are valid, then we can use "&", "|" and "!" to intersect
+    //    multiple scenarios.
 
     // BUG:
     // scenarios for valgrind unit are wrong.  We get

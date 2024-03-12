@@ -5,7 +5,7 @@ use crate::rawexpr::{
     StringOrOthers, PACKAGE_NAME_VARIANTS,
 };
 use crate::rawgpr::RawGPR;
-use crate::scenarios::{AllScenarios, Scenario, EMPTY_SCENARIO};
+use crate::scenarios::{AllScenarios, Scenario};
 use crate::settings::Settings;
 use crate::values::ExprValue;
 use path_clean::PathClean;
@@ -267,16 +267,19 @@ impl GprFile {
                         ExprValue::Str(v),
                     ) => {
                         for (scenar_attr, suffix) in v {
-                            let s = scenarios
-                                .intersection(*scenar_attr, *scenar_dir);
-                            if s == EMPTY_SCENARIO {
-                                continue;
-                            }
-                            let sfiles = files.entry(s).or_default();
-
-                            for d in dirs_in_scenar {
-                                if let Some(dir) = all_dirs.get(d) {
-                                    dir.filter_suffix(suffix, *lang, sfiles);
+                            match scenarios
+                                .intersection(*scenar_attr, *scenar_dir)
+                            {
+                                None => continue,
+                                Some(s) => {
+                                    let sfiles = files.entry(s).or_default();
+                                    for d in dirs_in_scenar {
+                                        if let Some(dir) = all_dirs.get(d) {
+                                            dir.filter_suffix(
+                                                suffix, *lang, sfiles,
+                                            );
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -287,18 +290,19 @@ impl GprFile {
                         ExprValue::Str(v),
                     ) => {
                         for (scenar_attr, basename) in v {
-                            let s = scenarios
-                                .intersection(*scenar_attr, *scenar_dir);
-                            if s == EMPTY_SCENARIO {
-                                continue;
-                            }
-                            let sfiles = files.entry(s).or_default();
-
-                            for d in dirs_in_scenar {
-                                if let Some(dir) = all_dirs.get(d) {
-                                    dir.add_if_found(
-                                        basename, *CST_ADA, sfiles,
-                                    );
+                            match scenarios
+                                .intersection(*scenar_attr, *scenar_dir)
+                            {
+                                None => continue,
+                                Some(s) => {
+                                    let sfiles = files.entry(s).or_default();
+                                    for d in dirs_in_scenar {
+                                        if let Some(dir) = all_dirs.get(d) {
+                                            dir.add_if_found(
+                                                basename, *CST_ADA, sfiles,
+                                            );
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -434,19 +438,18 @@ impl GprFile {
                 }
             }
 
-            Statement::AttributeDecl { name, value } => 
-                self.declare(
+            Statement::AttributeDecl { name, value } => self.declare(
+                current_pkg,
+                name.clone(),
+                ExprValue::new_with_raw(
+                    value,
+                    self,
+                    dependencies,
+                    scenarios,
+                    current_scenario,
                     current_pkg,
-                    name.clone(),
-                    ExprValue::new_with_raw(
-                        value,
-                        self,
-                        dependencies,
-                        scenarios,
-                        current_scenario,
-                        current_pkg,
-                    )?,
                 )?,
+            )?,
 
             Statement::Package {
                 name,
@@ -521,14 +524,17 @@ impl GprFile {
                         }
                     }
 
-                    let s = scenarios.intersection(current_scenario, combined);
-                    self.process_body(
-                        dependencies,
-                        scenarios,
-                        s,
-                        current_pkg,
-                        &w.body,
-                    )?;
+                    if let Some(s) =
+                        scenarios.intersection(current_scenario, combined)
+                    {
+                        self.process_body(
+                            dependencies,
+                            scenarios,
+                            s,
+                            current_pkg,
+                            &w.body,
+                        )?;
+                    }
                 }
             }
         }
