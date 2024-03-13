@@ -6,7 +6,7 @@ use std::path::PathBuf;
 pub enum Action {
     Stats,
     Dependencies { direct_only: bool, path: PathBuf },
-    GprShow { gprpath: PathBuf },
+    GprShow { gprpath: PathBuf, print_vars: bool },
 }
 
 fn to_abs(relpath: &PathBuf) -> Result<PathBuf, Error> {
@@ -71,10 +71,12 @@ pub fn parse_cli() -> Result<(Settings, Action), Error> {
                 .subcommand(
                     Command::new("show")
                         .about("Expand project attributes for all scenarios")
-                        .arg(
+                        .args([
                             arg!(<PROJECT>  "Project to analyze")
                                 .value_parser(clap::value_parser!(PathBuf)),
-                        ),
+                            arg!(--print_vars  "Display values of variables")
+                                .action(ArgAction::SetTrue),
+                        ]),
                 ),
         )
         .get_matches();
@@ -113,6 +115,7 @@ pub fn parse_cli() -> Result<(Settings, Action), Error> {
                 settings,
                 Action::GprShow {
                     gprpath: get_path(showsub, "PROJECT")?,
+                    print_vars: showsub.get_flag("print_vars"),
                 },
             )),
             _ => unreachable!(),

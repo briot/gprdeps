@@ -592,7 +592,7 @@ impl GprFile {
     }
 
     /// Print details about the project
-    pub fn print_details(&self, scenarios: &AllScenarios) {
+    pub fn print_details(&self, scenarios: &AllScenarios, print_vars: bool) {
         println!("file: {}", self.path.display());
         println!("project {} is", self.name);
 
@@ -602,17 +602,18 @@ impl GprFile {
             }
             let pkg: PackageName = unsafe { std::mem::transmute(pkgidx) };
             for (attrname, value) in &self.values[pkgidx] {
-                println!(
-                    "   for {}{}\n{}",
-                    pkg,
-                    attrname,
-                    value.format(scenarios, "      ", "\n"),
-                );
+                if print_vars || !matches!(attrname, SimpleName::Name(_)) {
+                    println!(
+                        "   for {}{}\n{}",
+                        pkg,
+                        attrname,
+                        value.format(scenarios, "      ", "\n"),
+                    );
+                }
             }
         }
+        // TODO should display self.source_files
         println!("end project;");
-
-        //    pub source_files: HashMap<Scenario, Vec<(PathBuf, Ustr)>>, // path and lang
     }
 }
 

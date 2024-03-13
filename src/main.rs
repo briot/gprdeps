@@ -43,11 +43,14 @@ fn main() -> Result<(), Error> {
                 env.show_indirect_dependencies(&path)?;
             }
         }
-        Action::GprShow { gprpath } => {
+        Action::GprShow {
+            gprpath,
+            print_vars,
+        } => {
             env.parse_all(&settings.root, &settings, false)?;
             let gpr =
                 env.get_gpr(&gprpath).expect("Project not found in graph");
-            gpr.print_details(&env.scenarios);
+            gpr.print_details(&env.scenarios, print_vars);
         }
     }
 
