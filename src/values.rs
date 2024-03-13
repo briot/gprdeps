@@ -20,13 +20,14 @@ fn two_columns<T>(
         col1.push(scenarios.describe(*scenario));
     }
     let max = col1.iter().map(|s| s.len()).max().unwrap_or(0);
-    map.iter()
+    let mut lines = map.iter()
         .enumerate()
         .map(|(idx, (_, val))| {
             format!("{}{:width$} {}", indent, col1[idx], fmt(val), width = max)
         })
-        .collect::<Vec<_>>()
-        .join(eol)
+        .collect::<Vec<_>>();
+    lines.sort();
+    lines.join(eol)
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -370,13 +371,13 @@ impl ExprValue {
         match self {
             ExprValue::Str(map) => {
                 two_columns(map, scenarios, indent, eol, |s| {
-                    format!("\"{}\"", s)
+                    format!("{}", s)
                 })
             }
             ExprValue::StrList(map) => {
                 two_columns(map, scenarios, indent, eol, |s| {
                     s.iter()
-                        .map(|s| format!("\"{}\"", s))
+                        .map(|s| format!("{}", s))
                         .collect::<Vec<_>>()
                         .join(", ")
                 })
@@ -384,7 +385,7 @@ impl ExprValue {
             ExprValue::PathList(map) => {
                 two_columns(map, scenarios, indent, eol, |s| {
                     s.iter()
-                        .map(|s| format!("\"{}\"", s.display()))
+                        .map(|s| format!("{}", s.display()))
                         .collect::<Vec<_>>()
                         .join(", ")
                 })
@@ -643,6 +644,73 @@ mod tests {
         expected.insert(s5, Ustr::from("val3val4"));
         expected.insert(s6, Ustr::from("val3val5"));
         assert_eq!(concat_expr, ExprValue::Str(expected));
+
+        Ok(())
+    }
+
+    /// A list expression is built with values that differ between scenarios.
+    /// The resulting expression should therefore have different values for
+    /// each scenario (four combinations here).
+    #[test]
+    fn list_in_scenar() -> Result<(), Error> {
+        let raw = crate::gpr::tests::parse(
+            r#"project P is
+               type On_Off is ("on", "off");
+               E1 : On_Off := external ("e1");
+               E2 : On_Off := external ("e2");
+               V := ("a", E1, E2, E1);
+               end P;"#
+        )?;
+        let mut scenarios = crate::scenarios::AllScenarios::default();
+        let gpr = crate::gpr::tests::process(&raw, &mut scenarios)?;
+        gpr.print_details(&scenarios, true);
+        crate::gpr::tests::assert_variable(
+            &gpr,
+            PackageName::None,
+            "v",
+            &scenarios,
+            "e1=off,e2=off a, off, off, off\n\
+             e1=off,e2=on  a, off, on, off\n\
+             e1=on,e2=off  a, on, off, on\n\
+             e1=on,e2=on   a, on, on, on",
+        );
+        Ok(())
+    }
+
+    /// A list expression is built via multiple case statements, and builds a
+    /// value that depends on the scenario.  We must make sure that a "match"
+    /// arm doesn't override the value of the expression in other scenarios.
+    #[test]
+    fn var_from_case() -> Result<(), Error> {
+        let raw = crate::gpr::tests::parse(
+            r#"project P is
+               type On_Off is ("on", "off");
+               E1 : On_Off := external ("e1");
+               V := ("a");
+               case E1 is
+                  when "on"  => V := V & ("b");
+                  when "off" => V := V & ("c");
+               end case;
+
+               --  Variable declared after first use of scenarios
+               E2 : On_Off := external ("e2");
+               case E2 is
+                  when "on"  => V := V & ("d");
+                  when "off" => V := V & ("e");
+               end case;
+            end P;
+            "#,
+        )?;
+        let mut scenarios = crate::scenarios::AllScenarios::default();
+        let gpr = crate::gpr::tests::process(&raw, &mut scenarios)?;
+        gpr.print_details(&scenarios, true);
+        crate::gpr::tests::assert_variable(
+            &gpr,
+            PackageName::None,
+            "v",
+            &scenarios,
+            "foo",
+        );
 
         Ok(())
     }
