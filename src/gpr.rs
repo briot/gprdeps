@@ -423,18 +423,15 @@ impl GprFile {
                 // Else we have a standard variable (either untyped or not
                 // using external), and we get its value from the expression
                 } else {
-                    self.declare(
+                    let e = ExprValue::new_with_raw(
+                        expr,
+                        self,
+                        dependencies,
+                        scenarios,
+                        current_scenario,
                         current_pkg,
-                        SimpleName::Name(*name),
-                        ExprValue::new_with_raw(
-                            expr,
-                            self,
-                            dependencies,
-                            scenarios,
-                            current_scenario,
-                            current_pkg,
-                        )?,
                     )?;
+                    self.declare(current_pkg, SimpleName::Name(*name), e)?;
                 }
             }
 
@@ -480,7 +477,7 @@ impl GprFile {
             }
 
             Statement::Case { varname, when } => {
-                // This is a scenario variable, so it's ExprValue is one
+                // This is a scenario variable, so its ExprValue is one
                 // entry per scenario, with one static string every time.
                 // We no longer have the link to the external name, so we use
                 // the ExprValue itself.

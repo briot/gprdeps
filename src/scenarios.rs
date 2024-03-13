@@ -380,14 +380,6 @@ impl AllScenarios {
                 if oldvar.has_same_valid(&valid) {
                     Ok(())
                 } else {
-                    let mut v = String::new();
-                    for s in valid {
-                        if !v.is_empty() {
-                            v.push_str(", ");
-                        }
-                        v.push_str(s.as_str());
-                    }
-
                     Err(Error::ScenarioTwice(name))
                 }
             }

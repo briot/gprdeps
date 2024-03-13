@@ -5,6 +5,9 @@ use crate::scenarios::{AllScenarios, Scenario};
 use std::collections::HashMap;
 use ustr::{Ustr, UstrMap, UstrSet};
 
+/// Display the value of a variable on two columns:
+///     <indent>scenario1      value1<eol>
+///     <indent>scenar2        value2<eol>
 fn two_columns<T>(
     map: &HashMap<Scenario, T>,
     scenarios: &AllScenarios,
@@ -356,7 +359,8 @@ impl ExprValue {
         }
     }
 
-    /// Display the expression
+    /// Display the expression.
+    /// This is intended for debugging only.
     pub fn format(
         &self,
         scenarios: &AllScenarios,
