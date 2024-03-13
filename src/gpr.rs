@@ -11,7 +11,7 @@ use crate::values::ExprValue;
 use path_clean::PathClean;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use ustr::{Ustr, UstrSet};
+use ustr::Ustr;
 use walkdir::WalkDir;
 
 lazy_static::lazy_static! {
@@ -404,20 +404,20 @@ impl GprFile {
                 // value for each scenario
                 let ext = expr.has_external();
                 if let (Some(typename), Some(ext)) = (typename, ext) {
-                    let valid =
+                    let valid_expr =
                         self.lookup(typename, dependencies, current_pkg)?;
+                    let mut valid = valid_expr.as_list()
+                        .iter().copied().collect::<Vec<_>>();
+                    valid.sort();  // ??? is this needed, is the type sorted
 
                     // Check that this variable wasn't already declared
                     // with a different set of values.
-                    scenarios.try_add_variable(
-                        ext,
-                        valid.as_list().iter().copied().collect::<UstrSet>(),
-                    )?;
+                    scenarios.try_add_variable(ext, &valid)?;
 
                     self.declare(
                         current_pkg,
                         SimpleName::Name(*name),
-                        ExprValue::new_with_variable(scenarios, ext, valid),
+                        ExprValue::Str(scenarios.expr_from_variable(ext)),
                     )?;
 
                 // Else we have a standard variable (either untyped or not

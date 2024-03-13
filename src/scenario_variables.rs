@@ -1,35 +1,44 @@
-use ustr::{Ustr, UstrSet};
+use ustr::Ustr;
 
 #[derive(Eq, PartialEq)]
 pub struct ScenarioVariable {
     name: Ustr,
-    valid: UstrSet,
+    valid: Vec<Ustr>,
+
+    // bitmask set to 1 for all entries in valid
+    full_mask: u64,
 }
 
 impl ScenarioVariable {
     /// Create a new scenario variable and its list of valid values.
-    /// The list of values must be sorted.
-    pub fn new(name: Ustr, valid: UstrSet) -> Self {
-        ScenarioVariable { name, valid }
+    /// The list of values must be sorted, so that we can easily compare two
+    /// such lists in the future.
+    pub fn new(name: Ustr, valid: &[Ustr]) -> Self {
+        ScenarioVariable {
+            name,
+            valid: valid.into(),
+            full_mask: 2_u64.pow(valid.len() as u32) - 1,
+        }
     }
 
     /// Check whether this variable has the exact same set of valid values.
     /// The list of values must be sorted.
-    pub fn has_same_valid(&self, valid: &UstrSet) -> bool {
-        if valid.len() != self.valid.len() {
-            return false;
-        }
-        for v in valid {
-            if !self.valid.contains(v) {
-                return false;
-            }
-        }
-        true
+    pub fn has_same_valid(&self, valid: &[Ustr]) -> bool {
+        self.valid == valid
     }
 
     /// Show the list of valid values (sorted alphabetically)
-    pub fn list_valid(&self) -> &UstrSet {
+    pub fn list_valid(&self) -> &[Ustr] {
         &self.valid
+    }
+
+    /// The name of the variable
+    pub fn name(&self) -> &Ustr {
+        &self.name
+    }
+
+    pub fn full_mask(&self) -> u64 {
+        self.full_mask
     }
 }
 
@@ -48,14 +57,27 @@ impl std::fmt::Display for ScenarioVariable {
     }
 }
 
+/**
+ * So that we can have a set of ScenarioVariables, and lookup by name
+ */
+impl std::borrow::Borrow<Ustr> for ScenarioVariable {
+    fn borrow(&self) -> &Ustr {
+        &self.name
+    }
+}
+
 #[cfg(test)]
 pub mod tests {
-    use ustr::{Ustr, UstrSet};
+    use crate::scenario_variables::ScenarioVariable;
 
     /// Mostly intended for tests: builds a set of strings
-    pub fn build_set(values: &[&str]) -> UstrSet {
-        let mut s = UstrSet::default();
-        s.extend(values.iter().map(|v| Ustr::from(v)));
-        s
+    pub fn build_var(var: &ScenarioVariable, values: &[&str]) -> u64 {
+        let mut res = 0_u64;
+        for (idx, v) in var.valid.iter().enumerate() {
+            if values.contains(&v.as_str()) {
+                res |= 2_u64.pow(idx as u32);
+            }
+        }
+        res
     }
 }

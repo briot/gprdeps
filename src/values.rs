@@ -3,7 +3,7 @@ use crate::gpr::GprFile;
 use crate::rawexpr::{PackageName, QualifiedName, RawExpr, SimpleName};
 use crate::scenarios::{AllScenarios, Scenario};
 use std::collections::HashMap;
-use ustr::{Ustr, UstrMap, UstrSet};
+use ustr::{Ustr, UstrMap};
 
 /// Display the value of a variable on two columns:
 ///     <indent>scenario1      value1<eol>
@@ -58,34 +58,6 @@ impl ExprValue {
         );
 
         ExprValue::StrList(m)
-    }
-
-    /// Given a type declaration (which cannot be declared in case statements,
-    /// so has only one set of possible values), generate an expression where
-    /// each value is in its own scenario.
-    /// For instance, given:
-    ///     type Mode_Type is ("debug", "optimize")
-    /// and calling this function for the variable "MODE", we create the
-    /// following expression:
-    ///     MODE=debug    => "debug"
-    ///     MODE=optimize => "optimize"
-    /// This is used to get the possible values of scenario variables
-    pub fn new_with_variable(
-        scenarios: &mut AllScenarios,
-        varname: Ustr,
-        type_values: &ExprValue,
-    ) -> Self {
-        let valid = type_values.as_list(); // panic if not a single list
-        let mut m = HashMap::new();
-        let s0 = Scenario::default();
-        for v in valid {
-            let mut onevalue = UstrSet::default();
-            onevalue.insert(*v);
-            if let Some(s1) = scenarios.split(s0, varname, onevalue) {
-                m.insert(s1, *v);
-            }
-        }
-        ExprValue::Str(m)
     }
 
     /// The expression is assumed to have a single value, for the default
