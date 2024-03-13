@@ -578,34 +578,20 @@ impl<'a> GprScanner<'a> {
 
 #[cfg(test)]
 mod tests {
-    use crate::ada_lexer::{AdaLexer, AdaLexerOptions};
     use crate::errors::Error;
-    use crate::gpr_scanner::{GprPathToIndex, GprScanner};
     use crate::rawexpr::tests::build_expr_list;
     use crate::rawexpr::{
         PackageName, QualifiedName, RawExpr, SimpleName, Statement,
         StatementList, StringOrOthers,
     };
     use crate::rawgpr::RawGPR;
-    use crate::settings::Settings;
-    use std::path::Path;
     use ustr::Ustr;
 
     fn do_check<F>(s: &str, check: F)
     where
         F: FnOnce(Result<RawGPR, Error>),
     {
-        let mut file = crate::files::File::new_from_str(s);
-        let settings = Settings::default();
-        let options = AdaLexerOptions {
-            kw_aggregate: true,
-            kw_body: false,
-        };
-        let lex = AdaLexer::new(&mut file, options);
-        let path_to_id: GprPathToIndex = Default::default();
-        let gpr =
-            GprScanner::parse(lex, Path::new("memory"), &path_to_id, &settings);
-        check(gpr);
+        check(crate::gpr::tests::parse(s));
     }
 
     fn expect_error(s: &str, msg: &str) {

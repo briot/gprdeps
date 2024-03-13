@@ -625,3 +625,60 @@ impl std::fmt::Display for GprFile {
         write!(f, "{}", self.path.display())
     }
 }
+
+#[cfg(test)]
+pub mod tests {
+    use crate::ada_lexer::{AdaLexer, AdaLexerOptions};
+    use crate::errors::Error;
+    use crate::gpr::GprFile;
+    use crate::gpr_scanner::{GprPathToIndex, GprScanner};
+    use crate::rawexpr::{PackageName, SimpleName};
+    use crate::rawgpr::RawGPR;
+    use crate::scenarios::AllScenarios;
+    use crate::settings::Settings;
+    use std::path::Path;
+    use ustr::Ustr;
+
+    /// Parse a project, for a test
+
+    pub fn parse(s: &str) -> Result<RawGPR, Error> {
+        let mut file = crate::files::File::new_from_str(s);
+        let settings = Settings::default();
+        let options = AdaLexerOptions {
+            kw_aggregate: true,
+            kw_body: false,
+        };
+        let lex = AdaLexer::new(&mut file, options);
+        let path_to_id: GprPathToIndex = Default::default();
+        GprScanner::parse(lex, Path::new("memory"), &path_to_id, &settings)
+    }
+
+    /// Return a process project
+
+    pub fn process(
+        raw: &RawGPR,
+        scenarios: &mut AllScenarios,
+    ) -> Result<GprFile, Error> {
+        let mut gpr = GprFile::new(&raw.path);
+        gpr.process(raw, None, &[], scenarios)?;
+        Ok(gpr)
+    }
+
+    /// Asserts the value of a variable
+
+    pub fn assert_variable(
+        gpr: &GprFile,
+        pkg: PackageName,
+        name: &str,
+        scenarios: &AllScenarios,
+        expected: &str,
+    ) {
+        let v =
+            gpr.values[pkg as usize].get(&SimpleName::Name(Ustr::from(name)));
+        let actual = match v {
+            None    => "NONE".to_string(),
+            Some(a) => a.format(scenarios, "", "\n"),
+        };
+        assert_eq!(actual, expected);
+    }
+}
