@@ -42,8 +42,22 @@ pub struct Environment {
 }
 
 impl Environment {
+    /// Register a GPR file into the graph.
+    /// Double-check it isn't there yet.
+
+    fn register_gpr(
+        &mut self,
+        gpr: PathBuf,
+        gprs: &mut HashMap<PathBuf, NodeIndex>,
+    ) -> NodeIndex {
+        *gprs.entry(gpr).or_insert_with_key(|key| {
+            self.graph.add_node(Node::Project(key.clone()))
+        })
+    }
+
     /// Find all GPR files that need to be parsed, in either root directory
-    /// or one of its child directories.
+    /// or one of its child directories.  If root is a project, we load it and
+    /// all its dependencies.
     /// Insert dummy nodes in the graph, so that we have an index
 
     fn find_all_gpr(
@@ -52,20 +66,16 @@ impl Environment {
         settings: &Settings,
     ) -> GprPathToIndex {
         let mut gprs = GprPathToIndex::new();
-
         for imp in &settings.runtime_gpr {
-            let nodeidx = self.graph.add_node(Node::Project(imp.clone()));
-            gprs.insert(imp.clone(), nodeidx);
+            let nodeidx = self.register_gpr(imp.clone(), &mut gprs);
             self.implicit_projects.push(nodeidx);
         }
 
-        for gpr in crate::findfile::FileFind::new(root) {
-            // Implicit projects might be found a second time
-            if let std::collections::hash_map::Entry::Vacant(e) =
-                gprs.entry(gpr.clone())
-            {
-                let nodeidx = self.graph.add_node(Node::Project(gpr));
-                e.insert(nodeidx);
+        if root.is_file() {
+            self.register_gpr(root.to_path_buf(), &mut gprs);
+        } else {
+            for gpr in crate::findfile::FileFind::new(root) {
+                self.register_gpr(gpr, &mut gprs);
             }
         }
         gprs
@@ -308,11 +318,12 @@ impl Environment {
 
     pub fn parse_all(
         &mut self,
-        path: &Path,
+        path_or_gpr: &Path,
         settings: &Settings,
         trim_attributes: bool,
     ) -> Result<(), Error> {
-        let gprindexes: GprPathToIndex = self.find_all_gpr(path, settings);
+        let gprindexes: GprPathToIndex =
+            self.find_all_gpr(path_or_gpr, settings);
         let rawfiles: RawGPRs = self.parse_raw_gprs(&gprindexes, settings)?;
         let mut gprmap: GprMap = self.process_projects(rawfiles)?;
         self.find_sources(&mut gprmap, settings, trim_attributes)?;
