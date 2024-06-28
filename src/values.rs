@@ -20,7 +20,8 @@ fn two_columns<T>(
         col1.push(scenarios.describe(*scenario));
     }
     let max = col1.iter().map(|s| s.len()).max().unwrap_or(0);
-    let mut lines = map.iter()
+    let mut lines = map
+        .iter()
         .enumerate()
         .map(|(idx, (_, val))| {
             format!("{}{:width$} {}", indent, col1[idx], fmt(val), width = max)
@@ -342,9 +343,7 @@ impl ExprValue {
     ) -> String {
         match self {
             ExprValue::Str(map) => {
-                two_columns(map, scenarios, indent, eol, |s| {
-                    format!("{}", s)
-                })
+                two_columns(map, scenarios, indent, eol, |s| format!("{}", s))
             }
             ExprValue::StrList(map) => {
                 two_columns(map, scenarios, indent, eol, |s| {
@@ -631,7 +630,7 @@ mod tests {
                E1 : On_Off := external ("e1");
                E2 : On_Off := external ("e2");
                V := ("a", E1, E2, E1);
-               end P;"#
+               end P;"#,
         )?;
         let mut scenarios = crate::scenarios::AllScenarios::default();
         let gpr = crate::gpr::tests::process(&raw, &mut scenarios)?;

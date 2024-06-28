@@ -28,7 +28,6 @@ impl<'a> GprScanner<'a> {
     pub fn parse(
         lex: AdaLexer<'a>,
         path: &Path,
-        path_to_id: &GprPathToIndex,
         settings: &'a Settings,
     ) -> Result<RawGPR, Error> {
         let mut scan = Self {
@@ -41,8 +40,8 @@ impl<'a> GprScanner<'a> {
         loop {
             match scan.base.peek() {
                 TokenKind::EndOfFile => break,
-                TokenKind::With => scan.parse_with_clause(path_to_id),
-                _ => scan.parse_project_declaration(path_to_id),
+                TokenKind::With => scan.parse_with_clause(),
+                _ => scan.parse_project_declaration(),
             }
             .map_err(|e| scan.base.error_with_location(e))?;
         }
@@ -152,28 +151,18 @@ impl<'a> GprScanner<'a> {
     }
 
     /// Expect a with_clause
-    fn parse_with_clause(
-        &mut self,
-        path_to_id: &GprPathToIndex,
-    ) -> Result<(), Error> {
+    fn parse_with_clause(&mut self) -> Result<(), Error> {
         self.base.expect(TokenKind::With)?;
 
         let path = self.base.expect_str()?;
         let normalized = self.normalize_gpr_path(path.as_str())?;
-        match path_to_id.get(&normalized) {
-            None => Err(Error::not_found(normalized.display()))?,
-            Some(idx) => self.gpr.imported.push(*idx),
-        }
-
+        self.gpr.imported.push(normalized);
         self.base.expect(TokenKind::Semicolon)?;
         Ok(())
     }
 
     /// Parses the declaration of the project, directly into self.gpr
-    fn parse_project_declaration(
-        &mut self,
-        path_to_id: &GprPathToIndex,
-    ) -> Result<(), Error> {
+    fn parse_project_declaration(&mut self) -> Result<(), Error> {
         loop {
             let n = self.base.safe_next()?;
             match n.kind {
@@ -192,7 +181,7 @@ impl<'a> GprScanner<'a> {
         self.gpr.extends = if self.base.peek() == TokenKind::Extends {
             let ext = self.parse_project_extension()?;
             let normalized = self.normalize_gpr_path(ext.as_str())?;
-            Some(path_to_id[&normalized])
+            Some(normalized)
         } else {
             None
         };

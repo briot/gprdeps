@@ -406,9 +406,8 @@ impl GprFile {
                 if let (Some(typename), Some(ext)) = (typename, ext) {
                     let valid_expr =
                         self.lookup(typename, dependencies, current_pkg)?;
-                    let mut valid = valid_expr.as_list()
-                        .iter().copied().collect::<Vec<_>>();
-                    valid.sort();  // ??? is this needed, is the type sorted
+                    let mut valid = valid_expr.as_list().to_vec();
+                    valid.sort(); // ??? is this needed, is the type sorted
 
                     // Check that this variable wasn't already declared
                     // with a different set of values.
@@ -571,7 +570,7 @@ impl GprFile {
 
         if let Some(ext) = extends {
             for v in 0..PACKAGE_NAME_VARIANTS {
-                self.values[v] = ext.values[v].clone();
+                self.values[v].clone_from(&ext.values[v]);
             }
         }
 
@@ -631,7 +630,7 @@ pub mod tests {
     use crate::ada_lexer::{AdaLexer, AdaLexerOptions};
     use crate::errors::Error;
     use crate::gpr::GprFile;
-    use crate::gpr_scanner::{GprPathToIndex, GprScanner};
+    use crate::gpr_scanner::GprScanner;
     use crate::rawexpr::{PackageName, SimpleName};
     use crate::rawgpr::RawGPR;
     use crate::scenarios::AllScenarios;
@@ -649,8 +648,7 @@ pub mod tests {
             kw_body: false,
         };
         let lex = AdaLexer::new(&mut file, options);
-        let path_to_id: GprPathToIndex = Default::default();
-        GprScanner::parse(lex, Path::new("memory"), &path_to_id, &settings)
+        GprScanner::parse(lex, Path::new("memory"), &settings)
     }
 
     /// Return a process project
@@ -676,7 +674,7 @@ pub mod tests {
         let v =
             gpr.values[pkg as usize].get(&SimpleName::Name(Ustr::from(name)));
         let actual = match v {
-            None    => "NONE".to_string(),
+            None => "NONE".to_string(),
             Some(a) => a.format(scenarios, "", "\n"),
         };
         assert_eq!(actual, expected);

@@ -98,8 +98,8 @@ use ustr::{Ustr, UstrMap};
 ///    * no entry in vars: all values of the variables are valid
 ///    * a bitmask that indicates which values are allowed in this scenario.
 #[derive(Default, PartialEq, Clone)]
-struct ScenarioDetails{
-    vars: UstrMap<u64>,   // Variable name => bitmak of valid values
+struct ScenarioDetails {
+    vars: UstrMap<u64>, // Variable name => bitmak of valid values
 }
 
 /// A pointer to a specific scenario.
@@ -201,7 +201,7 @@ impl AllScenarios {
                     match d2.vars.get(n) {
                         None => {
                             // both scenario allow all values
-                        },
+                        }
                         Some(v2) => {
                             d.vars.insert(*n, *v2);
                         }
@@ -211,7 +211,7 @@ impl AllScenarios {
                     match d2.vars.get(n) {
                         None => {
                             d.vars.insert(*n, *v1);
-                        },
+                        }
                         Some(v2) => {
                             let v = *v1 & *v2;
 
@@ -346,15 +346,17 @@ impl AllScenarios {
 
                     // The list of valid values is sorted, so the output will
                     // automatically be sorted.
-                    let values = var.list_valid().iter()
+                    let values = var
+                        .list_valid()
+                        .iter()
                         .enumerate()
-                        .filter_map(|(idx, v)|
+                        .filter_map(|(idx, v)| {
                             if d & 2_u64.pow(idx as u32) != 0 {
-                               Some(v.as_str())
+                                Some(v.as_str())
                             } else {
-                               None
+                                None
                             }
-                        )
+                        })
                         .collect::<Vec<_>>();
                     format!("{}={}", n, values.join("|"))
                 })
@@ -443,7 +445,9 @@ pub mod tests {
         let s4 = split(&mut scenarios, s3.unwrap(), "CHECK", &["most"]);
         assert_eq!(s4, Some(Scenario(3)));
         assert_eq!(
-            scenarios.describe(s4.unwrap()), "CHECK=most,MODE=lto|optimize");
+            scenarios.describe(s4.unwrap()),
+            "CHECK=most,MODE=lto|optimize"
+        );
 
         let s5 = split(&mut scenarios, s3.unwrap(), "CHECK", &["none", "some"]);
         assert_eq!(s5, Some(Scenario(4)));
@@ -487,12 +491,16 @@ pub mod tests {
         let s6 = scenarios.union(s3, s5);
         assert_eq!(s6, Some(Scenario(5)));
         assert_eq!(
-            scenarios.describe(s6.unwrap()), "CHECK=some,MODE=debug|optimize");
+            scenarios.describe(s6.unwrap()),
+            "CHECK=some,MODE=debug|optimize"
+        );
 
         let s6 = scenarios.union(s5, s3); //  reverse order
         assert_eq!(s6, Some(Scenario(5)));
         assert_eq!(
-            scenarios.describe(s6.unwrap()), "CHECK=some,MODE=debug|optimize");
+            scenarios.describe(s6.unwrap()),
+            "CHECK=some,MODE=debug|optimize"
+        );
 
         //  s3=[mode=debug, check=some]
         //  s8=[mode=lto,   check=most]

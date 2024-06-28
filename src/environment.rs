@@ -50,6 +50,7 @@ impl Environment {
         gpr: PathBuf,
         gprs: &mut HashMap<PathBuf, NodeIndex>,
     ) -> NodeIndex {
+        // ??? Perhaps use raw_entry so that users can pass a &PathBuf parameter
         *gprs.entry(gpr).or_insert_with_key(|key| {
             self.graph.add_node(Node::Project(key.clone()))
         })
@@ -87,35 +88,56 @@ impl Environment {
 
     fn parse_raw_gprs(
         &mut self,
-        gprs: &GprPathToIndex,
+        gprs: &mut GprPathToIndex,
         settings: &Settings,
     ) -> Result<RawGPRs, Error> {
         let mut rawfiles = RawGPRs::new();
-        for (path, nodeidx) in gprs {
-            let mut file = crate::files::File::new(path)?;
+
+        let mut tovisit: Vec<(PathBuf, NodeIndex)> =
+            gprs.iter().map(|(p, n)| (p.clone(), *n)).collect();
+
+        while let Some(visit) = tovisit.pop() {
+            let (path, nodeidx) = visit;
+
+            let mut file = crate::files::File::new(&path)?;
             let options = AdaLexerOptions {
                 kw_aggregate: true,
                 kw_body: false,
             };
             let raw = GprScanner::parse(
                 AdaLexer::new(&mut file, options),
-                path,
-                gprs,
+                &path,
                 settings,
             )?;
 
-            if !raw.is_abstract && !self.implicit_projects.contains(nodeidx) {
+            if !raw.is_abstract && !self.implicit_projects.contains(&nodeidx) {
                 for imp in &self.implicit_projects {
-                    self.graph.add_edge(*nodeidx, *imp, Edge::GPRImports);
+                    self.graph.add_edge(nodeidx, *imp, Edge::GPRImports);
                 }
             }
             for dep in &raw.imported {
-                self.graph.add_edge(*nodeidx, *dep, Edge::GPRImports);
+                let depidx = match gprs.get(dep) {
+                    None => {
+                        let idx = self.register_gpr(dep.clone(), gprs);
+                        tovisit.push((dep.clone(), idx));
+                        idx
+                    }
+                    Some(depidx) => *depidx,
+                };
+                self.graph.add_edge(nodeidx, depidx, Edge::GPRImports);
             }
-            if let Some(ext) = raw.extends {
-                self.graph.add_edge(*nodeidx, ext, Edge::GPRExtends);
+            if let Some(ref ext) = raw.extends {
+                let extidx = match gprs.get(ext) {
+                    None => {
+                        let idx = self.register_gpr(ext.clone(), gprs);
+                        tovisit.push((ext.clone(), idx));
+                        idx
+                    }
+                    Some(extidx) => *extidx,
+                };
+                self.graph.add_edge(nodeidx, extidx, Edge::GPRExtends);
             }
-            rawfiles.insert(*nodeidx, raw);
+            rawfiles.insert(nodeidx, raw);
         }
         Ok(rawfiles)
     }
@@ -135,9 +157,7 @@ impl Environment {
             let mut gpr = GprFile::new(&raw.path);
             gpr.process(
                 raw,
-                raw.extends
-                    .map(|e| self.graph.get_project(e).map(|path| &gprs[path]))
-                    .transpose()?,
+                raw.extends.as_ref().and_then(|e| gprs.get(e)),
                 &gprdeps,
                 &mut self.scenarios,
             )?;
@@ -322,9 +342,10 @@ impl Environment {
         settings: &Settings,
         trim_attributes: bool,
     ) -> Result<(), Error> {
-        let gprindexes: GprPathToIndex =
+        let mut gprindexes: GprPathToIndex =
             self.find_all_gpr(path_or_gpr, settings);
-        let rawfiles: RawGPRs = self.parse_raw_gprs(&gprindexes, settings)?;
+        let rawfiles: RawGPRs =
+            self.parse_raw_gprs(&mut gprindexes, settings)?;
         let mut gprmap: GprMap = self.process_projects(rawfiles)?;
         self.find_sources(&mut gprmap, settings, trim_attributes)?;
         self.add_sources_to_graph(gprindexes, &mut gprmap)?;

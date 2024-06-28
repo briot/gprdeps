@@ -15,5 +15,5 @@ pub struct Settings {
     // List of project files implicitly imported by all others.  This is meant
     // for runtime files for the various languages.
     pub root: PathBuf,
-    // The root directory, underneath which we look for all projecrt files
+    // The root directory, underneath which we look for all project files
 }
