@@ -2,7 +2,7 @@ use crate::directory::Directory;
 use crate::errors::Error;
 use crate::rawexpr::{
     PackageName, QualifiedName, SimpleName, Statement, StatementList,
-    StringOrOthers, PACKAGE_NAME_VARIANTS,
+    PACKAGE_NAME_VARIANTS,
 };
 use crate::rawgpr::RawGPR;
 use crate::scenarios::{AllScenarios, Scenario};
@@ -323,6 +323,7 @@ impl GprFile {
         name: SimpleName,
         value: ExprValue,
     ) -> Result<(), Error> {
+        println!("MANU declare {:?} as {:?}", name, value);
         self.values[package as usize].insert(name, value);
         Ok(())
     }
@@ -379,6 +380,7 @@ impl GprFile {
         current_pkg: PackageName,
         statement: &Statement,
     ) -> std::result::Result<(), Error> {
+        println!("\nMANU process_one_statement {:?} current_scenario={:?}", statement, current_scenario);
         match statement {
             Statement::TypeDecl { typename, valid } => {
                 let e = ExprValue::new_with_raw(
@@ -412,6 +414,7 @@ impl GprFile {
                     // Check that this variable wasn't already declared
                     // with a different set of values.
                     scenarios.try_add_variable(ext, &valid)?;
+                    println!("MANU got external variable typename={:?}, valid={:?}", typename, valid);
 
                     self.declare(
                         current_pkg,
@@ -476,60 +479,44 @@ impl GprFile {
             }
 
             Statement::Case { varname, when } => {
-                // This is a scenario variable, so its ExprValue is one
-                // entry per scenario, with one static string every time.
-                // We no longer have the link to the external name, so we use
-                // the ExprValue itself.
-                let var = self.lookup(varname, dependencies, current_pkg)?;
-                let mut remaining = var.prepare_case_stmt()?;
+                // * remaining is the remaining list of valid values for var.  It
+                //   becomes smaller with each WhenClause.
+                // * var is the list of valid values for the scenario variable.
+
+                let mut case_stmt = match self.lookup(
+                       varname, dependencies, current_pkg)?
+                {
+                    ExprValue::Str(per_scenario) =>
+                        scenarios.prepare_case_stmt(&per_scenario),
+                    _ => Err(Error::VariableMustBeString)?,
+                };
+
+                println!("MANU case stmt: {:?}", case_stmt);
 
                 for w in when {
-                    let mut combined = Scenario::default();
-                    let mut is_first = true;
-
-                    let mut combine = |s: Scenario| -> Result<(), Error> {
-                        if is_first {
-                            combined = s;
-                            is_first = false;
-                        } else {
-                            combined = scenarios
-                                .union(combined, s)
-                                .ok_or(Error::CannotCombineScenarios)?;
-                        }
-                        Ok(())
-                    };
-
-                    for val in &w.values {
-                        match val {
-                            StringOrOthers::Str(s) => {
-                                // If the variable wasn't a scenario
-                                // variable, we might not have all possible
-                                // values (e.g. Target variable)
-                                let c = remaining.get(s);
-                                if let Some(c) = c {
-                                    combine(*c)?;
-                                    remaining.remove(s);
-                                }
+                    println!("MANU process when clause");
+                    match scenarios.process_when_clause(&mut case_stmt, w) {
+                        None => {
+                            if !w.body.is_empty() {
+                                // ??? Should report proper location
+                                Err(Error::UselessWhenClause)?;
                             }
-                            StringOrOthers::Others => {
-                                for s in remaining.values() {
-                                    combine(*s)?;
-                                }
-                                remaining.clear();
+                        },
+                        Some(scenar_for_when) => {
+                            if let Some(s) =
+                                scenarios.intersection(
+                                    current_scenario,
+                                    scenar_for_when)
+                            {
+                                self.process_body(
+                                    dependencies,
+                                    scenarios,
+                                    s,
+                                    current_pkg,
+                                    &w.body,
+                                )?;
                             }
-                        }
-                    }
-
-                    if let Some(s) =
-                        scenarios.intersection(current_scenario, combined)
-                    {
-                        self.process_body(
-                            dependencies,
-                            scenarios,
-                            s,
-                            current_pkg,
-                            &w.body,
-                        )?;
+                       }
                     }
                 }
             }

@@ -37,6 +37,16 @@ impl ScenarioVariable {
         &self.name
     }
 
+    /// The mask for one specific value of the variable
+    pub fn mask(&self, value: &Ustr) -> u64 {
+        for (idx, val) in self.valid.iter().enumerate() {
+            if val == value {
+                return 2_u64.pow(idx as u32);
+            }
+        }
+        0
+    }
+
     pub fn full_mask(&self) -> u64 {
         self.full_mask
     }
