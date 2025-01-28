@@ -48,6 +48,27 @@ impl ::core::fmt::Debug for WhenClauseScenario {
     }
 }
 
+impl WhenClauseScenario {
+    pub fn new(
+        scenars: &mut AllScenarios,
+        varname: Ustr,
+        mask: u64,
+        full_mask: u64,
+    ) -> Self {
+        let mut details = ScenarioDetails::default();
+        details.vars.insert(varname, mask);
+
+        let negate = !mask & full_mask;
+        let mut neg_details = ScenarioDetails::default();
+        neg_details.vars.insert(varname, negate);
+
+        WhenClauseScenario {
+            scenario: scenars.create_or_reuse(details),
+            negate_scenario: Some(scenars.create_or_reuse(neg_details)),
+        }
+    }
+}
+
 /// Describes nested when clauses
 #[derive(Clone, Debug)]
 pub struct WhenContext {
@@ -91,8 +112,8 @@ struct ScenarioDetails {
 
 /// A pointer to a specific scenario.
 /// The default is a scenario that allows all values for all variables
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash)]
-pub struct Scenario(usize);
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, PartialOrd, Ord, Hash)]
+pub struct Scenario(pub(crate) usize);
 
 impl std::fmt::Display for Scenario {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -304,17 +325,12 @@ impl AllScenarios {
         } else if mask == 0 {
             None
         } else {
-            let mut details = ScenarioDetails::default();
-            details.vars.insert(case_stmt.var, mask);
-
-            let negate = !mask & case_stmt.full_mask;
-            let mut neg_details = ScenarioDetails::default();
-            neg_details.vars.insert(case_stmt.var, negate);
-
-            Some(WhenClauseScenario {
-                scenario: self.create_or_reuse(details),
-                negate_scenario: Some(self.create_or_reuse(neg_details)),
-            })
+            Some(WhenClauseScenario::new(
+                self,
+                case_stmt.var,
+                mask,
+                case_stmt.full_mask,
+            ))
         }
     }
 
@@ -481,79 +497,6 @@ pub mod tests {
 
         Ok(())
     }
-
-    //    #[test]
-    //    fn test_union() -> Result<(), Error> {
-    //        let mut scenarios = AllScenarios::default();
-    //        try_add_variable(
-    //            &mut scenarios,
-    //            "MODE",
-    //            &["debug", "lto", "optimize"],
-    //        )?;
-    //        try_add_variable(&mut scenarios, "CHECK", &["most", "none", "some"])?;
-    //        let s0 = Scenario::default();
-    //
-    //        //  s3=[mode=debug,    check=some]
-    //        //  s5=[mode=optimize, check=some]
-    //        //     => s6=[mode=debug|optimize, check=some]
-    //        let s2 = split(&mut scenarios, s0, "MODE", &["debug"]).unwrap();
-    //        let s3 = split(&mut scenarios, s2, "CHECK", &["some"]).unwrap();
-    //        let s4 = split(&mut scenarios, s0, "MODE", &["optimize"]).unwrap();
-    //        let s5 = split(&mut scenarios, s4, "CHECK", &["some"]).unwrap();
-    //        let s6 = scenarios.union(s3, s5);
-    //        assert_eq!(s6, Some(Scenario(5)));
-    //        assert_eq!(
-    //            scenarios.describe(s6.unwrap()),
-    //            "CHECK=some,MODE=debug|optimize"
-    //        );
-    //
-    //        let s6 = scenarios.union(s5, s3); //  reverse order
-    //        assert_eq!(s6, Some(Scenario(5)));
-    //        assert_eq!(
-    //            scenarios.describe(s6.unwrap()),
-    //            "CHECK=some,MODE=debug|optimize"
-    //        );
-    //
-    //        //  s3=[mode=debug, check=some]
-    //        //  s8=[mode=lto,   check=most]
-    //        //     => no merging, they differ on more than one variable
-    //        let s6 = split(&mut scenarios, s0, "MODE", &["lto"]).unwrap();
-    //        let s7 = split(&mut scenarios, s6, "CHECK", &["most"]).unwrap();
-    //        let res = scenarios.union(s2, s7);
-    //        assert!(res.is_none());
-    //        let res = scenarios.union(s7, s2); // reverse order
-    //        assert!(res.is_none());
-    //
-    //        //  s3=[mode=debug, check=some]
-    //        //  s2=[mode=debug]      valid for all values of check
-    //        //     => s2=[mode=debug]
-    //        let res = scenarios.union(s3, s2);
-    //        assert_eq!(res, Some(Scenario(1)));
-    //        assert_eq!(scenarios.describe(res.unwrap()), "MODE=debug");
-    //
-    //        let res = scenarios.union(s2, s3); //  reverse order
-    //        assert_eq!(res, Some(Scenario(1)));
-    //        assert_eq!(scenarios.describe(res.unwrap()), "MODE=debug");
-    //
-    //        // Merging same value multiple times has no impact
-    //        let s2 = split(&mut scenarios, s0, "MODE", &["debug"]).unwrap();
-    //        let s3 = split(&mut scenarios, s0, "MODE", &["optimize"]).unwrap();
-    //        let s4 = scenarios.union(s2, s3).unwrap();
-    //        let res = scenarios.union(s4, s2).unwrap();
-    //        assert_eq!(scenarios.describe(res), "MODE=debug|optimize");
-    //
-    //        // Merging all possible values for a variable should remote it from
-    //        // the union altogether.
-    //        let s2 = split(&mut scenarios, s0, "MODE", &["debug"]).unwrap();
-    //        let s3 = split(&mut scenarios, s0, "MODE", &["optimize"]).unwrap();
-    //        let s4 = split(&mut scenarios, s0, "MODE", &["lto"]).unwrap();
-    //        let s5 = scenarios.union(s2, s3).unwrap();
-    //        let res = scenarios.union(s5, s4).unwrap();
-    //        assert_eq!(scenarios.describe(res), "");
-    //        assert_eq!(res, s0);
-    //
-    //        Ok(())
-    //    }
 
     #[test]
     fn test_intersection() -> Result<(), Error> {

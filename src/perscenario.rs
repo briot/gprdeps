@@ -17,6 +17,7 @@ impl<T> Default for PerScenario<T> {
 }
 
 impl<T> PerScenario<T> {
+
     /// Create a new hashmap, with a single value
     pub fn new(val: T, scenario: Scenario) -> Self {
         let mut m = HashMap::new();
@@ -65,6 +66,27 @@ impl<T> PerScenario<T> {
             .collect::<Vec<_>>();
         lines.sort();
         lines.join(eol)
+    }
+}
+
+impl<T> PerScenario<T>
+    where T: ::core::fmt::Debug
+{
+    #[cfg(test)]
+    pub fn format(&self, scenars: &AllScenarios) -> String {
+        let mut items = self.values.iter().collect::<Vec<_>>();
+        items.sort_by(|v1, v2| (v1.0).cmp(v2.0));
+
+        let mut res = String::new();
+        res.push('{');
+        for (s, v) in items {
+            res.push_str(&scenars.describe(*s));
+            res.push(':');
+            res.push_str(&format!("{:?}", v));
+            res.push_str(", ");
+        }
+        res.push('}');
+        res
     }
 }
 
@@ -173,5 +195,59 @@ where
             }
         }
         PerScenario::new_with_map(m)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::errors::Error;
+    use crate::perscenario::PerScenario;
+    use crate::scenarios::tests::try_add_variable;
+    use crate::scenarios::{
+        AllScenarios, Scenario, WhenClauseScenario, WhenContext,
+    };
+    use ustr::Ustr;
+
+    #[test]
+    fn test_per_scenario() -> Result<(), Error> {
+        let mut scenars = AllScenarios::default();
+        try_add_variable(&mut scenars, "E1", &["a", "b", "c", "d"])?;
+        try_add_variable(&mut scenars, "E2", &["e", "f"])?;
+
+        let context = WhenContext::new();
+
+        // Splitting an empty value has no effect
+        let mut empty = PerScenario::<u8>::default();
+        empty.split(&context, &mut scenars);
+        assert_eq!(empty, PerScenario::default());
+
+        // Splitting at the toplevel (empty context), also has no effect
+        let mut oneval = PerScenario::<u8>::new(1, Scenario::default());
+        let old = oneval.clone();
+        oneval.split(&context, &mut scenars);
+        assert_eq!(oneval, old);
+
+        // Now splitting on a variable
+        let when =
+            WhenClauseScenario::new(&mut scenars, Ustr::from("E1"), 3, 31);
+        let context2 = context.push(&mut scenars, when).unwrap();
+        let mut oneval = PerScenario::<u8>::new(1, Scenario::default());
+        oneval.split(&context2, &mut scenars);
+        assert_eq!(
+            oneval.format(&scenars),
+            "{E1=a|b:1, E1=c|d:1, }",
+        );
+
+        // Splitting on an independent variable
+        let when =
+            WhenClauseScenario::new(&mut scenars, Ustr::from("E2"), 1, 3);
+        let context3 = context.push(&mut scenars, when).unwrap();
+        oneval.split(&context3, &mut scenars);
+        assert_eq!(
+            oneval.format(&scenars),
+            "{E1=a|b,E2=e:1, E1=a|b,E2=f:1, E1=c|d,E2=e:1, E1=c|d,E2=f:1, }",
+        );
+
+        Ok(())
     }
 }
