@@ -28,11 +28,6 @@ impl Directory {
         Self { path, files }
     }
 
-    /// The number of potential source files in the directory
-    //    pub fn files_count(&self) -> usize {
-    //        self.files.len()
-    //    }
-
     /// Find all files matching the given suffix.
     pub fn filter_suffix(
         &self,

@@ -25,9 +25,6 @@ pub struct CaseStmtScenario {
 
 #[derive(Clone)]
 pub struct WhenClauseScenario {
-    full_mask: u64,
-    mask: u64,
-
     // The scenario associated with this set of values.  This involves a
     // single variable.
     pub scenario: Scenario,
@@ -70,11 +67,7 @@ impl WhenContext {
         scenars: &mut AllScenarios,
         clause: WhenClauseScenario,
     ) -> Option<Self> {
-
-        match scenars.intersection(
-            self.scenario,
-            clause.scenario,
-        ) {
+        match scenars.intersection(self.scenario, clause.scenario) {
             None => None,
             Some(s) => {
                 let mut context2 = self.clone();
@@ -330,8 +323,6 @@ impl AllScenarios {
         // effect is a duplicate
         if mask == case_stmt.full_mask {
             Some(WhenClauseScenario {
-                full_mask: case_stmt.full_mask,
-                mask,
                 scenario: Scenario::default(),
                 negate_scenario: None,
             })
@@ -346,8 +337,6 @@ impl AllScenarios {
             neg_details.vars.insert(case_stmt.var, negate);
 
             Some(WhenClauseScenario {
-                full_mask: case_stmt.full_mask,
-                mask,
                 scenario: self.create_or_reuse(details),
                 negate_scenario: Some(self.create_or_reuse(neg_details)),
             })

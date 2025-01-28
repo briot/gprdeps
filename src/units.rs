@@ -48,20 +48,6 @@ impl std::fmt::Display for QualifiedName {
     }
 }
 
-#[derive(Debug)]
-pub struct UnitSource {
-    pub path: std::path::PathBuf,
-    pub kind: SourceKind,
-}
-
-#[derive(Debug, Default)]
-pub struct Unit {
-    pub sources: Vec<UnitSource>,
-
-    // The list of dependencies as fully qualified names
-    pub deps: std::collections::HashSet<QualifiedName>,
-}
-
 /// What is the semantic of a source file within a unit.
 /// In C, units are made up of a single file, so this is always the
 /// implementation.

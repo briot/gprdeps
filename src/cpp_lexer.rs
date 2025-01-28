@@ -97,7 +97,7 @@ impl<'a> CppLexer<'a> {
     }
 }
 
-impl<'a> Lexer for CppLexer<'a> {
+impl Lexer for CppLexer<'_> {
     fn error_with_location(&self, error: Error) -> Error {
         self.base.error_with_location(error)
     }

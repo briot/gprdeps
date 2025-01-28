@@ -79,7 +79,7 @@ impl<'a> AdaLexer<'a> {
     }
 }
 
-impl<'a> Lexer for AdaLexer<'a> {
+impl Lexer for AdaLexer<'_> {
     fn error_with_location(&self, error: Error) -> Error {
         self.base.error_with_location(error)
     }

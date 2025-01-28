@@ -44,7 +44,6 @@ pub struct Environment {
 impl Environment {
     /// Register a GPR file into the graph.
     /// Double-check it isn't there yet.
-
     fn register_gpr(
         &mut self,
         gpr: PathBuf,
@@ -60,7 +59,6 @@ impl Environment {
     /// or one of its child directories.  If root is a project, we load it and
     /// all its dependencies.
     /// Insert dummy nodes in the graph, so that we have an index
-
     fn find_all_gpr(
         &mut self,
         root: &Path,
@@ -85,7 +83,6 @@ impl Environment {
     /// Parse the raw GPR files, but do not analyze them yet.
     /// We can however setup dependencies in the graph already, so that we can
     /// do topological sort later and parse them in the correct order.
-
     fn parse_raw_gprs(
         &mut self,
         gprs: &mut GprPathToIndex,
@@ -144,7 +141,6 @@ impl Environment {
 
     /// Process the projects in topological order, so that any reference to a
     /// variable or attribute in another project is found.
-
     fn process_projects(&mut self, rawfiles: RawGPRs) -> Result<GprMap, Error> {
         let mut gprs = GprMap::new();
         for nodeidx in self.graph.toposort().iter().rev() {
@@ -170,7 +166,6 @@ impl Environment {
     /// we have processed all projects.
     /// Remove all attributes we do not actually need, which makes some
     /// scenarios useless too.
-
     fn find_sources(
         &mut self,
         gprs: &mut GprMap,
@@ -189,7 +184,6 @@ impl Environment {
     }
 
     /// Add a unit to the graph, if not there yet
-
     fn add_unit(&mut self, unitname: QualifiedName) -> NodeIndex {
         // ??? Can we avoid the clone here if the unit is already there
         *self
@@ -199,7 +193,6 @@ impl Environment {
     }
 
     /// Add a new dependency from the source to a given unit
-
     fn add_source_import(&mut self, source: NodeIndex, unit: QualifiedName) {
         let u = self.add_unit(unit);
         self.graph.add_edge(source, u, Edge::SourceImports);
@@ -207,7 +200,6 @@ impl Environment {
 
     /// Retrieve or add source file to the graph.
     /// Returns the node for the source, and information about the unit.
-
     fn add_source(&mut self, path: &PathBuf, lang: Ustr) -> Option<FileInfo> {
         match self.files.get(path) {
             Some(None) => None,
@@ -263,7 +255,6 @@ impl Environment {
 
     /// Create graph nodes for the source files, and group the files into
     /// logical units.
-
     fn add_sources_to_graph(
         &mut self,
         gprindexes: GprPathToIndex,
@@ -335,7 +326,6 @@ impl Environment {
 
     /// Recursively look for all project files, parse them and prepare the
     /// dependency graph.
-
     pub fn parse_all(
         &mut self,
         path_or_gpr: &Path,
@@ -355,7 +345,6 @@ impl Environment {
     }
 
     /// Displays some stats about the graph
-
     pub fn print_stats(&self) {
         println!("Graph nodes:  {:-7}", self.graph.node_count());
         println!("   Projects:     = {:-6}", self.gprs.len());
@@ -365,7 +354,6 @@ impl Environment {
     }
 
     /// Report the list of units directly imported by the given file
-
     pub fn show_direct_dependencies(&self, path: &Path) -> Result<(), Error> {
         let info = self
             .files
@@ -388,7 +376,6 @@ impl Environment {
     }
 
     /// Report all dependencies of the given source file
-
     pub fn show_indirect_dependencies(
         &mut self,
         path: &Path,
@@ -433,7 +420,6 @@ impl Environment {
     }
 
     /// Retrieve the node for a project node
-
     pub fn get_gpr(&self, gprpath: &Path) -> Option<&GprFile> {
         self.gprs.get(gprpath)
     }

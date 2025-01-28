@@ -83,53 +83,53 @@ impl DepGraph {
                     Edge::UnitSpec(_scenar)
                     | Edge::UnitImpl(_scenar)
                     | Edge::UnitSeparate(_scenar) => {
-//                        // If we already have the same node in the vector, we
-//                        // merge the scenarios
-//                        let target = e.target();
-//                        match specs.get_mut(&target) {
-//                            None => {
-//                                specs.insert(target, vec![*scenar]);
-//                            }
-//                            Some(scenarios) => {
-//                                let mut merged = false;
-//                                for s in scenarios.iter_mut() {
-//                                    if let Some(s2) =
-//                                        all_scenarios.union(*s, *scenar)
-//                                    {
-//                                        *s = s2;
-//                                        merged = true
-//                                    }
-//                                }
-//                                if !merged {
-//                                    scenarios.push(*scenar);
-//                                } else {
-//                                    // If we have only two scenarios left, and we
-//                                    // did not just add the second one, we should
-//                                    // try and merge them.  Otherwise, we might
-//                                    // have the following case:
-//                                    //   insert checks=off,tasking=off
-//                                    //   insert checks=on,tasking=on
-//                                    //   insert checks=on,tasking=off
-//                                    //      => tasking=off + checks=on,tasking=on
-//                                    //   insert checks=off,tasking=on
-//                                    //      =>  tasking=off + tasking=on
-//                                    // and the last two scenarios could actually
-//                                    // be merged now.
-//
-//                                    // ??? This will not be sufficient, and union()
-//                                    // should have a better algorithm instead.
-//
-//                                    if scenarios.len() == 2 {
-//                                        if let Some(s2) = all_scenarios
-//                                            .union(scenarios[0], scenarios[1])
-//                                        {
-//                                            scenarios.clear();
-//                                            scenarios.push(s2);
-//                                        }
-//                                    }
-//                                }
-//                            }
-//                        }
+                        //                        // If we already have the same node in the vector, we
+                        //                        // merge the scenarios
+                        //                        let target = e.target();
+                        //                        match specs.get_mut(&target) {
+                        //                            None => {
+                        //                                specs.insert(target, vec![*scenar]);
+                        //                            }
+                        //                            Some(scenarios) => {
+                        //                                let mut merged = false;
+                        //                                for s in scenarios.iter_mut() {
+                        //                                    if let Some(s2) =
+                        //                                        all_scenarios.union(*s, *scenar)
+                        //                                    {
+                        //                                        *s = s2;
+                        //                                        merged = true
+                        //                                    }
+                        //                                }
+                        //                                if !merged {
+                        //                                    scenarios.push(*scenar);
+                        //                                } else {
+                        //                                    // If we have only two scenarios left, and we
+                        //                                    // did not just add the second one, we should
+                        //                                    // try and merge them.  Otherwise, we might
+                        //                                    // have the following case:
+                        //                                    //   insert checks=off,tasking=off
+                        //                                    //   insert checks=on,tasking=on
+                        //                                    //   insert checks=on,tasking=off
+                        //                                    //      => tasking=off + checks=on,tasking=on
+                        //                                    //   insert checks=off,tasking=on
+                        //                                    //      =>  tasking=off + tasking=on
+                        //                                    // and the last two scenarios could actually
+                        //                                    // be merged now.
+                        //
+                        //                                    // ??? This will not be sufficient, and union()
+                        //                                    // should have a better algorithm instead.
+                        //
+                        //                                    if scenarios.len() == 2 {
+                        //                                        if let Some(s2) = all_scenarios
+                        //                                            .union(scenarios[0], scenarios[1])
+                        //                                        {
+                        //                                            scenarios.clear();
+                        //                                            scenarios.push(s2);
+                        //                                        }
+                        //                                    }
+                        //                                }
+                        //                            }
+                        //                        }
                     }
 
                     _ => {}
