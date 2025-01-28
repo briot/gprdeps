@@ -1,7 +1,7 @@
 use crate::errors::Error;
 use crate::gpr::GprFile;
 use crate::rawexpr::{PackageName, QualifiedName, RawExpr, SimpleName};
-use crate::scenarios::{AllScenarios, Scenario};
+use crate::scenarios::{AllScenarios, Scenario, WhenClauseScenario, WhenContext};
 use std::collections::HashMap;
 use ustr::{Ustr, UstrMap};
 
@@ -19,7 +19,7 @@ fn two_columns<T>(
     for scenario in map.keys() {
         col1.push(scenarios.describe(*scenario));
     }
-    let max = col1.iter().map(|s| s.len()).max().unwrap_or(0);
+    let max = col1.iter().map(String::len).max().unwrap_or(0);
     let mut lines = map
         .iter()
         .enumerate()
@@ -73,7 +73,7 @@ impl ExprValue {
         }
     }
 
-    /// List all scenarios that have an impact on the variable's value
+    // List all scenarios that have an impact on the variable's value
     //    pub fn find_used_scenarios(&self, useful: &mut HashSet<Scenario>) {
     //        match self {
     //            ExprValue::Str(v) => useful.extend(v.keys()),
@@ -106,10 +106,10 @@ impl ExprValue {
         gpr: &GprFile, //  what project what this expression read in ?
         gpr_deps: &[&GprFile],
         scenars: &mut AllScenarios,
-        scenar: Scenario,
+        context: &WhenContext,
         current_pkg: PackageName,
     ) -> Result<Self, Error> {
-        println!("MANU new_with_raw {:?}", expr);
+        println!("MANU ExprValue.new_with_raw {:?}", expr);
         match expr {
             RawExpr::Empty | RawExpr::Others => {
                 panic!("{}: Cannot evaluate this expression {:?}", gpr, expr);
@@ -138,7 +138,7 @@ impl ExprValue {
                             gpr,
                             gpr_deps,
                             scenars,
-                            scenar,
+                            context,
                             current_pkg,
                         )?,
                     };
@@ -156,7 +156,7 @@ impl ExprValue {
                 Ok(gpr.lookup(q, gpr_deps, current_pkg)?.clone())
             }
             RawExpr::Str(s) => {
-                Ok(ExprValue::new_with_str_and_scenario(*s, scenar))
+                Ok(ExprValue::new_with_str_and_scenario(*s, context.scenario))
             }
             RawExpr::List(ls) => {
                 let mut m: HashMap<Scenario, Vec<Ustr>> = HashMap::new();
@@ -169,18 +169,30 @@ impl ExprValue {
                         gpr,
                         gpr_deps,
                         scenars,
-                        scenar,
+                        context,
                         current_pkg,
                     )?;
+                    println!("MANU element in list {:?}", s);
                     match s {
                         ExprValue::Str(per_scenario) => {
+//                            for (s, v) in per_scenario {
+//                                ExprValue::split_hash(
+//                                    &mut m,
+//                                    when,
+//                                    &None,  // all scenarios
+//                                    scenars,
+//                                );
+//                            }
+
+
 
                             // The string is always defined for the current
                             // scenario.
                             assert_eq!(per_scenario.len(), 1);
                             assert_eq!(
                                 *per_scenario.keys().next().unwrap(),
-                                scenar);
+                                context.scenario,
+                            );
 
                             // The string's scenario doesn't change anything in
                             // the list, so we can just add it.
@@ -189,27 +201,38 @@ impl ExprValue {
                         _ => Err(Error::ListCanOnlyContainStrings)?,
                     }
                 }
-                m.insert(scenar, values);
+                m.insert(context.scenario, values);
                 Ok(ExprValue::StrList(m))
             }
             RawExpr::Ampersand((left, right)) => {
-                let l_eval = ExprValue::new_with_raw(
+                let mut l_eval = ExprValue::new_with_raw(
                     left,
                     gpr,
                     gpr_deps,
                     scenars,
-                    scenar,
+                    context,
                     current_pkg,
                 )?;
-                let r_eval = ExprValue::new_with_raw(
+                let mut r_eval = ExprValue::new_with_raw(
                     right,
                     gpr,
                     gpr_deps,
                     scenars,
-                    scenar,
+                    context,
                     current_pkg,
                 )?;
-                println!("MANU  {:?} & {:?}", l_eval, r_eval);
+                println!("MANU RawExpr {:?} & {:?}", l_eval, r_eval);
+
+                let mut l_active = None;
+                let mut r_active = None;
+                for c in &context.clauses {
+                    l_active =
+                        Some(l_eval.split_in_place(c, &l_active, scenars));
+                    r_active =
+                        Some(r_eval.split_in_place(c, &r_active, scenars));
+                }
+                println!("MANU after splitting {:?}/{:?} & {:?}/{:?}",
+                    l_eval, l_active, r_eval, r_active);
 
                 match (l_eval, r_eval) {
                     (ExprValue::Str(ls), ExprValue::Str(rs)) => {
@@ -220,9 +243,9 @@ impl ExprValue {
                                 // mode that is the intersection of s1 and s2.
                                 // In other modes, v1 or v2 are considered the
                                 // empty string.
-                                let mut res = v1.as_str().to_string();
-                                res.push_str(v2.as_str());
                                 if let Some(s) = scenars.intersection(s1, *s2) {
+                                    let mut res = v1.as_str().to_string();
+                                    res.push_str(v2.as_str());
                                     m.insert(s, Ustr::from(&res));
                                 }
                             }
@@ -235,12 +258,10 @@ impl ExprValue {
                     (ExprValue::StrList(ls), ExprValue::Str(rs)) => {
                         let mut m = HashMap::new();
                         for (s1, v1) in ls {
-                            println!("MANU s1={}", s1);
                             for (s2, v2) in &rs {
-                                println!("MANU s2={}", s2);
-                                let mut res = v1.clone();
-                                res.push(*v2);
                                 if let Some(s) = scenars.intersection(s1, *s2) {
+                                    let mut res = v1.clone();
+                                    res.push(*v2);
                                     m.insert(s, res);
                                 }
                             }
@@ -252,9 +273,9 @@ impl ExprValue {
                         let mut m = HashMap::new();
                         for (s1, v1) in ls {
                             for (s2, v2) in &rs {
-                                let mut res = v1.clone();
-                                res.extend(v2.clone());
                                 if let Some(s) = scenars.intersection(s1, *s2) {
+                                    let mut res = v1.clone();
+                                    res.extend(v2.clone());
                                     m.insert(s, res);
                                 }
                             }
@@ -271,62 +292,143 @@ impl ExprValue {
     /// Merge two expression values.
     /// There must not be any conflicts (value set for the same scenario in
     /// both self and right, even if the values match).
-//    #[cfg(test)]
-//    fn merge_internal<T: Eq + std::fmt::Debug>(
-//        v_self: &mut HashMap<Scenario, T>,
-//        v_right: HashMap<Scenario, T>,
-//        scenars: &mut AllScenarios,
-//    ) -> Result<(), Error> {
-//        for (s2, v2) in v_right {
-//            let mut merged: Option<(Scenario, Scenario)> = None;
-//            for (s1, v1) in v_self.iter() {
-//                if *v1 == v2 {
-//                    //  Same value in two scenarios ?
-//                    if let Some(new_s) = scenars.union(*s1, s2) {
-//                        merged = Some((*s1, new_s));
-//                        break;
-//                    }
-//                }
-//            }
-//
-//            match merged {
-//                None => {
-//                    if v_self.contains_key(&s2) {
-//                        Err(Error::CannotMerge)?;
-//                    }
-//                    v_self.insert(s2, v2);
-//                }
-//                Some((s1, new_s)) => {
-//                    let old = v_self.remove(&s1);
-//                    v_self.insert(new_s, old.unwrap());
-//                }
-//            }
-//        }
-//        Ok(())
-//    }
+    //    #[cfg(test)]
+    //    fn merge_internal<T: Eq + std::fmt::Debug>(
+    //        v_self: &mut HashMap<Scenario, T>,
+    //        v_right: HashMap<Scenario, T>,
+    //        scenars: &mut AllScenarios,
+    //    ) -> Result<(), Error> {
+    //        for (s2, v2) in v_right {
+    //            let mut merged: Option<(Scenario, Scenario)> = None;
+    //            for (s1, v1) in v_self.iter() {
+    //                if *v1 == v2 {
+    //                    //  Same value in two scenarios ?
+    //                    if let Some(new_s) = scenars.union(*s1, s2) {
+    //                        merged = Some((*s1, new_s));
+    //                        break;
+    //                    }
+    //                }
+    //            }
+    //
+    //            match merged {
+    //                None => {
+    //                    if v_self.contains_key(&s2) {
+    //                        Err(Error::CannotMerge)?;
+    //                    }
+    //                    v_self.insert(s2, v2);
+    //                }
+    //                Some((s1, new_s)) => {
+    //                    let old = v_self.remove(&s1);
+    //                    v_self.insert(new_s, old.unwrap());
+    //                }
+    //            }
+    //        }
+    //        Ok(())
+    //    }
 
     /// Merge two expression values.
     /// There must not be any conflicts (value set for the same scenario in
     /// both self and right, even if the values match).
-//    #[cfg(test)]
-//    pub fn merge(
-//        &mut self,
-//        right: ExprValue,
-//        scenars: &mut AllScenarios,
-//    ) -> Result<(), Error> {
-//        match (self, right) {
-//            (ExprValue::Str(v_self), ExprValue::Str(v_right)) => {
-//                ExprValue::merge_internal(v_self, v_right, scenars)
-//            }
-//            (ExprValue::StrList(v_self), ExprValue::StrList(v_right)) => {
-//                ExprValue::merge_internal(v_self, v_right, scenars)
-//            }
-//            (ExprValue::PathList(v_self), ExprValue::PathList(v_right)) => {
-//                ExprValue::merge_internal(v_self, v_right, scenars)
-//            }
-//            (s, r) => Err(Error::type_mismatch(s, r)),
-//        }
-//    }
+    //    #[cfg(test)]
+    //    pub fn merge(
+    //        &mut self,
+    //        right: ExprValue,
+    //        scenars: &mut AllScenarios,
+    //    ) -> Result<(), Error> {
+    //        match (self, right) {
+    //            (ExprValue::Str(v_self), ExprValue::Str(v_right)) => {
+    //                ExprValue::merge_internal(v_self, v_right, scenars)
+    //            }
+    //            (ExprValue::StrList(v_self), ExprValue::StrList(v_right)) => {
+    //                ExprValue::merge_internal(v_self, v_right, scenars)
+    //            }
+    //            (ExprValue::PathList(v_self), ExprValue::PathList(v_right)) => {
+    //                ExprValue::merge_internal(v_self, v_right, scenars)
+    //            }
+    //            (s, r) => Err(Error::type_mismatch(s, r)),
+    //        }
+    //    }
+
+    /// Computes the value of an expression, applying case statements.
+    /// For instance, if we start with the following variables:
+    ///     s1: Scenario = {"E1": "on"}
+    ///     s2: Scenario = {"E1": "off"}
+    ///     s3: Scenario = {"E2": "on" }
+    ///     s4: Scenario = {"E2": "off" }
+    ///     V1 = { s1: "a", s2+s3: "b", s2+s4: "c" }
+    ///     V2 = { s1: "d", s2: "e" }
+    ///
+    /// and we see the following code in the project file:
+    ///    case E1 is
+    ///       when "on" =>           --  scenario s1
+    ///           case E2 is
+    ///               when "on" =>   --  scenario s3
+    ///                   V3 := V1 & V2;
+    ///
+    /// Then the following occurs:
+    ///  * We will need V1, so we split its value so that we have individual
+    ///    entries for scenario s1.  This split must not change the overall
+    ///    value of V1.   In practice, V1 is unchanged, but we not the "active"
+    ///    entries (upper-cased here)
+    ///     V1 = { S1: "a", s2+s3: "b", s2+s4: "c" }
+    ///  * We then splitV1 for scenario s3 (E2=on).  Only active entries are
+    ///    changed.  Again we mark active entries
+    ///     V1 = { S1+S3: "a", s1+s4: "a", s2+s3: "b", s2+s4: "c" }
+    ///  * Same two splits for V2
+    ///     V2 = { S1: "d", s2: "e"}
+    ///     V2 = { S1+S3: "d", s1+s4: "d", s2: "e"}
+    ///  * We then combine the active entries from both variables.  This is a
+    ///    cross product
+    ///     V3 = { s1+s3: "ad" }
+    ///  * Note that if instead of setting V3 we were setting V1, we need to
+    ///    preserve the existing non-active entries, so we would end with:
+    ///     V1 = { s1+s3: "ad", s1+s4: "a", s2+s3: "b", s2+s4: "c" }
+    pub fn split_hash<T: Clone>(
+        map: &mut HashMap<Scenario, T>,
+        when: &WhenClauseScenario,
+        active: &Option<Vec<Scenario>>, // Only modify those entries if specified
+        scenars: &mut AllScenarios,
+    ) -> Vec<Scenario> {
+        let mut res = HashMap::new();
+        let mut new_active = Vec::new();
+        for (scenario, v) in map.into_iter() {
+            if active.as_ref().map_or(true, |l| l.contains(scenario)) {
+                if let Some(s) = scenars.intersection(*scenario, when.scenario)
+                {
+                    new_active.push(s);
+                    res.insert(s, v.clone());
+                }
+                if let Some(n) = when.negate_scenario {
+                    if let Some(s) = scenars.intersection(*scenario, n) {
+                        res.insert(s, v.clone());
+                    }
+                }
+            } else {
+                res.insert(*scenario, v.clone());
+            }
+        }
+        *map = res;
+        new_active
+    }
+
+    pub fn split_in_place(
+        &mut self,
+        when: &WhenClauseScenario,
+        active: &Option<Vec<Scenario>>, // Only modify those entries if specified
+        scenars: &mut AllScenarios,
+    ) -> Vec<Scenario> {
+        match self {
+            ExprValue::Str(map) => {
+                ExprValue::split_hash(map, when, active, scenars)
+            }
+            ExprValue::StrList(map) => {
+                ExprValue::split_hash(map, when, active, scenars)
+            }
+            ExprValue::PathList(map) => {
+                ExprValue::split_hash(map, when, active, scenars)
+            }
+        }
+    }
 
     /// Display the expression.
     /// This is intended for debugging only.
@@ -366,17 +468,15 @@ mod tests {
     use crate::gpr::GprFile;
     use crate::rawexpr::tests::{build_expr_list, build_expr_str};
     use crate::rawexpr::{PackageName, QualifiedName, RawExpr, SimpleName};
-    use crate::scenarios::tests::{split, try_add_variable};
-    use crate::scenarios::{AllScenarios, Scenario};
+    use crate::scenarios::{AllScenarios, WhenContext };
     use crate::values::ExprValue;
-    use std::collections::HashMap;
     use ustr::Ustr;
 
     #[test]
     fn test_eval() -> Result<(), Error> {
         let mut gpr = GprFile::new(std::path::Path::new("/"));
         let mut scenars = AllScenarios::default();
-        let scenar = Scenario::default();
+        let context = WhenContext::new();
         let pkg = PackageName::None;
 
         // Evaluate a string
@@ -387,7 +487,7 @@ mod tests {
                 &gpr,
                 &[],
                 &mut scenars,
-                scenar,
+                &context,
                 pkg
             )?,
             ExprValue::new_with_str(Ustr::from("value")),
@@ -401,7 +501,7 @@ mod tests {
                 &gpr,
                 &[],
                 &mut scenars,
-                scenar,
+                &context,
                 pkg
             )?,
             ExprValue::new_with_str(Ustr::from("valuesuffix")),
@@ -415,7 +515,7 @@ mod tests {
                 &gpr,
                 &[],
                 &mut scenars,
-                scenar,
+                &context,
                 pkg
             )?,
             ExprValue::new_with_list(&[Ustr::from("val1"), Ustr::from("val2")])
@@ -432,7 +532,7 @@ mod tests {
                 &gpr,
                 &[],
                 &mut scenars,
-                scenar,
+                &context,
                 pkg
             )?,
             ExprValue::new_with_list(&[
@@ -450,7 +550,7 @@ mod tests {
                 &gpr,
                 &[],
                 &mut scenars,
-                scenar,
+                &context,
                 pkg
             )?,
             ExprValue::new_with_list(&[
@@ -469,7 +569,7 @@ mod tests {
                 &gpr,
                 &[],
                 &mut scenars,
-                scenar,
+                &context,
                 pkg
             )?,
             ExprValue::new_with_list(&[
@@ -485,6 +585,8 @@ mod tests {
         gpr.declare(
             PackageName::None,
             SimpleName::Name(Ustr::from("var1")),
+            &context,
+            &mut scenars,
             ExprValue::new_with_str(Ustr::from("val1")),
         )?;
 
@@ -500,7 +602,7 @@ mod tests {
                 &gpr,
                 &[],
                 &mut scenars,
-                scenar,
+                &context,
                 pkg
             )?,
             ExprValue::new_with_str(Ustr::from("valueval1")),
@@ -509,110 +611,110 @@ mod tests {
         Ok(())
     }
 
-//    #[test]
-//    fn test_eval_scenario() -> Result<(), Error> {
-//        let mut gpr = GprFile::new(std::path::Path::new("/"));
-//        let mut scenars = AllScenarios::default();
-//        try_add_variable(&mut scenars, "MODE", &["debug", "optimize", "lto"])?;
-//        try_add_variable(&mut scenars, "CHECK", &["none", "some", "most"])?;
-//        let pkg = PackageName::None;
-//        let s0 = Scenario::default();
-//        let s2 =
-//            split(&mut scenars, s0, "MODE", &["debug", "optimize"]).unwrap();
-//        let s3 = split(&mut scenars, s0, "MODE", &["lto"]).unwrap();
-//        let s4 = split(&mut scenars, s0, "CHECK", &["some"]).unwrap();
-//        let s5 = split(&mut scenars, s0, "CHECK", &["most", "none"]).unwrap();
-//
-//        // Assume a variable has different values in two modes
-//        //     s2=[MODE=debug|optimize]      => "val2"
-//        //     s3=[MODE=lto]                 => "val3"
-//        let mut var1 = ExprValue::new_with_raw(
-//            &build_expr_str("val2"),
-//            &gpr,
-//            &[],
-//            &mut scenars,
-//            s2,
-//            pkg,
-//        )?;
-//        var1.merge(
-//            ExprValue::new_with_raw(
-//                &build_expr_str("val3"),
-//                &gpr,
-//                &[],
-//                &mut scenars,
-//                s3,
-//                pkg,
-//            )?,
-//            &mut scenars,
-//        )?;
-//        gpr.declare(
-//            PackageName::None,
-//            SimpleName::Name(Ustr::from("var1")),
-//            var1,
-//        )?;
-//
-//        // Another variable has different values in two modes
-//        //     s4=[CHECK=some]      => "val4"
-//        //     s5=[CHECK=most|none] => "val5"
-//        let mut var2 = ExprValue::new_with_raw(
-//            &build_expr_str("val4"),
-//            &gpr,
-//            &[],
-//            &mut scenars,
-//            s4,
-//            pkg,
-//        )?;
-//        var2.merge(
-//            ExprValue::new_with_raw(
-//                &build_expr_str("val5"),
-//                &gpr,
-//                &[],
-//                &mut scenars,
-//                s5,
-//                pkg,
-//            )?,
-//            &mut scenars,
-//        )?;
-//
-//        gpr.declare(
-//            PackageName::None,
-//            SimpleName::Name(Ustr::from("var2")),
-//            var2,
-//        )?;
-//
-//        // Computing the concatenation results in multiple possible values
-//        //   s2*s4=s7=[MODE=debug|optimize, CHECK=some]      => "val2val4"
-//        //   s2*s5=s8=[MODE=debug|optimize, CHECK=most|none] => "val2val5"
-//        //   s3*s4=s5=[MODE=lto,            CHECK=some]      => "val3val4"
-//        //   s3*s4=s6=[MODE=lto,            CHECK=most|none] => "val3val5"
-//        let s5 = split(&mut scenars, s3, "CHECK", &["some"]).unwrap();
-//        let s6 = split(&mut scenars, s3, "CHECK", &["most", "none"]).unwrap();
-//        let s7 = split(&mut scenars, s2, "CHECK", &["some"]).unwrap();
-//        let s8 = split(&mut scenars, s2, "CHECK", &["most", "none"]).unwrap();
-//
-//        let var1_ref = RawExpr::Name(QualifiedName {
-//            project: None,
-//            package: PackageName::None,
-//            name: SimpleName::Name(Ustr::from("var1")),
-//        });
-//        let var2_ref = RawExpr::Name(QualifiedName {
-//            project: None,
-//            package: PackageName::None,
-//            name: SimpleName::Name(Ustr::from("var2")),
-//        });
-//        let concat = var1_ref.ampersand(var2_ref);
-//        let concat_expr =
-//            ExprValue::new_with_raw(&concat, &gpr, &[], &mut scenars, s0, pkg)?;
-//
-//        let mut expected = HashMap::new();
-//        expected.insert(s7, Ustr::from("val2val4"));
-//        expected.insert(s8, Ustr::from("val2val5"));
-//        expected.insert(s5, Ustr::from("val3val4"));
-//        expected.insert(s6, Ustr::from("val3val5"));
-//        assert_eq!(concat_expr, ExprValue::Str(expected));
-//
-//        Ok(())
-//    }
+    //    #[test]
+    //    fn test_eval_scenario() -> Result<(), Error> {
+    //        let mut gpr = GprFile::new(std::path::Path::new("/"));
+    //        let mut scenars = AllScenarios::default();
+    //        try_add_variable(&mut scenars, "MODE", &["debug", "optimize", "lto"])?;
+    //        try_add_variable(&mut scenars, "CHECK", &["none", "some", "most"])?;
+    //        let pkg = PackageName::None;
+    //        let s0 = Scenario::default();
+    //        let s2 =
+    //            split(&mut scenars, s0, "MODE", &["debug", "optimize"]).unwrap();
+    //        let s3 = split(&mut scenars, s0, "MODE", &["lto"]).unwrap();
+    //        let s4 = split(&mut scenars, s0, "CHECK", &["some"]).unwrap();
+    //        let s5 = split(&mut scenars, s0, "CHECK", &["most", "none"]).unwrap();
+    //
+    //        // Assume a variable has different values in two modes
+    //        //     s2=[MODE=debug|optimize]      => "val2"
+    //        //     s3=[MODE=lto]                 => "val3"
+    //        let mut var1 = ExprValue::new_with_raw(
+    //            &build_expr_str("val2"),
+    //            &gpr,
+    //            &[],
+    //            &mut scenars,
+    //            s2,
+    //            pkg,
+    //        )?;
+    //        var1.merge(
+    //            ExprValue::new_with_raw(
+    //                &build_expr_str("val3"),
+    //                &gpr,
+    //                &[],
+    //                &mut scenars,
+    //                s3,
+    //                pkg,
+    //            )?,
+    //            &mut scenars,
+    //        )?;
+    //        gpr.declare(
+    //            PackageName::None,
+    //            SimpleName::Name(Ustr::from("var1")),
+    //            var1,
+    //        )?;
+    //
+    //        // Another variable has different values in two modes
+    //        //     s4=[CHECK=some]      => "val4"
+    //        //     s5=[CHECK=most|none] => "val5"
+    //        let mut var2 = ExprValue::new_with_raw(
+    //            &build_expr_str("val4"),
+    //            &gpr,
+    //            &[],
+    //            &mut scenars,
+    //            s4,
+    //            pkg,
+    //        )?;
+    //        var2.merge(
+    //            ExprValue::new_with_raw(
+    //                &build_expr_str("val5"),
+    //                &gpr,
+    //                &[],
+    //                &mut scenars,
+    //                s5,
+    //                pkg,
+    //            )?,
+    //            &mut scenars,
+    //        )?;
+    //
+    //        gpr.declare(
+    //            PackageName::None,
+    //            SimpleName::Name(Ustr::from("var2")),
+    //            var2,
+    //        )?;
+    //
+    //        // Computing the concatenation results in multiple possible values
+    //        //   s2*s4=s7=[MODE=debug|optimize, CHECK=some]      => "val2val4"
+    //        //   s2*s5=s8=[MODE=debug|optimize, CHECK=most|none] => "val2val5"
+    //        //   s3*s4=s5=[MODE=lto,            CHECK=some]      => "val3val4"
+    //        //   s3*s4=s6=[MODE=lto,            CHECK=most|none] => "val3val5"
+    //        let s5 = split(&mut scenars, s3, "CHECK", &["some"]).unwrap();
+    //        let s6 = split(&mut scenars, s3, "CHECK", &["most", "none"]).unwrap();
+    //        let s7 = split(&mut scenars, s2, "CHECK", &["some"]).unwrap();
+    //        let s8 = split(&mut scenars, s2, "CHECK", &["most", "none"]).unwrap();
+    //
+    //        let var1_ref = RawExpr::Name(QualifiedName {
+    //            project: None,
+    //            package: PackageName::None,
+    //            name: SimpleName::Name(Ustr::from("var1")),
+    //        });
+    //        let var2_ref = RawExpr::Name(QualifiedName {
+    //            project: None,
+    //            package: PackageName::None,
+    //            name: SimpleName::Name(Ustr::from("var2")),
+    //        });
+    //        let concat = var1_ref.ampersand(var2_ref);
+    //        let concat_expr =
+    //            ExprValue::new_with_raw(&concat, &gpr, &[], &mut scenars, s0, pkg)?;
+    //
+    //        let mut expected = HashMap::new();
+    //        expected.insert(s7, Ustr::from("val2val4"));
+    //        expected.insert(s8, Ustr::from("val2val5"));
+    //        expected.insert(s5, Ustr::from("val3val4"));
+    //        expected.insert(s6, Ustr::from("val3val5"));
+    //        assert_eq!(concat_expr, ExprValue::Str(expected));
+    //
+    //        Ok(())
+    //    }
 
     /// A list expression is built with values that differ between scenarios.
     /// The resulting expression should therefore have different values for
@@ -679,10 +781,10 @@ mod tests {
             PackageName::None,
             "v",
             &scenarios,
-            "e1=on,e2=on   a, f, b, d\n\
-             e1=on,re=off  a, f, b, c\n\
-             e1=off,e2=on   a, f, c, d\n\
-             e1=off,re=off  a, f, c, c",
+            "e1=off,e2=off a, f, c, e\n\
+             e1=off,e2=on  a, f, c, d\n\
+             e1=on,e2=off  a, f, b, e\n\
+             e1=on,e2=on   a, f, b, d"
         );
 
         Ok(())

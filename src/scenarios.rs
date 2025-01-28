@@ -2,27 +2,88 @@
 /// These variables (named "scenario variables") are typed (so can only take
 /// a specific set of values), and can be tested in case statements.
 /// When we parse project files, we evaluate all scenarios simultaneously.
-
 use crate::errors::Error;
 use crate::rawexpr::{StringOrOthers, WhenClause};
 use crate::scenario_variables::ScenarioVariable;
 use std::collections::{HashMap, HashSet};
 use ustr::{Ustr, UstrMap};
 
-/// A simple scenario is for a single scenario variable (as used for instance
-/// for a when clauses in case statements.
+/// Keeps the current state of a case statement.
+/// This involves keeping track of what "when" clauses have been seen, so we
+/// can flag when we have duplicates or missing choices.
 #[derive(Debug, Clone)]
 pub struct CaseStmtScenario {
     var: Ustr,
     // Name of the environment variable
-
+    // ??? Could be directly a &ScenarioVariable
     full_mask: u64,
     // A mask that covers all possible values for the variable
-
     remaining: u64,
     // The bitmask that lists all values of the variable not yet covered by
     // a WhenClause.
+}
 
+#[derive(Clone)]
+pub struct WhenClauseScenario {
+    full_mask: u64,
+    mask: u64,
+
+    // The scenario associated with this set of values.  This involves a
+    // single variable.
+    pub scenario: Scenario,
+
+    // The scenario associated with all other values of the variable
+    // For instance:
+    //     type E1_Type is ("a", "b", "c", "d");
+    //     E1 : E1_Type := external ("E1");
+    //     case E1 is
+    //        when "a" | "b" =>
+    //
+    // Then scenario is E1="a"|"b", and  self.negate_scenario is E1="c"|"d".
+    // This is None when scenario covers all possible values.
+    pub negate_scenario: Option<Scenario>,
+}
+
+impl ::core::fmt::Debug for WhenClauseScenario {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        write!(f, "clause:{:?}", self.scenario)
+    }
+}
+
+/// Describes nested when clauses
+#[derive(Clone, Debug)]
+pub struct WhenContext {
+    pub clauses: Vec<WhenClauseScenario>,
+    pub scenario: Scenario,
+}
+
+impl WhenContext {
+    pub fn new() -> Self {
+        WhenContext {
+            clauses: Vec::new(),
+            scenario: Scenario::default(),
+        }
+    }
+
+    pub fn push(
+        &self,
+        scenars: &mut AllScenarios,
+        clause: WhenClauseScenario,
+    ) -> Option<Self> {
+
+        match scenars.intersection(
+            self.scenario,
+            clause.scenario,
+        ) {
+            None => None,
+            Some(s) => {
+                let mut context2 = self.clone();
+                context2.clauses.push(clause);
+                context2.scenario = s;
+                Some(context2)
+            }
+        }
+    }
 }
 
 /// Describes the set of scenario variables covered by a scenario.  For each
@@ -31,7 +92,7 @@ pub struct CaseStmtScenario {
 ///    * a bitmask that indicates which values are allowed in this scenario.
 #[derive(Default, PartialEq, Clone)]
 struct ScenarioDetails {
-    vars: UstrMap<u64>,    // Variable name => bitmak of valid values
+    vars: UstrMap<u64>, // Variable name => bitmak of valid values
 }
 
 /// A pointer to a specific scenario.
@@ -114,7 +175,33 @@ impl AllScenarios {
         map
     }
 
-    /// Finds the intersection of two scenarios
+    /// Splits a scenario along one specific variable.
+    /// This is used for when-clauses.  For instance, assume we have the
+    /// following
+    ///     type T is ("a", "b", "c", "d");
+    ///     E1 : T := external("E1");
+    ///     E2 : T := external("E2");
+    ///
+    /// And s1 is the scenario for "E1=a|b" (for instance it is used for the
+    /// value of a variable).
+    ///
+    /// When the project file contains
+    ///    case E1 is
+    ///       when "a" =>
+    /// Then we split s1 long "E1=a".  Which means we compute
+    ///     s1 and "E1=a"     =>  E1=a
+    ///     s1 and not "E1=a" =>  E1=b
+    ///
+    /// If the project file contains
+    ///    case E1 is
+    ///        when "a" | "b" | "c" =>
+    /// Then we split and get
+    ///     s1 and "E1=a|b|c"     => E1=a|b
+    ///     s1 and not "E1=a|b|c" => empty
+    ///
+    /// If we have s2="E2=a|b", and we split along "E1=a" then we get:
+    ///     s2 and "E1=a"      => E1=a,    E2=a|b
+    ///     s2 and not "E1="   => E1=b|c|d E=a|b
     pub fn intersection(
         &mut self,
         s1: Scenario,
@@ -159,30 +246,29 @@ impl AllScenarios {
         Some(result)
     }
 
-    /// Used to combine the values in two scenarios.
-    /// We have two variables that have different values for different
-    /// scenarios, and we want to combine the values for all scenarios.
-
-    pub fn combine(
-        &mut self,
-        s1: Scenario,
-        s2: Scenario,
-    ) -> Scenario {
-        let mut result = ScenarioDetails::default();
-        let d1 = &self.scenarios[s1.0];
-        let d2 = &self.scenarios[s2.0];
-
-        for (s1, v1) in &d1.vars {
-
-        }
-
-
-
-        for var in &self.variables {
-
-        }
-        self.create_or_reuse(result)
-    }
+    //    /// Used to combine the values in two scenarios.
+    //    /// We have two variables that have different values for different
+    //    /// scenarios, and we want to combine the values for all scenarios.
+    //    pub fn combine(
+    //        &mut self,
+    //        s1: Scenario,
+    //        s2: Scenario,
+    //    ) -> Scenario {
+    //        let mut result = ScenarioDetails::default();
+    //        let d1 = &self.scenarios[s1.0];
+    //        let d2 = &self.scenarios[s2.0];
+    //
+    //        for (s1, v1) in &d1.vars {
+    //
+    //        }
+    //
+    //
+    //
+    //        for var in &self.variables {
+    //
+    //        }
+    //        self.create_or_reuse(result)
+    //    }
 
     /// Prepares the handling of a Case Statement in a project file.
     /// From
@@ -193,9 +279,7 @@ impl AllScenarios {
     /// where per_scenario is itself a hashmap mapping scenarios to the
     /// corresponding value of V.  Since we start with a simple external
     /// variable, each scenario will only reference a single scenario variable
-    /// ("VAR" in this example).  From there, we can prepare a
-    /// Case_Stmt_Scenario.
-
+    /// ("VAR" in this example).
     pub fn prepare_case_stmt(
         &self,
         variable_values: &HashMap<Scenario, Ustr>,
@@ -208,8 +292,7 @@ impl AllScenarios {
         let details = &self.scenarios[scenar.0];
         let varname = details.vars.iter().next().unwrap().0;
         assert_eq!(details.vars.len(), 1);
-        let typedef =
-            self.variables.get(varname).expect("Unknown variable");
+        let typedef = self.variables.get(varname).expect("Unknown variable");
         CaseStmtScenario {
             var: *varname,
             full_mask: typedef.full_mask(),
@@ -224,22 +307,21 @@ impl AllScenarios {
         &mut self,
         case_stmt: &mut CaseStmtScenario,
         when: &WhenClause,
-    ) -> Option<Scenario> {
+    ) -> Option<WhenClauseScenario> {
         let mut mask = 0_u64;
+        let var = self.variables.get(&case_stmt.var).unwrap();
+
         for val in &when.values {
             match val {
-               StringOrOthers::Str(value_in_when) => {
-                    let m =
-                        self.variables.get(&case_stmt.var)
-                        .unwrap()
-                        .mask(value_in_when);
+                StringOrOthers::Str(value_in_when) => {
+                    let m = var.mask(value_in_when);
                     mask |= m;
                     case_stmt.remaining &= !m;
-               }
-               StringOrOthers::Others => {
+                }
+                StringOrOthers::Others => {
                     mask = case_stmt.remaining;
                     case_stmt.remaining = 0;
-               }
+                }
             }
         }
 
@@ -247,13 +329,28 @@ impl AllScenarios {
         // return the default scenario, to avoid building a scenario which in
         // effect is a duplicate
         if mask == case_stmt.full_mask {
-            Some(Scenario::default())
+            Some(WhenClauseScenario {
+                full_mask: case_stmt.full_mask,
+                mask,
+                scenario: Scenario::default(),
+                negate_scenario: None,
+            })
         } else if mask == 0 {
             None
         } else {
             let mut details = ScenarioDetails::default();
             details.vars.insert(case_stmt.var, mask);
-            Some(self.create_or_reuse(details))
+
+            let negate = !mask & case_stmt.full_mask;
+            let mut neg_details = ScenarioDetails::default();
+            neg_details.vars.insert(case_stmt.var, negate);
+
+            Some(WhenClauseScenario {
+                full_mask: case_stmt.full_mask,
+                mask,
+                scenario: self.create_or_reuse(details),
+                negate_scenario: Some(self.create_or_reuse(neg_details)),
+            })
         }
     }
 
@@ -421,78 +518,78 @@ pub mod tests {
         Ok(())
     }
 
-//    #[test]
-//    fn test_union() -> Result<(), Error> {
-//        let mut scenarios = AllScenarios::default();
-//        try_add_variable(
-//            &mut scenarios,
-//            "MODE",
-//            &["debug", "lto", "optimize"],
-//        )?;
-//        try_add_variable(&mut scenarios, "CHECK", &["most", "none", "some"])?;
-//        let s0 = Scenario::default();
-//
-//        //  s3=[mode=debug,    check=some]
-//        //  s5=[mode=optimize, check=some]
-//        //     => s6=[mode=debug|optimize, check=some]
-//        let s2 = split(&mut scenarios, s0, "MODE", &["debug"]).unwrap();
-//        let s3 = split(&mut scenarios, s2, "CHECK", &["some"]).unwrap();
-//        let s4 = split(&mut scenarios, s0, "MODE", &["optimize"]).unwrap();
-//        let s5 = split(&mut scenarios, s4, "CHECK", &["some"]).unwrap();
-//        let s6 = scenarios.union(s3, s5);
-//        assert_eq!(s6, Some(Scenario(5)));
-//        assert_eq!(
-//            scenarios.describe(s6.unwrap()),
-//            "CHECK=some,MODE=debug|optimize"
-//        );
-//
-//        let s6 = scenarios.union(s5, s3); //  reverse order
-//        assert_eq!(s6, Some(Scenario(5)));
-//        assert_eq!(
-//            scenarios.describe(s6.unwrap()),
-//            "CHECK=some,MODE=debug|optimize"
-//        );
-//
-//        //  s3=[mode=debug, check=some]
-//        //  s8=[mode=lto,   check=most]
-//        //     => no merging, they differ on more than one variable
-//        let s6 = split(&mut scenarios, s0, "MODE", &["lto"]).unwrap();
-//        let s7 = split(&mut scenarios, s6, "CHECK", &["most"]).unwrap();
-//        let res = scenarios.union(s2, s7);
-//        assert!(res.is_none());
-//        let res = scenarios.union(s7, s2); // reverse order
-//        assert!(res.is_none());
-//
-//        //  s3=[mode=debug, check=some]
-//        //  s2=[mode=debug]      valid for all values of check
-//        //     => s2=[mode=debug]
-//        let res = scenarios.union(s3, s2);
-//        assert_eq!(res, Some(Scenario(1)));
-//        assert_eq!(scenarios.describe(res.unwrap()), "MODE=debug");
-//
-//        let res = scenarios.union(s2, s3); //  reverse order
-//        assert_eq!(res, Some(Scenario(1)));
-//        assert_eq!(scenarios.describe(res.unwrap()), "MODE=debug");
-//
-//        // Merging same value multiple times has no impact
-//        let s2 = split(&mut scenarios, s0, "MODE", &["debug"]).unwrap();
-//        let s3 = split(&mut scenarios, s0, "MODE", &["optimize"]).unwrap();
-//        let s4 = scenarios.union(s2, s3).unwrap();
-//        let res = scenarios.union(s4, s2).unwrap();
-//        assert_eq!(scenarios.describe(res), "MODE=debug|optimize");
-//
-//        // Merging all possible values for a variable should remote it from
-//        // the union altogether.
-//        let s2 = split(&mut scenarios, s0, "MODE", &["debug"]).unwrap();
-//        let s3 = split(&mut scenarios, s0, "MODE", &["optimize"]).unwrap();
-//        let s4 = split(&mut scenarios, s0, "MODE", &["lto"]).unwrap();
-//        let s5 = scenarios.union(s2, s3).unwrap();
-//        let res = scenarios.union(s5, s4).unwrap();
-//        assert_eq!(scenarios.describe(res), "");
-//        assert_eq!(res, s0);
-//
-//        Ok(())
-//    }
+    //    #[test]
+    //    fn test_union() -> Result<(), Error> {
+    //        let mut scenarios = AllScenarios::default();
+    //        try_add_variable(
+    //            &mut scenarios,
+    //            "MODE",
+    //            &["debug", "lto", "optimize"],
+    //        )?;
+    //        try_add_variable(&mut scenarios, "CHECK", &["most", "none", "some"])?;
+    //        let s0 = Scenario::default();
+    //
+    //        //  s3=[mode=debug,    check=some]
+    //        //  s5=[mode=optimize, check=some]
+    //        //     => s6=[mode=debug|optimize, check=some]
+    //        let s2 = split(&mut scenarios, s0, "MODE", &["debug"]).unwrap();
+    //        let s3 = split(&mut scenarios, s2, "CHECK", &["some"]).unwrap();
+    //        let s4 = split(&mut scenarios, s0, "MODE", &["optimize"]).unwrap();
+    //        let s5 = split(&mut scenarios, s4, "CHECK", &["some"]).unwrap();
+    //        let s6 = scenarios.union(s3, s5);
+    //        assert_eq!(s6, Some(Scenario(5)));
+    //        assert_eq!(
+    //            scenarios.describe(s6.unwrap()),
+    //            "CHECK=some,MODE=debug|optimize"
+    //        );
+    //
+    //        let s6 = scenarios.union(s5, s3); //  reverse order
+    //        assert_eq!(s6, Some(Scenario(5)));
+    //        assert_eq!(
+    //            scenarios.describe(s6.unwrap()),
+    //            "CHECK=some,MODE=debug|optimize"
+    //        );
+    //
+    //        //  s3=[mode=debug, check=some]
+    //        //  s8=[mode=lto,   check=most]
+    //        //     => no merging, they differ on more than one variable
+    //        let s6 = split(&mut scenarios, s0, "MODE", &["lto"]).unwrap();
+    //        let s7 = split(&mut scenarios, s6, "CHECK", &["most"]).unwrap();
+    //        let res = scenarios.union(s2, s7);
+    //        assert!(res.is_none());
+    //        let res = scenarios.union(s7, s2); // reverse order
+    //        assert!(res.is_none());
+    //
+    //        //  s3=[mode=debug, check=some]
+    //        //  s2=[mode=debug]      valid for all values of check
+    //        //     => s2=[mode=debug]
+    //        let res = scenarios.union(s3, s2);
+    //        assert_eq!(res, Some(Scenario(1)));
+    //        assert_eq!(scenarios.describe(res.unwrap()), "MODE=debug");
+    //
+    //        let res = scenarios.union(s2, s3); //  reverse order
+    //        assert_eq!(res, Some(Scenario(1)));
+    //        assert_eq!(scenarios.describe(res.unwrap()), "MODE=debug");
+    //
+    //        // Merging same value multiple times has no impact
+    //        let s2 = split(&mut scenarios, s0, "MODE", &["debug"]).unwrap();
+    //        let s3 = split(&mut scenarios, s0, "MODE", &["optimize"]).unwrap();
+    //        let s4 = scenarios.union(s2, s3).unwrap();
+    //        let res = scenarios.union(s4, s2).unwrap();
+    //        assert_eq!(scenarios.describe(res), "MODE=debug|optimize");
+    //
+    //        // Merging all possible values for a variable should remote it from
+    //        // the union altogether.
+    //        let s2 = split(&mut scenarios, s0, "MODE", &["debug"]).unwrap();
+    //        let s3 = split(&mut scenarios, s0, "MODE", &["optimize"]).unwrap();
+    //        let s4 = split(&mut scenarios, s0, "MODE", &["lto"]).unwrap();
+    //        let s5 = scenarios.union(s2, s3).unwrap();
+    //        let res = scenarios.union(s5, s4).unwrap();
+    //        assert_eq!(scenarios.describe(res), "");
+    //        assert_eq!(res, s0);
+    //
+    //        Ok(())
+    //    }
 
     #[test]
     fn test_intersection() -> Result<(), Error> {

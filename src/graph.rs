@@ -3,7 +3,7 @@ use crate::scenarios::{AllScenarios, Scenario};
 use crate::units::QualifiedName;
 use petgraph::algo::toposort;
 use petgraph::graph::Graph;
-use petgraph::visit::{Bfs, EdgeRef};
+use petgraph::visit::Bfs;
 use petgraph::Directed;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -80,9 +80,9 @@ impl DepGraph {
         if let Node::Unit(_) = &self.0[idx] {
             for e in self.0.edges(idx) {
                 match e.weight() {
-                    Edge::UnitSpec(scenar)
-                    | Edge::UnitImpl(scenar)
-                    | Edge::UnitSeparate(scenar) => {
+                    Edge::UnitSpec(_scenar)
+                    | Edge::UnitImpl(_scenar)
+                    | Edge::UnitSeparate(_scenar) => {
 //                        // If we already have the same node in the vector, we
 //                        // merge the scenarios
 //                        let target = e.target();

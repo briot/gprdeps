@@ -5,7 +5,7 @@ use crate::rawexpr::{
     PACKAGE_NAME_VARIANTS,
 };
 use crate::rawgpr::RawGPR;
-use crate::scenarios::{AllScenarios, Scenario};
+use crate::scenarios::{AllScenarios, Scenario, WhenContext};
 use crate::settings::Settings;
 use crate::values::ExprValue;
 use path_clean::PathClean;
@@ -130,7 +130,7 @@ impl GprFile {
         }
     }
 
-    /// Find which scenarios are actually useful for this project
+    // Find which scenarios are actually useful for this project
     //    pub fn find_used_scenarios(&self, useful: &mut HashSet<Scenario>) {
     //        for pkg in 0..PACKAGE_NAME_VARIANTS {
     //            for v in self.values[pkg].values() {
@@ -315,16 +315,68 @@ impl GprFile {
         self.source_files = files;
     }
 
-    /// Declare a new named object.
-    /// It is an error if such an object already exists.
+    /// Declare a new named object (or assign a new value to an existing
+    /// object).  Note that what we receive are delta values, which only
+    /// have values for the current context (e.g. case statements).
+    ///     case E is
+    ///        when "on" =>   V := V1 & V2;
+    /// then delta should be the value of V1 & V2 and will only include a
+    /// value for the scenario "E=on".  But if V already had values for other
+    /// scenarios they should be preserved.
     pub fn declare(
         &mut self,
         package: PackageName,
         name: SimpleName,
-        value: ExprValue,
+        context: &WhenContext,
+        scenars: &mut AllScenarios,
+        delta: ExprValue,
     ) -> Result<(), Error> {
-        println!("MANU declare {:?} as {:?}", name, value);
-        self.values[package as usize].insert(name, value);
+        let old = self.values[package as usize].get(&name);
+        if old.is_none() {
+            println!("MANU declare {:?} from delta {:?}, no old", name, delta);
+            self.values[package as usize].insert(name, delta);
+            return Ok(());
+        }
+
+        println!("MANU declare {:?} from delta {:?}", name, delta);
+        let mut old = old.unwrap().clone();
+        let mut active = None;
+        for c in &context.clauses {
+            active = Some(old.split_in_place(c, &active, scenars));
+        }
+        println!("MANU previous value {:?}", old);
+
+        match &mut old {
+            ExprValue::Str(_ov) => {
+                todo!()
+            }
+            ExprValue::StrList(ov) => {
+                ov.retain(|s, _v| {
+                    scenars.intersection(*s, context.scenario).is_none()
+                });
+                match &delta {
+                    ExprValue::Str(d) => {
+                        for (k, v) in d {
+                            ov.insert(*k, vec![*v]);
+                        }
+                    }
+                    ExprValue::StrList(ref d) => {
+                        for (k, v) in d {
+                            ov.insert(*k, v.clone());
+                        }
+                    }
+                    ExprValue::PathList(ref _d) => {
+                        todo!()
+                    }
+                }
+            }
+            ExprValue::PathList(_ov) => {
+                todo!()
+            }
+        }
+
+        println!("MANU  new value is {:?}", old);
+        self.values[package as usize].insert(name, old);
         Ok(())
     }
 
@@ -376,11 +428,14 @@ impl GprFile {
         &mut self,
         dependencies: &[&GprFile],
         scenarios: &mut AllScenarios,
-        current_scenario: Scenario,
+        context: &WhenContext,
         current_pkg: PackageName,
         statement: &Statement,
     ) -> std::result::Result<(), Error> {
-        println!("\nMANU process_one_statement {:?} current_scenario={:?}", statement, current_scenario);
+        println!(
+            "\nMANU process_one_statement {:?} current_scenario={:?}",
+            statement, context
+        );
         match statement {
             Statement::TypeDecl { typename, valid } => {
                 let e = ExprValue::new_with_raw(
@@ -388,10 +443,16 @@ impl GprFile {
                     self,
                     dependencies,
                     scenarios,
-                    current_scenario,
+                    context,
                     current_pkg,
                 )?;
-                self.declare(current_pkg, SimpleName::Name(*typename), e)?;
+                self.declare(
+                    current_pkg,
+                    SimpleName::Name(*typename),
+                    context,
+                    scenarios,
+                    e,
+                )?;
             }
 
             Statement::VariableDecl {
@@ -414,12 +475,19 @@ impl GprFile {
                     // Check that this variable wasn't already declared
                     // with a different set of values.
                     scenarios.try_add_variable(ext, &valid)?;
-                    println!("MANU got external variable typename={:?}, valid={:?}", typename, valid);
+                    println!(
+                        "MANU got external variable typename={:?}, valid={:?}",
+                        typename, valid
+                    );
 
+                    let expr =
+                        ExprValue::Str(scenarios.expr_from_variable(ext));
                     self.declare(
                         current_pkg,
                         SimpleName::Name(*name),
-                        ExprValue::Str(scenarios.expr_from_variable(ext)),
+                        context,
+                        scenarios,
+                        expr,
                     )?;
 
                 // Else we have a standard variable (either untyped or not
@@ -430,25 +498,37 @@ impl GprFile {
                         self,
                         dependencies,
                         scenarios,
-                        current_scenario,
+                        context,
                         current_pkg,
                     )?;
-                    self.declare(current_pkg, SimpleName::Name(*name), e)?;
+
+                    self.declare(
+                        current_pkg,
+                        SimpleName::Name(*name),
+                        context,
+                        scenarios,
+                        e,
+                    )?;
                 }
             }
 
-            Statement::AttributeDecl { name, value } => self.declare(
-                current_pkg,
-                name.clone(),
-                ExprValue::new_with_raw(
+            Statement::AttributeDecl { name, value } => {
+                let expr = ExprValue::new_with_raw(
                     value,
                     self,
                     dependencies,
                     scenarios,
-                    current_scenario,
+                    context,
                     current_pkg,
-                )?,
-            )?,
+                )?;
+                self.declare(
+                    current_pkg,
+                    name.clone(),
+                    context,
+                    scenarios,
+                    expr,
+                )?
+            }
 
             Statement::Package {
                 name,
@@ -472,51 +552,58 @@ impl GprFile {
                 self.process_body(
                     dependencies,
                     scenarios,
-                    current_scenario,
+                    context,
                     *name,
                     body,
                 )?;
             }
 
             Statement::Case { varname, when } => {
-                // * remaining is the remaining list of valid values for var.  It
-                //   becomes smaller with each WhenClause.
+                // * remaining is the remaining list of valid values for var.
+                //   It becomes smaller with each WhenClause.
                 // * var is the list of valid values for the scenario variable.
 
-                let mut case_stmt = match self.lookup(
-                       varname, dependencies, current_pkg)?
-                {
-                    ExprValue::Str(per_scenario) =>
-                        scenarios.prepare_case_stmt(&per_scenario),
-                    _ => Err(Error::VariableMustBeString)?,
-                };
+                let mut case_stmt =
+                    match self.lookup(varname, dependencies, current_pkg)? {
+                        ExprValue::Str(per_scenario) => {
+                            scenarios.prepare_case_stmt(per_scenario)
+                        }
+                        _ => Err(Error::VariableMustBeString)?,
+                    };
 
                 println!("MANU case stmt: {:?}", case_stmt);
 
                 for w in when {
-                    println!("MANU process when clause");
                     match scenarios.process_when_clause(&mut case_stmt, w) {
                         None => {
                             if !w.body.is_empty() {
                                 // ??? Should report proper location
                                 Err(Error::UselessWhenClause)?;
                             }
-                        },
-                        Some(scenar_for_when) => {
-                            if let Some(s) =
-                                scenarios.intersection(
-                                    current_scenario,
-                                    scenar_for_when)
-                            {
-                                self.process_body(
-                                    dependencies,
-                                    scenarios,
-                                    s,
-                                    current_pkg,
-                                    &w.body,
-                                )?;
+                        }
+                        Some(clause) => {
+                            match context.push(scenarios, clause) {
+                                None => {
+                                    if !w.body.is_empty() {
+                                        // ??? Should report proper location
+                                        Err(Error::UselessWhenClause)?;
+                                    }
+                                }
+                                Some(c) => {
+                                    println!(
+                                        "\nMANU process when clause {:?}",
+                                        c
+                                    );
+                                    self.process_body(
+                                        dependencies,
+                                        scenarios,
+                                        &c,
+                                        current_pkg,
+                                        &w.body,
+                                    )?;
+                                }
                             }
-                       }
+                        }
                     }
                 }
             }
@@ -529,7 +616,7 @@ impl GprFile {
         &mut self,
         dependencies: &[&GprFile],
         scenarios: &mut AllScenarios,
-        current_scenario: Scenario,
+        context: &WhenContext,
         current_pkg: PackageName,
         body: &StatementList,
     ) -> std::result::Result<(), Error> {
@@ -537,7 +624,7 @@ impl GprFile {
             self.process_one_stmt(
                 dependencies,
                 scenarios,
-                current_scenario,
+                context,
                 current_pkg,
                 &s.1,
             )?;
@@ -561,10 +648,12 @@ impl GprFile {
             }
         }
 
+        let context = WhenContext::new();
+
         self.process_body(
             dependencies,
             scenarios,
-            Scenario::default(),
+            &context,
             PackageName::None,
             &raw.body,
         )
