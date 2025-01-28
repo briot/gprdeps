@@ -3,6 +3,7 @@
 /// a specific set of values), and can be tested in case statements.
 /// When we parse project files, we evaluate all scenarios simultaneously.
 use crate::errors::Error;
+use crate::perscenario::PerScenario;
 use crate::rawexpr::{StringOrOthers, WhenClause};
 use crate::scenario_variables::ScenarioVariable;
 use std::collections::{HashMap, HashSet};
@@ -149,10 +150,7 @@ impl AllScenarios {
     /// This is used so that one can then use "V" in an expression in the
     /// project for instance.
     /// The output is compatible with an ExprValue::Str
-    pub fn expr_from_variable(
-        &mut self,
-        varname: Ustr,
-    ) -> HashMap<Scenario, Ustr> {
+    pub fn expr_from_variable(&mut self, varname: Ustr) -> PerScenario<Ustr> {
         let mut map = HashMap::new();
         let values = {
             let var = self.variables.get(&varname).expect("Unknown variable");
@@ -165,7 +163,7 @@ impl AllScenarios {
             let scenario = self.create_or_reuse(details);
             map.insert(scenario, *v);
         }
-        map
+        PerScenario::new_with_map(map)
     }
 
     /// Splits a scenario along one specific variable.
@@ -239,30 +237,6 @@ impl AllScenarios {
         Some(result)
     }
 
-    //    /// Used to combine the values in two scenarios.
-    //    /// We have two variables that have different values for different
-    //    /// scenarios, and we want to combine the values for all scenarios.
-    //    pub fn combine(
-    //        &mut self,
-    //        s1: Scenario,
-    //        s2: Scenario,
-    //    ) -> Scenario {
-    //        let mut result = ScenarioDetails::default();
-    //        let d1 = &self.scenarios[s1.0];
-    //        let d2 = &self.scenarios[s2.0];
-    //
-    //        for (s1, v1) in &d1.vars {
-    //
-    //        }
-    //
-    //
-    //
-    //        for var in &self.variables {
-    //
-    //        }
-    //        self.create_or_reuse(result)
-    //    }
-
     /// Prepares the handling of a Case Statement in a project file.
     /// From
     ///     V : Type := external ("VAR");
@@ -275,9 +249,10 @@ impl AllScenarios {
     /// ("VAR" in this example).
     pub fn prepare_case_stmt(
         &self,
-        variable_values: &HashMap<Scenario, Ustr>,
+        variable_values: &PerScenario<Ustr>,
     ) -> CaseStmtScenario {
         let scenar = variable_values
+            .values
             .iter()
             .next()
             .expect("Must have at least one possible value")

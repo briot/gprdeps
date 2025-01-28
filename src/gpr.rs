@@ -1,5 +1,6 @@
 use crate::directory::Directory;
 use crate::errors::Error;
+use crate::perscenario::PerScenario;
 use crate::rawexpr::{
     PackageName, QualifiedName, SimpleName, Statement, StatementList,
     PACKAGE_NAME_VARIANTS,
@@ -163,24 +164,12 @@ impl GprFile {
         }
     }
 
-    // Retrieve the value of a string attribute
-    //    fn str_attr(
-    //        &self,
-    //        pkg: PackageName,
-    //        name: &SimpleName,
-    //    ) -> &HashMap<Scenario, Ustr> {
-    //        match self.values[pkg as usize].get(name) {
-    //            Some(ExprValue::Str(v)) => v,
-    //            v => panic!("Wrong type for attribute {}{}, {:?}", pkg, name, v),
-    //        }
-    //    }
-
     // Retrieve the value of a string list attribute
     fn strlist_attr(
         &self,
         pkg: PackageName,
         name: &SimpleName,
-    ) -> &HashMap<Scenario, Vec<Ustr>> {
+    ) -> &PerScenario<Vec<Ustr>> {
         match self.values[pkg as usize].get(name) {
             Some(ExprValue::StrList(v)) => v,
             v => panic!("Wrong type for attribute {}{}, {:?}", pkg, name, v),
@@ -192,7 +181,7 @@ impl GprFile {
         &self,
         pkg: PackageName,
         name: &SimpleName,
-    ) -> &HashMap<Scenario, Vec<PathBuf>> {
+    ) -> &PerScenario<Vec<PathBuf>> {
         match self.values[pkg as usize].get(name) {
             Some(ExprValue::PathList(v)) => v,
             v => panic!("Wrong type for attribute {}{}, {:?}", pkg, name, v),
@@ -212,7 +201,7 @@ impl GprFile {
 
         let mut resolved_dirs = HashMap::new();
 
-        for (scenar, dirs_in_scenario) in sourcedirs {
+        for (scenar, dirs_in_scenario) in &sourcedirs.values {
             let mut for_scenar = Vec::new();
             for d in dirs_in_scenario {
                 if d.ends_with("/**") {
@@ -242,8 +231,10 @@ impl GprFile {
             resolved_dirs.insert(*scenar, for_scenar);
         }
 
-        self.values[PackageName::None as usize]
-            .insert(SimpleName::SourceDirs, ExprValue::PathList(resolved_dirs));
+        self.values[PackageName::None as usize].insert(
+            SimpleName::SourceDirs,
+            ExprValue::PathList(PerScenario::new_with_map(resolved_dirs)),
+        );
 
         Ok(())
     }
@@ -258,7 +249,7 @@ impl GprFile {
             self.pathlist_attr(PackageName::None, &SimpleName::SourceDirs);
         let mut files: HashMap<Scenario, Vec<(PathBuf, Ustr)>> = HashMap::new();
 
-        for (scenar_dir, dirs_in_scenar) in source_dirs {
+        for (scenar_dir, dirs_in_scenar) in &source_dirs.values {
             for (name, val) in &self.values[PackageName::Naming as usize] {
                 match (name, val) {
                     (
@@ -266,7 +257,7 @@ impl GprFile {
                         | SimpleName::BodySuffix(lang),
                         ExprValue::Str(v),
                     ) => {
-                        for (scenar_attr, suffix) in v {
+                        for (scenar_attr, suffix) in &v.values {
                             match scenarios
                                 .intersection(*scenar_attr, *scenar_dir)
                             {
@@ -289,7 +280,7 @@ impl GprFile {
                         SimpleName::Spec(_) | SimpleName::Body(_),
                         ExprValue::Str(v),
                     ) => {
-                        for (scenar_attr, basename) in v {
+                        for (scenar_attr, basename) in &v.values {
                             match scenarios
                                 .intersection(*scenar_attr, *scenar_dir)
                             {
@@ -340,38 +331,22 @@ impl GprFile {
 
         println!("MANU declare {:?} from delta {:?}", name, delta);
         let mut old = old.unwrap().clone();
-        let mut active = None;
-        for c in &context.clauses {
-            active = Some(old.split_in_place(c, &active, scenars));
-        }
-        println!("MANU previous value {:?}", old);
 
-        match &mut old {
-            ExprValue::Str(_ov) => {
-                todo!()
+        match (&mut old, delta) {
+            (ExprValue::Str(ov), ExprValue::Str(d)) => {
+                ov.update(context, d, scenars, |v| v);
             }
-            ExprValue::StrList(ov) => {
-                ov.retain(|s, _v| {
-                    scenars.intersection(*s, context.scenario).is_none()
-                });
-                match &delta {
-                    ExprValue::Str(d) => {
-                        for (k, v) in d {
-                            ov.insert(*k, vec![*v]);
-                        }
-                    }
-                    ExprValue::StrList(ref d) => {
-                        for (k, v) in d {
-                            ov.insert(*k, v.clone());
-                        }
-                    }
-                    ExprValue::PathList(ref _d) => {
-                        todo!()
-                    }
-                }
+            (ExprValue::StrList(ov), ExprValue::Str(d)) => {
+                ov.update(context, d, scenars, |v| vec![v]);
             }
-            ExprValue::PathList(_ov) => {
-                todo!()
+            (ExprValue::StrList(ov), ExprValue::StrList(d)) => {
+                ov.update(context, d, scenars, |v| v);
+            }
+            (ExprValue::PathList(ov), ExprValue::PathList(d)) => {
+                ov.update(context, d, scenars, |v| v);
+            }
+            _ => {
+                Err(Error::VariableMustBeString)?;
             }
         }
 
