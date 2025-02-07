@@ -14,6 +14,7 @@ mod gpr_scanner;
 mod graph;
 mod packagename;
 mod perscenario;
+mod qualifiedname;
 mod rawexpr;
 mod rawgpr;
 mod scenario_variables;
