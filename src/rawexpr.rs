@@ -470,9 +470,17 @@ impl RawExpr {
 
     /// Convert to a static string
     /// ??? Should use values.rs
-    pub fn into_static_str(self) -> Result<Ustr, Error> {
+    pub fn as_static_str(&self) -> Result<Ustr, Error> {
         match self {
-            RawExpr::Str(s) => Ok(s),
+            RawExpr::Str(s) => Ok(*s),
+            _ => Err(Error::NotStaticString),
+        }
+    }
+
+    /// Convert to a list of static strings
+    pub fn as_list(&self) -> Result<Vec<Ustr>, Error> {
+        match self {
+            RawExpr::List(s) => s.iter().map(|e| e.as_static_str()).collect(),
             _ => Err(Error::NotStaticString),
         }
     }

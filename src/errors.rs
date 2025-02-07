@@ -65,6 +65,9 @@ pub enum Error {
     #[error("Lists can only contain strings")]
     ListCanOnlyContainStrings,
 
+    #[error("Already declared")]
+    AlreadyDeclared,
+
     #[error("Wrong use of &")]
     WrongAmpersand,
 

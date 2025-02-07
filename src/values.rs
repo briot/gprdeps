@@ -29,16 +29,6 @@ impl ExprValue {
         ExprValue::StrList(PerScenario::new(list.to_vec(), Scenario::default()))
     }
 
-    /// The expression is assumed to have a single value, for the default
-    /// scenario (think of types).  Return that value.
-    /// Otherwise panic
-    pub fn as_list(&self) -> &Vec<Ustr> {
-        match self {
-            ExprValue::StrList(v) => v.get(Scenario::default()),
-            _ => panic!("Expected a list {:?}", self),
-        }
-    }
-
     /// Evaluate a raw expression into its final value.
     /// The expression is initially seen in the context of one scenario (matching
     /// the case and when clauses), but its final value might be split into

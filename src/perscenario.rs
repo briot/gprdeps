@@ -34,11 +34,6 @@ impl<T> PerScenario<T> {
         self.values.iter()
     }
 
-    /// Get the value for a specific scenario
-    pub fn get(&self, scenario: Scenario) -> &T {
-        &self.values[&scenario]
-    }
-
     /// Display the value of a variable on two columns:
     ///     <indent>scenario1 value1<eol>
     ///     <indent>scenar2   value2<eol>

@@ -55,6 +55,8 @@ fn keep_attribute(name: &SimpleName) -> bool {
 pub struct GprFile {
     pub name: Ustr,
     path: PathBuf,
+    types: [HashMap<SimpleName, Vec<Ustr>>; PACKAGE_NAME_VARIANTS],
+
     values: [HashMap<
         SimpleName, // variable or attribute name
         ExprValue,  // value for each scenario
@@ -306,6 +308,27 @@ impl GprFile {
         self.source_files = files;
     }
 
+    /// Declare a new type
+    pub fn declare_type(
+        &mut self,
+        package: PackageName,
+        name: SimpleName,
+        mut valid: Vec<Ustr>,
+    ) -> Result<(), Error> {
+        let old = self.types[package as usize].get(&name);
+        if old.is_none() {
+            valid.sort();
+            println!(
+                "MANU declare_type {:?} from delta {:?}, no old",
+                name, valid
+            );
+            self.types[package as usize].insert(name, valid);
+            Ok(())
+        } else {
+            Err(Error::AlreadyDeclared)?
+        }
+    }
+
     /// Declare a new named object (or assign a new value to an existing
     /// object).  Note that what we receive are delta values, which only
     /// have values for the current context (e.g. case statements).
@@ -373,6 +396,29 @@ impl GprFile {
         }
     }
 
+    /// Lookup a type definition
+    pub fn lookup_type<'a>(
+        &'a self,
+        name: &QualifiedName,
+        dependencies: &'a [&GprFile],
+        current_pkg: PackageName,
+    ) -> Result<&'a Vec<Ustr>, Error> {
+        let project = self.lookup_gpr(name, dependencies)?;
+        let mut r1 = None;
+
+        // An unqualified name is first searched in the current package
+        if name.package == PackageName::None && current_pkg != PackageName::None
+        {
+            r1 = project.types[current_pkg as usize].get(&name.name);
+        }
+
+        if r1.is_none() {
+            r1 = project.types[name.package as usize].get(&name.name);
+        }
+
+        r1.ok_or_else(|| Error::not_found(name))
+    }
+
     /// After a project has been processed, we can lookup values of variables
     /// and attributes directly, for each scenario.
     /// The lookup is also done in imported projects.
@@ -413,20 +459,10 @@ impl GprFile {
         );
         match statement {
             Statement::TypeDecl { typename, valid } => {
-                let e = ExprValue::new_with_raw(
-                    valid,
-                    self,
-                    dependencies,
-                    scenarios,
-                    context,
-                    current_pkg,
-                )?;
-                self.declare(
+                self.declare_type(
                     current_pkg,
                     SimpleName::Name(*typename),
-                    context,
-                    scenarios,
-                    e,
+                    valid.as_list()?,
                 )?;
             }
 
@@ -441,50 +477,46 @@ impl GprFile {
                 // default, but instead create a ExprValue with a different
                 // value for each scenario
                 let ext = expr.has_external();
-                if let (Some(typename), Some(ext)) = (typename, ext) {
-                    let valid_expr =
-                        self.lookup(typename, dependencies, current_pkg)?;
-                    let mut valid = valid_expr.as_list().to_vec();
-                    valid.sort(); // ??? is this needed, is the type sorted
+                let expr = match (typename, ext) {
+                    (Some(typename), Some(ext)) => {
+                        let valid = self.lookup_type(
+                            typename,
+                            dependencies,
+                            current_pkg,
+                        )?;
 
-                    // Check that this variable wasn't already declared
-                    // with a different set of values.
-                    scenarios.try_add_variable(ext, &valid)?;
-                    println!(
-                        "MANU got external variable typename={:?}, valid={:?}",
-                        typename, valid
-                    );
+                        // Check that this variable wasn't already declared
+                        // with a different set of values.
+                        scenarios.try_add_variable(ext, valid)?;
+                        println!(
+                            "MANU got external variable typename={:?}, valid={:?}",
+                            typename, valid
+                        );
 
-                    let expr =
-                        ExprValue::Str(scenarios.expr_from_variable(ext));
-                    self.declare(
-                        current_pkg,
-                        SimpleName::Name(*name),
-                        context,
-                        scenarios,
-                        expr,
-                    )?;
+                        ExprValue::Str(scenarios.expr_from_variable(ext))
+                    }
+                    _ => {
+                        // Else we have a standard variable (either untyped
+                        // or not using external), and we get its value from
+                        // the expression
+                        ExprValue::new_with_raw(
+                            expr,
+                            self,
+                            dependencies,
+                            scenarios,
+                            context,
+                            current_pkg,
+                        )?
+                    }
+                };
 
-                // Else we have a standard variable (either untyped or not
-                // using external), and we get its value from the expression
-                } else {
-                    let e = ExprValue::new_with_raw(
-                        expr,
-                        self,
-                        dependencies,
-                        scenarios,
-                        context,
-                        current_pkg,
-                    )?;
-
-                    self.declare(
-                        current_pkg,
-                        SimpleName::Name(*name),
-                        context,
-                        scenarios,
-                        e,
-                    )?;
-                }
+                self.declare(
+                    current_pkg,
+                    SimpleName::Name(*name),
+                    context,
+                    scenarios,
+                    expr,
+                )?;
             }
 
             Statement::AttributeDecl { name, value } => {
@@ -690,7 +722,6 @@ pub mod tests {
     use ustr::Ustr;
 
     /// Parse a project, for a test
-
     pub fn parse(s: &str) -> Result<RawGPR, Error> {
         let mut file = crate::files::File::new_from_str(s);
         let settings = Settings::default();
@@ -703,7 +734,6 @@ pub mod tests {
     }
 
     /// Return a process project
-
     pub fn process(
         raw: &RawGPR,
         scenarios: &mut AllScenarios,
@@ -714,7 +744,6 @@ pub mod tests {
     }
 
     /// Asserts the value of a variable
-
     pub fn assert_variable(
         gpr: &GprFile,
         pkg: PackageName,

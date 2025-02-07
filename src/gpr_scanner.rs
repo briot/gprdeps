@@ -79,11 +79,9 @@ impl<'a> GprScanner<'a> {
             Some(mut args) if args.len() == 1 => Ok(SimpleName::new_attr(
                 name3,
                 Some(StringOrOthers::Str(if insensitive.0 {
-                    Ustr::from(
-                        &args.remove(0).into_static_str()?.to_lowercase(),
-                    )
+                    Ustr::from(&args.remove(0).as_static_str()?.to_lowercase())
                 } else {
-                    args.remove(0).into_static_str()?
+                    args.remove(0).as_static_str()?
                 })),
             )?),
             Some(_) => Err(Error::WrongIndexes(name3)),
