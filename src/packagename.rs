@@ -1,8 +1,8 @@
 // ??? Should implement std::ops::Index so that we can use it directly to
 // index arrays.
 
-use ustr::Ustr;
 use crate::errors::Error;
+use ustr::Ustr;
 
 lazy_static::lazy_static! {
     static ref BINDER:Ustr = Ustr::from("binder");

@@ -3,11 +3,10 @@ use crate::base_lexer::BaseScanner;
 use crate::errors::Error;
 use crate::graph::NodeIndex;
 use crate::packagename::PackageName;
-use crate::rawexpr::{
-    QualifiedName, RawExpr, SimpleName, Statement, StringOrOthers, WhenClause,
-};
+use crate::rawexpr::{QualifiedName, RawExpr, Statement, WhenClause};
 use crate::rawgpr::RawGPR;
 use crate::settings::Settings;
+use crate::simplename::{SimpleName, StringOrOthers};
 use crate::tokens::{Token, TokenKind};
 use path_clean::PathClean;
 use std::collections::HashMap;
@@ -568,11 +567,9 @@ mod tests {
     use crate::errors::Error;
     use crate::packagename::PackageName;
     use crate::rawexpr::tests::build_expr_list;
-    use crate::rawexpr::{
-        QualifiedName, RawExpr, SimpleName, Statement, StatementList,
-        StringOrOthers,
-    };
+    use crate::rawexpr::{QualifiedName, RawExpr, Statement, StatementList};
     use crate::rawgpr::RawGPR;
+    use crate::simplename::{SimpleName, StringOrOthers};
     use ustr::Ustr;
 
     fn do_check<F>(s: &str, check: F)

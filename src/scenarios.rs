@@ -4,8 +4,9 @@
 /// When we parse project files, we evaluate all scenarios simultaneously.
 use crate::errors::Error;
 use crate::perscenario::PerScenario;
-use crate::rawexpr::{StringOrOthers, WhenClause};
+use crate::rawexpr::WhenClause;
 use crate::scenario_variables::ScenarioVariable;
+use crate::simplename::StringOrOthers;
 use std::collections::{HashMap, HashSet};
 use ustr::{Ustr, UstrMap};
 

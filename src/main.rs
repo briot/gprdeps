@@ -19,6 +19,7 @@ mod rawgpr;
 mod scenario_variables;
 mod scenarios;
 mod settings;
+mod simplename;
 mod sourcefile;
 mod tokens;
 mod units;

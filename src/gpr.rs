@@ -2,10 +2,11 @@ use crate::directory::Directory;
 use crate::errors::Error;
 use crate::packagename::{PackageName, PACKAGE_NAME_VARIANTS};
 use crate::perscenario::PerScenario;
-use crate::rawexpr::{QualifiedName, SimpleName, Statement, StatementList};
+use crate::rawexpr::{QualifiedName, Statement, StatementList};
 use crate::rawgpr::RawGPR;
 use crate::scenarios::{AllScenarios, Scenario, WhenContext};
 use crate::settings::Settings;
+use crate::simplename::SimpleName;
 use crate::values::ExprValue;
 use path_clean::PathClean;
 use std::collections::{HashMap, HashSet};
@@ -713,10 +714,10 @@ pub mod tests {
     use crate::gpr::GprFile;
     use crate::gpr_scanner::GprScanner;
     use crate::packagename::PackageName;
-    use crate::rawexpr::SimpleName;
     use crate::rawgpr::RawGPR;
     use crate::scenarios::AllScenarios;
     use crate::settings::Settings;
+    use crate::simplename::SimpleName;
     use std::path::Path;
     use ustr::Ustr;
 

@@ -2,8 +2,9 @@ use crate::errors::Error;
 use crate::gpr::GprFile;
 use crate::packagename::PackageName;
 use crate::perscenario::PerScenario;
-use crate::rawexpr::{QualifiedName, RawExpr, SimpleName};
+use crate::rawexpr::{QualifiedName, RawExpr};
 use crate::scenarios::{AllScenarios, Scenario, WhenContext};
+use crate::simplename::SimpleName;
 use ustr::Ustr;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -237,8 +238,9 @@ mod tests {
     use crate::gpr::GprFile;
     use crate::packagename::PackageName;
     use crate::rawexpr::tests::{build_expr_list, build_expr_str};
-    use crate::rawexpr::{QualifiedName, RawExpr, SimpleName};
+    use crate::rawexpr::{QualifiedName, RawExpr};
     use crate::scenarios::{AllScenarios, WhenContext};
+    use crate::simplename::SimpleName;
     use crate::values::ExprValue;
     use ustr::Ustr;
 
