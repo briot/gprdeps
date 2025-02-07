@@ -17,7 +17,6 @@ impl<T> Default for PerScenario<T> {
 }
 
 impl<T> PerScenario<T> {
-
     /// Create a new hashmap, with a single value
     pub fn new(val: T, scenario: Scenario) -> Self {
         let mut m = HashMap::new();
@@ -70,7 +69,8 @@ impl<T> PerScenario<T> {
 }
 
 impl<T> PerScenario<T>
-    where T: ::core::fmt::Debug
+where
+    T: ::core::fmt::Debug,
 {
     #[cfg(test)]
     pub fn format(&self, scenars: &AllScenarios) -> String {
@@ -233,10 +233,7 @@ mod tests {
         let context2 = context.push(&mut scenars, when).unwrap();
         let mut oneval = PerScenario::<u8>::new(1, Scenario::default());
         oneval.split(&context2, &mut scenars);
-        assert_eq!(
-            oneval.format(&scenars),
-            "{E1=a|b:1, E1=c|d:1, }",
-        );
+        assert_eq!(oneval.format(&scenars), "{E1=a|b:1, E1=c|d:1, }",);
 
         // Splitting on an independent variable
         let when =
