@@ -168,32 +168,45 @@ where
         }
     }
 
-    /// Merge two hashmaps
+    /// Merge two hashmaps (modified self in place)
     /// Only the scenario of the context is impacted, all other scenarios
     /// preserve their old values.
-    pub fn merge<U, F, V>(
+    pub fn merge<U, F>(
         &mut self,
         right: &mut PerScenario<U>,
         context: &WhenContext,
         scenars: &mut AllScenarios,
         merge: F,
-    ) -> PerScenario<V>
+    ) 
     where
-        F: Fn(&T, &U) -> V,
+        F: Fn(&mut T, &U),
         U: Clone,
     {
         self.split(context, scenars);
         right.split(context, scenars);
 
-        let mut m = HashMap::new();
-        for (s1, v1) in &self.values {
-            for (s2, v2) in &right.values {
-                if let Some(s) = scenars.intersection(*s1, *s2) {
-                    m.insert(s, merge(v1, v2));
-                }
+        for (s2, v2) in &right.values {
+            self.merge_one(context, scenars, &merge, *s2, v2);
+        }
+    }
+
+    pub fn merge_one<U, F>(
+        &mut self,
+        _context: &WhenContext,
+        scenars: &mut AllScenarios,
+        merge: F,
+        scenario: Scenario,
+        value: &U,
+    ) 
+    where
+        F: Fn(&mut T, &U),
+        U: Clone,
+    {
+        for (s1, v1) in self.values.iter_mut() {
+            if scenars.intersection(*s1, scenario).is_some() {
+                merge(v1, value);
             }
         }
-        PerScenario::new_with_map(m)
     }
 }
 
