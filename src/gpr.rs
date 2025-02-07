@@ -201,7 +201,7 @@ impl GprFile {
 
         let mut resolved_dirs = HashMap::new();
 
-        for (scenar, dirs_in_scenario) in &sourcedirs.values {
+        for (scenar, dirs_in_scenario) in sourcedirs.iter() {
             let mut for_scenar = Vec::new();
             for d in dirs_in_scenario {
                 if d.ends_with("/**") {
@@ -249,7 +249,7 @@ impl GprFile {
             self.pathlist_attr(PackageName::None, &SimpleName::SourceDirs);
         let mut files: HashMap<Scenario, Vec<(PathBuf, Ustr)>> = HashMap::new();
 
-        for (scenar_dir, dirs_in_scenar) in &source_dirs.values {
+        for (scenar_dir, dirs_in_scenar) in source_dirs.iter() {
             for (name, val) in &self.values[PackageName::Naming as usize] {
                 match (name, val) {
                     (
@@ -257,7 +257,7 @@ impl GprFile {
                         | SimpleName::BodySuffix(lang),
                         ExprValue::Str(v),
                     ) => {
-                        for (scenar_attr, suffix) in &v.values {
+                        for (scenar_attr, suffix) in v.iter() {
                             match scenarios
                                 .intersection(*scenar_attr, *scenar_dir)
                             {
@@ -280,7 +280,7 @@ impl GprFile {
                         SimpleName::Spec(_) | SimpleName::Body(_),
                         ExprValue::Str(v),
                     ) => {
-                        for (scenar_attr, basename) in &v.values {
+                        for (scenar_attr, basename) in v.iter() {
                             match scenarios
                                 .intersection(*scenar_attr, *scenar_dir)
                             {

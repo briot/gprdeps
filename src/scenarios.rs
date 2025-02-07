@@ -273,7 +273,6 @@ impl AllScenarios {
         variable_values: &PerScenario<Ustr>,
     ) -> CaseStmtScenario {
         let scenar = variable_values
-            .values
             .iter()
             .next()
             .expect("Must have at least one possible value")

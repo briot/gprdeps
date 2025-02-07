@@ -29,6 +29,11 @@ impl<T> PerScenario<T> {
         PerScenario { values: map }
     }
 
+    /// Iterate over all possible values
+    pub fn iter(&self) -> impl Iterator<Item = (&Scenario, &T)> {
+        self.values.iter()
+    }
+
     /// Get the value for a specific scenario
     pub fn get(&self, scenario: Scenario) -> &T {
         &self.values[&scenario]
