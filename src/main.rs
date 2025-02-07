@@ -12,6 +12,7 @@ mod findfile;
 mod gpr;
 mod gpr_scanner;
 mod graph;
+mod packagename;
 mod perscenario;
 mod rawexpr;
 mod rawgpr;

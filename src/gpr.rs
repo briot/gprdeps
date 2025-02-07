@@ -1,10 +1,8 @@
 use crate::directory::Directory;
 use crate::errors::Error;
+use crate::packagename::{PackageName, PACKAGE_NAME_VARIANTS};
 use crate::perscenario::PerScenario;
-use crate::rawexpr::{
-    PackageName, QualifiedName, SimpleName, Statement, StatementList,
-    PACKAGE_NAME_VARIANTS,
-};
+use crate::rawexpr::{QualifiedName, SimpleName, Statement, StatementList};
 use crate::rawgpr::RawGPR;
 use crate::scenarios::{AllScenarios, Scenario, WhenContext};
 use crate::settings::Settings;
@@ -714,7 +712,8 @@ pub mod tests {
     use crate::errors::Error;
     use crate::gpr::GprFile;
     use crate::gpr_scanner::GprScanner;
-    use crate::rawexpr::{PackageName, SimpleName};
+    use crate::packagename::PackageName;
+    use crate::rawexpr::SimpleName;
     use crate::rawgpr::RawGPR;
     use crate::scenarios::AllScenarios;
     use crate::settings::Settings;

@@ -2,9 +2,9 @@ use crate::ada_lexer::AdaLexer;
 use crate::base_lexer::BaseScanner;
 use crate::errors::Error;
 use crate::graph::NodeIndex;
+use crate::packagename::PackageName;
 use crate::rawexpr::{
-    PackageName, QualifiedName, RawExpr, SimpleName, Statement, StringOrOthers,
-    WhenClause,
+    QualifiedName, RawExpr, SimpleName, Statement, StringOrOthers, WhenClause,
 };
 use crate::rawgpr::RawGPR;
 use crate::settings::Settings;
@@ -566,10 +566,11 @@ impl<'a> GprScanner<'a> {
 #[cfg(test)]
 mod tests {
     use crate::errors::Error;
+    use crate::packagename::PackageName;
     use crate::rawexpr::tests::build_expr_list;
     use crate::rawexpr::{
-        PackageName, QualifiedName, RawExpr, SimpleName, Statement,
-        StatementList, StringOrOthers,
+        QualifiedName, RawExpr, SimpleName, Statement, StatementList,
+        StringOrOthers,
     };
     use crate::rawgpr::RawGPR;
     use ustr::Ustr;
