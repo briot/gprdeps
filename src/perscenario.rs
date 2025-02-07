@@ -8,17 +8,16 @@ pub struct PerScenario<T> {
     pub values: HashMap<Scenario, T>,
 }
 
-impl<T> Default for PerScenario<T> {
-    fn default() -> Self {
-        PerScenario {
-            values: HashMap::new(),
-        }
-    }
-}
-
 impl<T> PerScenario<T> {
+    /// Create a new value, with a default value valid for all scenarios
+    pub fn new(default_val: T) -> Self {
+        let mut m = HashMap::new();
+        m.insert(Scenario::default(), default_val);
+        PerScenario { values: m }
+    }
+
     /// Create a new hashmap, with a single value
-    pub fn new(val: T, scenario: Scenario) -> Self {
+    pub fn new_with_scenario(val: T, scenario: Scenario) -> Self {
         let mut m = HashMap::new();
         m.insert(scenario, val);
         PerScenario { values: m }
@@ -113,7 +112,7 @@ where
     /// have more cases.
     /// This function handles the case where the scenario we split on has more
     /// than one variable.
-    pub fn split(&mut self, context: &WhenContext, scenars: &mut AllScenarios) {
+    fn split(&mut self, context: &WhenContext, scenars: &mut AllScenarios) {
         let mut active: Option<Vec<Scenario>> = None;
 
         for c in &context.clauses {
@@ -203,9 +202,7 @@ mod tests {
     use crate::errors::Error;
     use crate::perscenario::PerScenario;
     use crate::scenarios::tests::try_add_variable;
-    use crate::scenarios::{
-        AllScenarios, Scenario, WhenClauseScenario, WhenContext,
-    };
+    use crate::scenarios::{AllScenarios, WhenClauseScenario, WhenContext};
     use ustr::Ustr;
 
     #[test]
@@ -216,13 +213,14 @@ mod tests {
 
         let context = WhenContext::new();
 
-        // Splitting an empty value has no effect
-        let mut empty = PerScenario::<u8>::default();
+        // Splitting on s0 context has no effect
+        let zero = PerScenario::<u8>::new(0);
+        let mut empty = zero.clone();
         empty.split(&context, &mut scenars);
-        assert_eq!(empty, PerScenario::default());
+        assert_eq!(empty, zero);
 
         // Splitting at the toplevel (empty context), also has no effect
-        let mut oneval = PerScenario::<u8>::new(1, Scenario::default());
+        let mut oneval = PerScenario::<u8>::new(1);
         let old = oneval.clone();
         oneval.split(&context, &mut scenars);
         assert_eq!(oneval, old);
@@ -231,7 +229,7 @@ mod tests {
         let when =
             WhenClauseScenario::new(&mut scenars, Ustr::from("E1"), 3, 31);
         let context2 = context.push(&mut scenars, when).unwrap();
-        let mut oneval = PerScenario::<u8>::new(1, Scenario::default());
+        let mut oneval = PerScenario::<u8>::new(1);
         oneval.split(&context2, &mut scenars);
         assert_eq!(oneval.format(&scenars), "{E1=a|b:1, E1=c|d:1, }",);
 

@@ -24,12 +24,12 @@ impl ExprValue {
     /// An expression that has a specific string value for one scenario, and no
     /// value for all others.
     pub fn new_with_str_and_scenario(s: Ustr, scenario: Scenario) -> Self {
-        ExprValue::Str(PerScenario::new(s, scenario))
+        ExprValue::Str(PerScenario::new_with_scenario(s, scenario))
     }
 
     // An expression value created as an empty list
     pub fn new_with_list(list: &[Ustr]) -> Self {
-        ExprValue::StrList(PerScenario::new(list.to_vec(), Scenario::default()))
+        ExprValue::StrList(PerScenario::new(list.to_vec()))
     }
 
     /// Evaluate a raw expression into its final value.
@@ -135,7 +135,7 @@ impl ExprValue {
                         _ => Err(Error::ListCanOnlyContainStrings)?,
                     }
                 }
-                Ok(ExprValue::StrList(PerScenario::new(
+                Ok(ExprValue::StrList(PerScenario::new_with_scenario(
                     values,
                     context.scenario,
                 )))
