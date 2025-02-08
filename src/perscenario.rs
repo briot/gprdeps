@@ -1,5 +1,6 @@
 use crate::scenarios::{AllScenarios, Scenario, WhenContext};
 use std::collections::HashMap;
+use ustr::Ustr;
 
 /// A lot of expressions and variables in projects will have a value that
 /// differs depending on the scenario.
@@ -16,21 +17,30 @@ impl<T> PerScenario<T> {
         PerScenario { values: m }
     }
 
-    /// Create a new hashmap, with a single value
+    /// Create a new hashmap, with a single value.
     pub fn new_with_scenario(val: T, scenario: Scenario) -> Self {
         let mut m = HashMap::new();
         m.insert(scenario, val);
         PerScenario { values: m }
     }
 
-    /// Create a new hashmap from a set of values
-    pub fn new_with_map(map: HashMap<Scenario, T>) -> Self {
-        PerScenario { values: map }
-    }
-
     /// Iterate over all possible values
     pub fn iter(&self) -> impl Iterator<Item = (&Scenario, &T)> {
         self.values.iter()
+    }
+
+    /// Transform the value into another value with the same scenarios
+    pub fn map<U, F>(&self, mut transform: F) -> PerScenario<U>
+    where
+        F: FnMut(&T) -> U,
+    {
+        PerScenario {
+            values: self
+                .values
+                .iter()
+                .map(|(scenario, orig)| (*scenario, transform(orig)))
+                .collect(),
+        }
     }
 
     /// Display the value of a variable on two columns:
@@ -64,6 +74,17 @@ impl<T> PerScenario<T> {
             .collect::<Vec<_>>();
         lines.sort();
         lines.join(eol)
+    }
+}
+
+impl PerScenario<Ustr> {
+    /// Create a new hahmap from a scenario variable
+    pub fn new_with_variable(values: &[(Ustr, Scenario)]) -> Self {
+        let mut m = HashMap::new();
+        for (u, s) in values {
+            m.insert(*s, *u);
+        }
+        PerScenario { values: m }
     }
 }
 
@@ -177,8 +198,7 @@ where
         context: &WhenContext,
         scenars: &mut AllScenarios,
         merge: F,
-    ) 
-    where
+    ) where
         F: Fn(&mut T, &U),
         U: Clone,
     {
@@ -197,8 +217,7 @@ where
         merge: F,
         scenario: Scenario,
         value: &U,
-    ) 
-    where
+    ) where
         F: Fn(&mut T, &U),
         U: Clone,
     {

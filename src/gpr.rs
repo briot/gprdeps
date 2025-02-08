@@ -200,10 +200,7 @@ impl GprFile {
     ) -> Result<(), Error> {
         let sourcedirs =
             self.strlist_attr(PackageName::None, &SimpleName::SourceDirs);
-
-        let mut resolved_dirs = HashMap::new();
-
-        for (scenar, dirs_in_scenario) in sourcedirs.iter() {
+        let paths = sourcedirs.map(|dirs_in_scenario| {
             let mut for_scenar = Vec::new();
             for d in dirs_in_scenario {
                 if d.ends_with("/**") {
@@ -230,13 +227,11 @@ impl GprFile {
                     dirs.insert(Directory::new(d.clone()));
                 }
             }
-            resolved_dirs.insert(*scenar, for_scenar);
-        }
+            for_scenar
+        });
 
-        self.values[PackageName::None as usize].insert(
-            SimpleName::SourceDirs,
-            ExprValue::PathList(PerScenario::new_with_map(resolved_dirs)),
-        );
+        self.values[PackageName::None as usize]
+            .insert(SimpleName::SourceDirs, ExprValue::PathList(paths));
 
         Ok(())
     }
@@ -487,13 +482,7 @@ impl GprFile {
 
                         // Check that this variable wasn't already declared
                         // with a different set of values.
-                        scenarios.try_add_variable(ext, valid)?;
-                        println!(
-                            "MANU got external variable typename={:?}, valid={:?}",
-                            typename, valid
-                        );
-
-                        ExprValue::Str(scenarios.expr_from_variable(ext))
+                        scenarios.try_add_variable(ext, valid)?
                     }
                     _ => {
                         // Else we have a standard variable (either untyped

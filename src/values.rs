@@ -160,32 +160,17 @@ impl ExprValue {
                 println!("MANU RawExpr {:?} & {:?}", l_eval, r_eval);
                 match (&mut l_eval, &mut r_eval) {
                     (ExprValue::Str(ls), ExprValue::Str(rs)) => {
-                        ls.merge(
-                            rs,
-                            context,
-                            scenars,
-                            |v1, v2| {
-                                let mut res = v1.as_str().to_string();
-                                res.push_str(v2.as_str());
-                                *v1 = Ustr::from(&res);
-                            },
-                        );
+                        ls.merge(rs, context, scenars, |v1, v2| {
+                            let mut res = v1.as_str().to_string();
+                            res.push_str(v2.as_str());
+                            *v1 = Ustr::from(&res);
+                        });
                     }
                     (ExprValue::StrList(ls), ExprValue::Str(rs)) => {
-                        ls.merge(
-                            rs,
-                            context,
-                            scenars,
-                            |v1, v2| v1.push(*v2),
-                        );
+                        ls.merge(rs, context, scenars, |v1, v2| v1.push(*v2));
                     }
                     (ExprValue::StrList(ls), ExprValue::StrList(rs)) => {
-                        ls.merge(
-                            rs,
-                            context,
-                            scenars,
-                            |v1, v2| v1.extend(v2),
-                        );
+                        ls.merge(rs, context, scenars, |v1, v2| v1.extend(v2));
                     }
                     _ => Err(Error::WrongAmpersand)?,
                 }

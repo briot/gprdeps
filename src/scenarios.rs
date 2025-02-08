@@ -7,7 +7,8 @@ use crate::perscenario::PerScenario;
 use crate::rawexpr::WhenClause;
 use crate::scenario_variables::ScenarioVariable;
 use crate::simplename::StringOrOthers;
-use std::collections::{HashMap, HashSet};
+use crate::values::ExprValue;
+use std::collections::HashSet;
 use ustr::{Ustr, UstrMap};
 
 /// Keeps the current state of a case statement.
@@ -158,34 +159,7 @@ impl AllScenarios {
             }
         }
         self.scenarios.push(details);
-        let s = Scenario(self.scenarios.len() - 1);
-        println!("MANU new scenario {} = {}", s, self.describe(s));
-        s
-    }
-
-    /// Create a htable with one entry per valid value of the variable.
-    /// For instance:
-    ///     type T is ("on", "off");
-    ///     V : T := external ("name")
-    /// And you could this function for "name", we get the following as output
-    ///     {"name=on": "on", "name=off": "off"}
-    /// This is used so that one can then use "V" in an expression in the
-    /// project for instance.
-    /// The output is compatible with an ExprValue::Str
-    pub fn expr_from_variable(&mut self, varname: Ustr) -> PerScenario<Ustr> {
-        let mut map = HashMap::new();
-        let values = {
-            let var = self.variables.get(&varname).expect("Unknown variable");
-            var.list_valid().iter().copied().clone().collect::<Vec<_>>()
-        };
-
-        for (idx, v) in values.iter().enumerate() {
-            let mut details = ScenarioDetails::default();
-            details.vars.insert(varname, 2_u64.pow(idx as u32));
-            let scenario = self.create_or_reuse(details);
-            map.insert(scenario, *v);
-        }
-        PerScenario::new_with_map(map)
+        Scenario(self.scenarios.len() - 1)
     }
 
     /// Splits a scenario along one specific variable.
@@ -342,19 +316,27 @@ impl AllScenarios {
         &mut self,
         name: Ustr,
         valid: &[Ustr],
-    ) -> Result<(), Error> {
-        match self.variables.get(&name) {
-            None => {
-                self.variables.insert(ScenarioVariable::new(name, valid));
-                Ok(())
+    ) -> Result<ExprValue, Error> {
+        let values: Vec<(Ustr, Scenario)> = valid
+            .iter()
+            .enumerate()
+            .map(|(idx, v)| {
+                let mut details = ScenarioDetails::default();
+                details.vars.insert(name, 2_u64.pow(idx as u32));
+                (*v, self.create_or_reuse(details))
+            })
+            .collect();
+
+        if let Some(v) = self.variables.get(&name) {
+            if v.has_same_valid(valid) {
+                Ok(ExprValue::Str(PerScenario::new_with_variable(&values)))
+            } else {
+                Err(Error::ScenarioTwice(name))
             }
-            Some(oldvar) => {
-                if oldvar.has_same_valid(valid) {
-                    Ok(())
-                } else {
-                    Err(Error::ScenarioTwice(name))
-                }
-            }
+        } else {
+            let var = ScenarioVariable::new(name, valid);
+            self.variables.insert(var);
+            Ok(ExprValue::Str(PerScenario::new_with_variable(&values)))
         }
     }
 
@@ -369,6 +351,7 @@ impl AllScenarios {
             varnames
                 .iter()
                 .map(|n| {
+                    println!("MANU get var {:?}", n);
                     let var = self.variables.get(*n).unwrap();
                     let d = details.vars[n];
 
@@ -439,7 +422,8 @@ pub mod tests {
         scenarios.try_add_variable(
             Ustr::from(name),
             &valid.iter().map(|s| Ustr::from(s)).collect::<Vec<_>>(),
-        )
+        )?;
+        Ok(())
     }
 
     #[test]
@@ -464,21 +448,21 @@ pub mod tests {
         //  when others  => for Source_Dirs use ("src1", "src3");
         //     case Check is
         let s3 = split(&mut scenarios, s0, "MODE", &["optimize", "lto"]);
-        assert_eq!(s3, Some(Scenario(2)));
+        assert_eq!(s3, Some(Scenario(7)));
         assert_eq!(scenarios.describe(s3.unwrap()), "MODE=lto|optimize");
 
         let same = split(&mut scenarios, s0, "MODE", &["optimize", "lto"]);
-        assert_eq!(same, Some(Scenario(2)));
+        assert_eq!(same, Some(Scenario(7)));
 
         let s4 = split(&mut scenarios, s3.unwrap(), "CHECK", &["most"]);
-        assert_eq!(s4, Some(Scenario(3)));
+        assert_eq!(s4, Some(Scenario(8)));
         assert_eq!(
             scenarios.describe(s4.unwrap()),
             "CHECK=most,MODE=lto|optimize"
         );
 
         let s5 = split(&mut scenarios, s3.unwrap(), "CHECK", &["none", "some"]);
-        assert_eq!(s5, Some(Scenario(4)));
+        assert_eq!(s5, Some(Scenario(9)));
         assert_eq!(
             scenarios.describe(s5.unwrap()),
             "CHECK=none|some,MODE=lto|optimize"
@@ -492,7 +476,7 @@ pub mod tests {
 
         //      when others => null;
         let s7 = split(&mut scenarios, s0, "CHECK", &["some", "most"]);
-        assert_eq!(s7, Some(Scenario(6)));
+        assert_eq!(s7, Some(Scenario(10)));
         assert_eq!(scenarios.describe(s7.unwrap()), "CHECK=most|some");
 
         Ok(())
