@@ -4,9 +4,13 @@ use ustr::Ustr;
 
 /// A lot of expressions and variables in projects will have a value that
 /// differs depending on the scenario.
+/// The set of values must cover the whole space of scenarios (and the functions
+/// in this package ensure this is the case).  It is possible for multiple
+/// scenarios to overlap.  With all methods below, this should still result in
+/// consistent values for a given scenario.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PerScenario<T> {
-    pub values: HashMap<Scenario, T>,
+    values: HashMap<Scenario, T>,
 }
 
 impl<T> PerScenario<T> {
@@ -14,13 +18,6 @@ impl<T> PerScenario<T> {
     pub fn new(default_val: T) -> Self {
         let mut m = HashMap::new();
         m.insert(Scenario::default(), default_val);
-        PerScenario { values: m }
-    }
-
-    /// Create a new hashmap, with a single value.
-    pub fn new_with_scenario(val: T, scenario: Scenario) -> Self {
-        let mut m = HashMap::new();
-        m.insert(scenario, val);
         PerScenario { values: m }
     }
 
@@ -78,7 +75,8 @@ impl<T> PerScenario<T> {
 }
 
 impl PerScenario<Ustr> {
-    /// Create a new hahmap from a scenario variable
+    /// Create a new hashmap from a scenario variable.
+    /// All possible values of the scenario variable must be provided.
     pub fn new_with_variable(values: &[(Ustr, Scenario)]) -> Self {
         let mut m = HashMap::new();
         for (u, s) in values {
@@ -160,35 +158,6 @@ where
         }
     }
 
-    /// Apply a delta to the hashmap.
-    /// This delta only has values for the current context (e.g. case
-    /// statements).
-    /// For instance, given:
-    ///     case E is
-    ///        when "on" =>   V := V1 & V2;
-    /// then delta would be the value of V1 & V2 and will only include a
-    /// value for the context "E=on".  But if V already had values for other
-    /// scenarios they should be preserved.
-    /// Note also that self might for instance contain lists, but receive a
-    /// delta containing strings (this is the "&" operator).
-    pub fn update<U, F>(
-        &mut self,
-        context: &WhenContext,
-        delta: PerScenario<U>,
-        scenars: &mut AllScenarios,
-        convert: F,
-    ) where
-        F: Fn(U) -> T,
-    {
-        self.split(context, scenars);
-        self.values.retain(|s, _v| {
-            scenars.intersection(*s, context.scenario).is_none()
-        });
-        for (k, v) in delta.values {
-            self.values.insert(k, convert(v));
-        }
-    }
-
     /// Merge two hashmaps (modified self in place)
     /// Only the scenario of the context is impacted, all other scenarios
     /// preserve their old values.
@@ -199,11 +168,15 @@ where
         scenars: &mut AllScenarios,
         merge: F,
     ) where
+        T: ::core::fmt::Debug,
+        U: ::core::fmt::Debug,
         F: Fn(&mut T, &U),
         U: Clone,
     {
-        self.split(context, scenars);
-        right.split(context, scenars);
+        println!(
+            "MANU merge {:?} into {:?}, for context {:?}",
+            right, self, context
+        );
 
         for (s2, v2) in &right.values {
             self.merge_one(context, scenars, &merge, *s2, v2);
@@ -212,7 +185,7 @@ where
 
     pub fn merge_one<U, F>(
         &mut self,
-        _context: &WhenContext,
+        context: &WhenContext,
         scenars: &mut AllScenarios,
         merge: F,
         scenario: Scenario,
@@ -220,11 +193,36 @@ where
     ) where
         F: Fn(&mut T, &U),
         U: Clone,
+        U: ::core::fmt::Debug,
+        T: ::core::fmt::Debug,
     {
-        for (s1, v1) in self.values.iter_mut() {
-            if scenars.intersection(*s1, scenario).is_some() {
-                merge(v1, value);
+        println!("MANU merge_one scenario={:?} value={:?} context={:?}", scenario, value, context);
+        if let Some(s) = scenars.intersection(context.scenario, scenario) {
+            println!("MANU    intersects with context => s={:?}", s);
+            let mut res = HashMap::new();
+            for (s1, v1) in self.values.iter_mut() {
+                println!("MANU      s1={:?} v1={:?}", s1, v1);
+                if let Some(ns) = scenars.intersection(*s1, s) {
+                    let mut v2 = v1.clone();
+                    merge(&mut v2, value);
+                    println!("MANU      intersects with s, merged={:?}", v2);
+                    res.insert(ns, v2);
+
+                    for negated in scenars.negate(s) {
+                        println!("MANU       negated of s {:?}", negated);
+                        if let Some(ns) = scenars.intersection(*s1, negated) {
+                            println!("MANU       intersects with old ns={:?}, old={:?}", ns, v1);
+                            res.insert(ns, v1.clone());
+                        }
+                    }
+                } else {
+                    println!("MANU      preserve unchanged");
+                    res.insert(*s1, v1.clone());
+                }
             }
+            println!("MANU all scenarios={:?}", scenars);
+            println!("MANU res={:?}", res);
+            self.values = res;
         }
     }
 }
@@ -234,7 +232,9 @@ mod tests {
     use crate::errors::Error;
     use crate::perscenario::PerScenario;
     use crate::scenarios::tests::try_add_variable;
-    use crate::scenarios::{AllScenarios, WhenClauseScenario, WhenContext};
+    use crate::scenarios::{
+        AllScenarios, Scenario, WhenClauseScenario, WhenContext,
+    };
     use ustr::Ustr;
 
     #[test]
@@ -243,37 +243,66 @@ mod tests {
         try_add_variable(&mut scenars, "E1", &["a", "b", "c", "d"])?;
         try_add_variable(&mut scenars, "E2", &["e", "f"])?;
 
-        let context = WhenContext::new();
-
-        // Splitting on s0 context has no effect
+        let root_context = WhenContext::new();
         let zero = PerScenario::<u8>::new(0);
-        let mut empty = zero.clone();
-        empty.split(&context, &mut scenars);
-        assert_eq!(empty, zero);
+        assert_eq!(zero.format(&scenars), "{*:0, }",);
 
-        // Splitting at the toplevel (empty context), also has no effect
-        let mut oneval = PerScenario::<u8>::new(1);
-        let old = oneval.clone();
-        oneval.split(&context, &mut scenars);
-        assert_eq!(oneval, old);
+        // Splitting on s0 context has no effect.
+        // Case of doing   V := 1  at the top level.
+        let mut one = PerScenario::<u8>::new(1);
+        let mut v = zero.clone();
+        v.merge(&mut one, &root_context, &mut scenars, |old, new| {
+            *old = *new
+        });
+        assert_eq!(v.format(&scenars), "{*:1, }",);
 
-        // Now splitting on a variable
+        // Now assume we are inside a case statement.
+        //    case E1 is
+        //       when a|b => V := 2;
         let when =
             WhenClauseScenario::new(&mut scenars, Ustr::from("E1"), 3, 31);
-        let context2 = context.push(&mut scenars, when).unwrap();
-        let mut oneval = PerScenario::<u8>::new(1);
-        oneval.split(&context2, &mut scenars);
-        assert_eq!(oneval.format(&scenars), "{E1=a|b:1, E1=c|d:1, }",);
+        let ctx = root_context.push(&mut scenars, when).unwrap();
 
-        // Splitting on an independent variable
-        let when =
-            WhenClauseScenario::new(&mut scenars, Ustr::from("E2"), 1, 3);
-        let context3 = context.push(&mut scenars, when).unwrap();
-        oneval.split(&context3, &mut scenars);
-        assert_eq!(
-            oneval.format(&scenars),
-            "{E1=a|b,E2=e:1, E1=a|b,E2=f:1, E1=c|d,E2=e:1, E1=c|d,E2=f:1, }",
+        // First version: we merge one specific scenario:
+        let mut v2 = v.clone();
+        v2.merge_one(
+            &ctx,
+            &mut scenars,
+            |old, new| *old = *new,
+            Scenario::default(),
+            &2,
         );
+        assert_eq!(v2.format(&scenars), "{E1=a|b:2, E1=c|d:1, }",);
+
+        // Second version: we merge another PerScenario value
+        let mut v2 = v.clone();
+        let mut two = PerScenario::<u8>::new(2);
+        v2.merge(&mut two, &ctx, &mut scenars, |old, new| *old = *new);
+        assert_eq!(v2.format(&scenars), "{E1=a|b:2, E1=c|d:1, }",);
+
+        //        // Splitting at the toplevel (empty context), also has no effect
+        //        let mut oneval = PerScenario::<u8>::new(1);
+        //        let old = oneval.clone();
+        //        oneval.split(&context, &mut scenars);
+        //        assert_eq!(oneval, old);
+        //
+        //        // Now splitting on a variable
+        //        let when =
+        //            WhenClauseScenario::new(&mut scenars, Ustr::from("E1"), 3, 31);
+        //        let context2 = context.push(&mut scenars, when).unwrap();
+        //        let mut oneval = PerScenario::<u8>::new(1);
+        //        oneval.split(&context2, &mut scenars);
+        //        assert_eq!(oneval.format(&scenars), "{E1=a|b:1, E1=c|d:1, }",);
+        //
+        //        // Splitting on an independent variable
+        //        let when =
+        //            WhenClauseScenario::new(&mut scenars, Ustr::from("E2"), 1, 3);
+        //        let context3 = context.push(&mut scenars, when).unwrap();
+        //        oneval.split(&context3, &mut scenars);
+        //        assert_eq!(
+        //            oneval.format(&scenars),
+        //            "{E1=a|b,E2=e:1, E1=a|b,E2=f:1, E1=c|d,E2=e:1, E1=c|d,E2=f:1, }",
+        //        );
 
         Ok(())
     }

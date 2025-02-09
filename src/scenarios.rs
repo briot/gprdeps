@@ -162,6 +162,32 @@ impl AllScenarios {
         Scenario(self.scenarios.len() - 1)
     }
 
+    /// Negate the scenario: it returns a series of possibly overlapping
+    /// scenarios so that they do not overlap scenario, yet the whole set
+    /// covers the full space.
+    /// For instance, if we have three variables E1 (with values a,b,c,d),
+    /// E2 (with values e and f) and E3 (with values g and h), and we give
+    /// a scenario "E1=a|b,E2=e", this will return
+    ///     not(a|b and e) = not(a|b) or not(e) = (E1=c|d) or (E2=f)
+    pub fn negate(&mut self, scenario: Scenario) -> Vec<Scenario> {
+        let mut res = vec![];
+        let vars = &self.scenarios[scenario.0].vars;
+
+        let mut all_negate = vec![];
+        for (varname, mask) in vars {
+            let var = self.variables.get(varname).unwrap();
+            let m = !mask & var.full_mask();
+            if m != 0 {
+                let mut details = ScenarioDetails::default();
+                details.vars.insert(*varname, m);
+                all_negate.push(details);
+            }
+        }
+
+        res.extend(all_negate.into_iter().map(|d| self.create_or_reuse(d)));
+        res
+    }
+
     /// Splits a scenario along one specific variable.
     /// This is used for when-clauses.  For instance, assume we have the
     /// following
@@ -194,9 +220,7 @@ impl AllScenarios {
         s1: Scenario,
         s2: Scenario,
     ) -> Option<Scenario> {
-        println!("MANU intersection {} and {}", s1, s2);
         if s1 == s2 {
-            println!("MANU    => same {}", s1);
             return Some(s1);
         }
 
@@ -229,7 +253,6 @@ impl AllScenarios {
             }
         }
         let result = self.create_or_reuse(d);
-        println!("MANU    => {}", result);
         Some(result)
     }
 
@@ -345,13 +368,12 @@ impl AllScenarios {
         let mut varnames = details.vars.keys().collect::<Vec<_>>();
 
         if varnames.is_empty() {
-            "".to_string()
+            "*".to_string()
         } else {
             varnames.sort();
             varnames
                 .iter()
                 .map(|n| {
-                    println!("MANU get var {:?}", n);
                     let var = self.variables.get(*n).unwrap();
                     let d = details.vars[n];
 
@@ -437,7 +459,7 @@ pub mod tests {
         try_add_variable(&mut scenarios, "CHECK", &["most", "none", "some"])?;
 
         let s0 = Scenario::default();
-        assert_eq!(scenarios.describe(s0).to_string(), "");
+        assert_eq!(scenarios.describe(s0).to_string(), "*");
 
         //  case Mode is
         //     when "debug" => ...

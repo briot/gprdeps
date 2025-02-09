@@ -77,21 +77,25 @@ impl GprFile {
             SimpleName::Target,
             ExprValue::new_with_str(*CST_X86_64_LINUX),
         );
-        s.values[PackageName::Linker as usize]
-            .insert(SimpleName::LinkerOptions, ExprValue::new_with_list(&[]));
+        s.values[PackageName::Linker as usize].insert(
+            SimpleName::LinkerOptions,
+            ExprValue::new_with_list(vec![]),
+        );
         s.values[PackageName::None as usize].insert(
             SimpleName::SourceDirs,
-            ExprValue::new_with_list(&[*CST_DOT]),
+            ExprValue::new_with_list(vec![*CST_DOT]),
         );
         s.values[PackageName::None as usize].insert(
             SimpleName::ObjectDir,
-            ExprValue::new_with_list(&[*CST_DOT]),
+            ExprValue::new_with_list(vec![*CST_DOT]),
         );
-        s.values[PackageName::None as usize]
-            .insert(SimpleName::ExecDir, ExprValue::new_with_list(&[*CST_DOT]));
+        s.values[PackageName::None as usize].insert(
+            SimpleName::ExecDir,
+            ExprValue::new_with_list(vec![*CST_DOT]),
+        );
         s.values[PackageName::None as usize].insert(
             SimpleName::Languages,
-            ExprValue::new_with_list(&[*CST_ADA]),
+            ExprValue::new_with_list(vec![*CST_ADA]),
         );
         s.values[PackageName::Naming as usize].insert(
             SimpleName::DotReplacement,
@@ -338,7 +342,7 @@ impl GprFile {
         name: SimpleName,
         context: &WhenContext,
         scenars: &mut AllScenarios,
-        delta: ExprValue,
+        mut delta: ExprValue,
     ) -> Result<(), Error> {
         let old = self.values[package as usize].get(&name);
         if old.is_none() {
@@ -350,18 +354,18 @@ impl GprFile {
         println!("MANU declare {:?} from delta {:?}", name, delta);
         let mut old = old.unwrap().clone();
 
-        match (&mut old, delta) {
+        match (&mut old, &mut delta) {
             (ExprValue::Str(ov), ExprValue::Str(d)) => {
-                ov.update(context, d, scenars, |v| v);
+                ov.merge(d, context, scenars, |old, new| *old = *new);
             }
             (ExprValue::StrList(ov), ExprValue::Str(d)) => {
-                ov.update(context, d, scenars, |v| vec![v]);
+                ov.merge(d, context, scenars, |old, new| *old = vec![*new]);
             }
             (ExprValue::StrList(ov), ExprValue::StrList(d)) => {
-                ov.update(context, d, scenars, |v| v);
+                ov.merge(d, context, scenars, |old, new| *old = new.clone());
             }
             (ExprValue::PathList(ov), ExprValue::PathList(d)) => {
-                ov.update(context, d, scenars, |v| v);
+                ov.merge(d, context, scenars, |old, new| *old = new.clone());
             }
             _ => {
                 Err(Error::VariableMustBeString)?;

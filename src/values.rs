@@ -4,7 +4,7 @@ use crate::packagename::PackageName;
 use crate::perscenario::PerScenario;
 use crate::qualifiedname::QualifiedName;
 use crate::rawexpr::RawExpr;
-use crate::scenarios::{AllScenarios, Scenario, WhenContext};
+use crate::scenarios::{AllScenarios, WhenContext};
 use crate::simplename::SimpleName;
 use ustr::Ustr;
 
@@ -18,18 +18,12 @@ pub enum ExprValue {
 impl ExprValue {
     /// An expression that always has the same static value for all scenarios
     pub fn new_with_str(s: Ustr) -> Self {
-        ExprValue::new_with_str_and_scenario(s, Scenario::default())
+        ExprValue::Str(PerScenario::new(s))
     }
 
-    /// An expression that has a specific string value for one scenario, and no
-    /// value for all others.
-    pub fn new_with_str_and_scenario(s: Ustr, scenario: Scenario) -> Self {
-        ExprValue::Str(PerScenario::new_with_scenario(s, scenario))
-    }
-
-    // An expression value created as an empty list
-    pub fn new_with_list(list: &[Ustr]) -> Self {
-        ExprValue::StrList(PerScenario::new(list.to_vec()))
+    // An expression value created as a list of strings
+    pub fn new_with_list(list: Vec<Ustr>) -> Self {
+        ExprValue::StrList(PerScenario::new(list))
     }
 
     /// Evaluate a raw expression into its final value.
@@ -91,14 +85,23 @@ impl ExprValue {
                 Ok(gpr.lookup(q, gpr_deps, current_pkg)?.clone())
             }
             RawExpr::Str(s) => {
-                Ok(ExprValue::new_with_str_and_scenario(*s, context.scenario))
+                let mut v = PerScenario::new(Ustr::default());
+                v.merge_one(
+                    context,
+                    scenars,
+                    |v1, v2| *v1 = *v2,
+                    context.scenario,
+                    s,
+                );
+                Ok(ExprValue::Str(v))
             }
             RawExpr::List(ls) => {
-                let mut values = vec![];
+                let mut values = PerScenario::new(Vec::new());
+
                 for expr in ls {
                     // Each element of the list is an expression, which could
                     // have a different value for each scenario.
-                    let s = ExprValue::new_with_raw(
+                    let mut s = ExprValue::new_with_raw(
                         expr,
                         gpr,
                         gpr_deps,
@@ -107,38 +110,22 @@ impl ExprValue {
                         current_pkg,
                     )?;
                     println!("MANU element in list {:?}", s);
-                    match s {
+                    match &mut s {
                         ExprValue::Str(per_scenario) => {
-                            //  for (s, v) in per_scenario {
-                            //      split_hash(
-                            //          &mut m,
-                            //          when,
-                            //          &None,  // all scenarios
-                            //          scenars,
-                            //      );
-                            //  }
-
-                            // The string is always defined for the current
-                            // scenario.
-                            assert_eq!(per_scenario.values.len(), 1);
-                            assert_eq!(
-                                *per_scenario.values.keys().next().unwrap(),
-                                context.scenario,
-                            );
-
                             // The string's scenario doesn't change anything in
                             // the list, so we can just add it.
-                            values.push(
-                                *per_scenario.values.values().next().unwrap(),
+                            values.merge(
+                                per_scenario,
+                                context,
+                                scenars,
+                                |v1, v2| v1.push(*v2),
                             );
                         }
                         _ => Err(Error::ListCanOnlyContainStrings)?,
                     }
+                    println!("MANU  list is now {:?}", values);
                 }
-                Ok(ExprValue::StrList(PerScenario::new_with_scenario(
-                    values,
-                    context.scenario,
-                )))
+                Ok(ExprValue::StrList(values))
             }
             RawExpr::Ampersand((left, right)) => {
                 let mut l_eval = ExprValue::new_with_raw(
@@ -270,7 +257,10 @@ mod tests {
                 &context,
                 pkg
             )?,
-            ExprValue::new_with_list(&[Ustr::from("val1"), Ustr::from("val2")])
+            ExprValue::new_with_list(vec![
+                Ustr::from("val1"),
+                Ustr::from("val2")
+            ])
         );
 
         // Evaluate a list of expressions
@@ -287,7 +277,8 @@ mod tests {
                 &context,
                 pkg
             )?,
-            ExprValue::new_with_list(&[
+            // " valuesuffix, val2",
+            ExprValue::new_with_list(vec![
                 Ustr::from("valuesuffix"),
                 Ustr::from("val2")
             ]),
@@ -305,7 +296,7 @@ mod tests {
                 &context,
                 pkg
             )?,
-            ExprValue::new_with_list(&[
+            ExprValue::new_with_list(vec![
                 Ustr::from("val1"),
                 Ustr::from("val2"),
                 Ustr::from("value")
@@ -324,7 +315,7 @@ mod tests {
                 &context,
                 pkg
             )?,
-            ExprValue::new_with_list(&[
+            ExprValue::new_with_list(vec![
                 Ustr::from("val1"),
                 Ustr::from("val2"),
                 Ustr::from("val3"),
