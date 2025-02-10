@@ -38,7 +38,6 @@ impl ExprValue {
         context: &WhenContext,
         current_pkg: PackageName,
     ) -> Result<Self, Error> {
-        println!("MANU ExprValue.new_with_raw {:?}", expr);
         match expr {
             RawExpr::Empty | RawExpr::Others => {
                 panic!("{}: Cannot evaluate this expression {:?}", gpr, expr);
@@ -109,7 +108,6 @@ impl ExprValue {
                         context,
                         current_pkg,
                     )?;
-                    println!("MANU element in list {:?}", s);
                     match &mut s {
                         ExprValue::Str(per_scenario) => {
                             // The string's scenario doesn't change anything in
@@ -123,7 +121,6 @@ impl ExprValue {
                         }
                         _ => Err(Error::ListCanOnlyContainStrings)?,
                     }
-                    println!("MANU  list is now {:?}", values);
                 }
                 Ok(ExprValue::StrList(values))
             }
@@ -144,7 +141,6 @@ impl ExprValue {
                     context,
                     current_pkg,
                 )?;
-                println!("MANU RawExpr {:?} & {:?}", l_eval, r_eval);
                 match (&mut l_eval, &mut r_eval) {
                     (ExprValue::Str(ls), ExprValue::Str(rs)) => {
                         ls.merge(rs, context, scenars, |v1, v2| {

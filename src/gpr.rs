@@ -317,10 +317,6 @@ impl GprFile {
         let old = self.types[package as usize].get(&name);
         if old.is_none() {
             valid.sort();
-            println!(
-                "MANU declare_type {:?} from delta {:?}, no old",
-                name, valid
-            );
             self.types[package as usize].insert(name, valid);
             Ok(())
         } else {
@@ -346,12 +342,10 @@ impl GprFile {
     ) -> Result<(), Error> {
         let old = self.values[package as usize].get(&name);
         if old.is_none() {
-            println!("MANU declare {:?} from delta {:?}, no old", name, delta);
             self.values[package as usize].insert(name, delta);
             return Ok(());
         }
 
-        println!("MANU declare {:?} from delta {:?}", name, delta);
         let mut old = old.unwrap().clone();
 
         match (&mut old, &mut delta) {
@@ -372,7 +366,6 @@ impl GprFile {
             }
         }
 
-        println!("MANU  new value is {:?}", old);
         self.values[package as usize].insert(name, old);
         Ok(())
     }
@@ -452,10 +445,6 @@ impl GprFile {
         current_pkg: PackageName,
         statement: &Statement,
     ) -> std::result::Result<(), Error> {
-        println!(
-            "\nMANU process_one_statement {:?} current_scenario={:?}",
-            statement, context
-        );
         match statement {
             Statement::TypeDecl { typename, valid } => {
                 self.declare_type(
@@ -571,8 +560,6 @@ impl GprFile {
                         _ => Err(Error::VariableMustBeString)?,
                     };
 
-                println!("MANU case stmt: {:?}", case_stmt);
-
                 for w in when {
                     match scenarios.process_when_clause(&mut case_stmt, w) {
                         None => {
@@ -590,10 +577,6 @@ impl GprFile {
                                     }
                                 }
                                 Some(c) => {
-                                    println!(
-                                        "\nMANU process when clause {:?}",
-                                        c
-                                    );
                                     self.process_body(
                                         dependencies,
                                         scenarios,

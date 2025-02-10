@@ -173,11 +173,6 @@ where
         F: Fn(&mut T, &U),
         U: Clone,
     {
-        println!(
-            "MANU merge {:?} into {:?}, for context {:?}",
-            right, self, context
-        );
-
         for (s2, v2) in &right.values {
             self.merge_one(context, scenars, &merge, *s2, v2);
         }
@@ -196,32 +191,23 @@ where
         U: ::core::fmt::Debug,
         T: ::core::fmt::Debug,
     {
-        println!("MANU merge_one scenario={:?} value={:?} context={:?}", scenario, value, context);
         if let Some(s) = scenars.intersection(context.scenario, scenario) {
-            println!("MANU    intersects with context => s={:?}", s);
             let mut res = HashMap::new();
             for (s1, v1) in self.values.iter_mut() {
-                println!("MANU      s1={:?} v1={:?}", s1, v1);
                 if let Some(ns) = scenars.intersection(*s1, s) {
                     let mut v2 = v1.clone();
                     merge(&mut v2, value);
-                    println!("MANU      intersects with s, merged={:?}", v2);
                     res.insert(ns, v2);
 
                     for negated in scenars.negate(s) {
-                        println!("MANU       negated of s {:?}", negated);
                         if let Some(ns) = scenars.intersection(*s1, negated) {
-                            println!("MANU       intersects with old ns={:?}, old={:?}", ns, v1);
                             res.insert(ns, v1.clone());
                         }
                     }
                 } else {
-                    println!("MANU      preserve unchanged");
                     res.insert(*s1, v1.clone());
                 }
             }
-            println!("MANU all scenarios={:?}", scenars);
-            println!("MANU res={:?}", res);
             self.values = res;
         }
     }
