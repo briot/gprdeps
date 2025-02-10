@@ -31,17 +31,6 @@ pub struct WhenClauseScenario {
     // The scenario associated with this set of values.  This involves a
     // single variable.
     pub scenario: Scenario,
-
-    // The scenario associated with all other values of the variable
-    // For instance:
-    //     type E1_Type is ("a", "b", "c", "d");
-    //     E1 : E1_Type := external ("E1");
-    //     case E1 is
-    //        when "a" | "b" =>
-    //
-    // Then scenario is E1="a"|"b", and  self.negate_scenario is E1="c"|"d".
-    // This is None when scenario covers all possible values.
-    pub negate_scenario: Option<Scenario>,
 }
 
 impl ::core::fmt::Debug for WhenClauseScenario {
@@ -66,7 +55,6 @@ impl WhenClauseScenario {
 
         WhenClauseScenario {
             scenario: scenars.create_or_reuse(details),
-            negate_scenario: Some(scenars.create_or_reuse(neg_details)),
         }
     }
 }
@@ -317,7 +305,6 @@ impl AllScenarios {
         if mask == case_stmt.full_mask {
             Some(WhenClauseScenario {
                 scenario: Scenario::default(),
-                negate_scenario: None,
             })
         } else if mask == 0 {
             None

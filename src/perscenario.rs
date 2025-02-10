@@ -77,6 +77,11 @@ impl<T> PerScenario<T> {
 impl PerScenario<Ustr> {
     /// Create a new hashmap from a scenario variable.
     /// All possible values of the scenario variable must be provided.
+    /// Given
+    ///     type On_Off is ("on", "off");
+    ///     E1 : On_Off := external ("e1");
+    /// the returned value is
+    ///     {"e1=on": "on",  "e1=off": "off"}
     pub fn new_with_variable(values: &[(Ustr, Scenario)]) -> Self {
         let mut m = HashMap::new();
         for (u, s) in values {
@@ -112,55 +117,13 @@ impl<T> PerScenario<T>
 where
     T: Clone,
 {
-    /// Split a hashmap to isolate scenarios.
-    /// We are about to modify a hashmap but only for one scenario.  To prepare
-    /// for this, we split items in the hashmap whenever they intersect with the
-    /// scenario.
-    /// For instance, if we start with the following variables:
-    ///     s1: Scenario = {"E1": "on"}
-    ///     s2: Scenario = {"E1": "off"}
-    ///     s3: Scenario = {"E2": "on" }
-    ///     s4: Scenario = {"E2": "off" }
-    ///     expression = { s1: "a", s2&s3: "b", s2&s4: "c" }
-    /// And then split the expression for s3, we get
-    ///     { s1&s3: "a", s1&!s3:"a", s2&s3&s3:"b", s2&s3&!s3:"b",
-    ///       s2&s4&s3:"c", s2&s4&!s3:"c" }
-    /// which is simplified to:
-    ///     { s1&s3:"a", s1&s4:"a", s2&s3:"b", s2&s4:"c"}
-    /// This is exactly equivalent to the initial expression, though it does
-    /// have more cases.
-    /// This function handles the case where the scenario we split on has more
-    /// than one variable.
-    fn split(&mut self, context: &WhenContext, scenars: &mut AllScenarios) {
-        let mut active: Option<Vec<Scenario>> = None;
-
-        for c in &context.clauses {
-            let mut res = HashMap::new();
-            let mut new_active = Vec::new();
-            for (scenario, v) in self.values.iter_mut() {
-                if active.as_ref().map_or(true, |l| l.contains(scenario)) {
-                    if let Some(s) = scenars.intersection(*scenario, c.scenario)
-                    {
-                        new_active.push(s);
-                        res.insert(s, v.clone());
-                    }
-                    if let Some(n) = c.negate_scenario {
-                        if let Some(s) = scenars.intersection(*scenario, n) {
-                            res.insert(s, v.clone());
-                        }
-                    }
-                } else {
-                    res.insert(*scenario, v.clone());
-                }
-            }
-            active = Some(new_active);
-            self.values = res;
-        }
-    }
-
-    /// Merge two hashmaps (modified self in place)
-    /// Only the scenario of the context is impacted, all other scenarios
-    /// preserve their old values.
+    /// Merge two values (and modifies self in place).
+    /// The context represents a (nested) case statement, for instance:
+    ///     case E1 is
+    ///        when "a" | "b" =>
+    ///           ...
+    ///
+    /// Values outside of this context are left unchanged.
     pub fn merge<U, F>(
         &mut self,
         right: &mut PerScenario<U>,
@@ -168,16 +131,14 @@ where
         scenars: &mut AllScenarios,
         merge: F,
     ) where
-        T: ::core::fmt::Debug,
-        U: ::core::fmt::Debug,
         F: Fn(&mut T, &U),
-        U: Clone,
     {
         for (s2, v2) in &right.values {
             self.merge_one(context, scenars, &merge, *s2, v2);
         }
     }
 
+    /// Similar to merge(), but for a single scenario.
     pub fn merge_one<U, F>(
         &mut self,
         context: &WhenContext,
@@ -187,9 +148,6 @@ where
         value: &U,
     ) where
         F: Fn(&mut T, &U),
-        U: Clone,
-        U: ::core::fmt::Debug,
-        T: ::core::fmt::Debug,
     {
         if let Some(s) = scenars.intersection(context.scenario, scenario) {
             let mut res = HashMap::new();
@@ -266,29 +224,22 @@ mod tests {
         v2.merge(&mut two, &ctx, &mut scenars, |old, new| *old = *new);
         assert_eq!(v2.format(&scenars), "{E1=a|b:2, E1=c|d:1, }",);
 
-        //        // Splitting at the toplevel (empty context), also has no effect
-        //        let mut oneval = PerScenario::<u8>::new(1);
-        //        let old = oneval.clone();
-        //        oneval.split(&context, &mut scenars);
-        //        assert_eq!(oneval, old);
-        //
-        //        // Now splitting on a variable
-        //        let when =
-        //            WhenClauseScenario::new(&mut scenars, Ustr::from("E1"), 3, 31);
-        //        let context2 = context.push(&mut scenars, when).unwrap();
-        //        let mut oneval = PerScenario::<u8>::new(1);
-        //        oneval.split(&context2, &mut scenars);
-        //        assert_eq!(oneval.format(&scenars), "{E1=a|b:1, E1=c|d:1, }",);
-        //
-        //        // Splitting on an independent variable
-        //        let when =
-        //            WhenClauseScenario::new(&mut scenars, Ustr::from("E2"), 1, 3);
-        //        let context3 = context.push(&mut scenars, when).unwrap();
-        //        oneval.split(&context3, &mut scenars);
-        //        assert_eq!(
-        //            oneval.format(&scenars),
-        //            "{E1=a|b,E2=e:1, E1=a|b,E2=f:1, E1=c|d,E2=e:1, E1=c|d,E2=f:1, }",
-        //        );
+        // Now use the above in another case statement.
+        //    L := ("a");
+        //    case E2 is
+        //       when e  => L := L & V;
+        // Note that the result has multiple overlapping scenarios when E2=f
+        // for instance, but they all result in the same value for a given
+        // scenario.
+        let when =
+            WhenClauseScenario::new(&mut scenars, Ustr::from("E2"), 1, 3);
+        let ctx = root_context.push(&mut scenars, when).unwrap();
+        let mut v3 = PerScenario::new(vec![]);
+        v3.merge(&mut v2, &ctx, &mut scenars, |old, new| old.push(*new));
+        assert_eq!(
+            v3.format(&scenars),
+            "{E2=f:[], E1=a|b,E2=e:[2], E1=c|d,E2=e:[1], E1=c|d,E2=f:[], }"
+        );
 
         Ok(())
     }
