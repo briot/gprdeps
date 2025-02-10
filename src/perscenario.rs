@@ -1,4 +1,4 @@
-use crate::scenarios::{AllScenarios, Scenario, WhenContext};
+use crate::scenarios::{AllScenarios, Scenario};
 use std::collections::HashMap;
 use ustr::Ustr;
 
@@ -127,7 +127,7 @@ where
     pub fn merge<U, F>(
         &mut self,
         right: &mut PerScenario<U>,
-        context: &WhenContext,
+        context: Scenario,
         scenars: &mut AllScenarios,
         merge: F,
     ) where
@@ -141,7 +141,7 @@ where
     /// Similar to merge(), but for a single scenario.
     pub fn merge_one<U, F>(
         &mut self,
-        context: &WhenContext,
+        context: Scenario,
         scenars: &mut AllScenarios,
         merge: F,
         scenario: Scenario,
@@ -149,7 +149,7 @@ where
     ) where
         F: Fn(&mut T, &U),
     {
-        if let Some(s) = scenars.intersection(context.scenario, scenario) {
+        if let Some(s) = scenars.intersection(context, scenario) {
             let mut res = HashMap::new();
             for (s1, v1) in self.values.iter_mut() {
                 if let Some(ns) = scenars.intersection(*s1, s) {
@@ -175,11 +175,8 @@ where
 mod tests {
     use crate::errors::Error;
     use crate::perscenario::PerScenario;
-    use crate::scenarios::tests::try_add_variable;
-    use crate::scenarios::{
-        AllScenarios, Scenario, WhenClauseScenario, WhenContext,
-    };
-    use ustr::Ustr;
+    use crate::scenarios::tests::{split, try_add_variable};
+    use crate::scenarios::{AllScenarios, Scenario};
 
     #[test]
     fn test_per_scenario() -> Result<(), Error> {
@@ -187,7 +184,6 @@ mod tests {
         try_add_variable(&mut scenars, "E1", &["a", "b", "c", "d"])?;
         try_add_variable(&mut scenars, "E2", &["e", "f"])?;
 
-        let root_context = WhenContext::new();
         let zero = PerScenario::<u8>::new(0);
         assert_eq!(zero.format(&scenars), "{*:0, }",);
 
@@ -195,7 +191,7 @@ mod tests {
         // Case of doing   V := 1  at the top level.
         let mut one = PerScenario::<u8>::new(1);
         let mut v = zero.clone();
-        v.merge(&mut one, &root_context, &mut scenars, |old, new| {
+        v.merge(&mut one, Scenario::default(), &mut scenars, |old, new| {
             *old = *new
         });
         assert_eq!(v.format(&scenars), "{*:1, }",);
@@ -203,14 +199,13 @@ mod tests {
         // Now assume we are inside a case statement.
         //    case E1 is
         //       when a|b => V := 2;
-        let when =
-            WhenClauseScenario::new(&mut scenars, Ustr::from("E1"), 3, 31);
-        let ctx = root_context.push(&mut scenars, when).unwrap();
+        let ctx = split(&mut scenars, Scenario::default(), "E1", &["a", "b"])
+            .unwrap();
 
         // First version: we merge one specific scenario:
         let mut v2 = v.clone();
         v2.merge_one(
-            &ctx,
+            ctx,
             &mut scenars,
             |old, new| *old = *new,
             Scenario::default(),
@@ -221,7 +216,7 @@ mod tests {
         // Second version: we merge another PerScenario value
         let mut v2 = v.clone();
         let mut two = PerScenario::<u8>::new(2);
-        v2.merge(&mut two, &ctx, &mut scenars, |old, new| *old = *new);
+        v2.merge(&mut two, ctx, &mut scenars, |old, new| *old = *new);
         assert_eq!(v2.format(&scenars), "{E1=a|b:2, E1=c|d:1, }",);
 
         // Now use the above in another case statement.
@@ -231,13 +226,13 @@ mod tests {
         // Note that the result has multiple overlapping scenarios when E2=f
         // for instance, but they all result in the same value for a given
         // scenario.
-        let when =
-            WhenClauseScenario::new(&mut scenars, Ustr::from("E2"), 1, 3);
-        let ctx = root_context.push(&mut scenars, when).unwrap();
+        let ctx =
+            split(&mut scenars, Scenario::default(), "E2", &["e"]).unwrap();
         let mut v3 = PerScenario::new(vec![]);
-        v3.merge(&mut v2, &ctx, &mut scenars, |old, new| old.push(*new));
+        v3.merge(&mut v2, ctx, &mut scenars, |old, new| old.push(*new));
         assert_eq!(
             v3.format(&scenars),
+            // "{E2=f:[], E1=c|d,E2=e:[1], E1=a|b,E2=e:[2], E1=a|b,E2=f:[], }"
             "{E2=f:[], E1=a|b,E2=e:[2], E1=c|d,E2=e:[1], E1=c|d,E2=f:[], }"
         );
 

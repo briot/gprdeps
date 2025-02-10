@@ -4,7 +4,7 @@ use crate::packagename::PackageName;
 use crate::perscenario::PerScenario;
 use crate::qualifiedname::QualifiedName;
 use crate::rawexpr::RawExpr;
-use crate::scenarios::{AllScenarios, WhenContext};
+use crate::scenarios::{AllScenarios, Scenario};
 use crate::simplename::SimpleName;
 use ustr::Ustr;
 
@@ -35,7 +35,7 @@ impl ExprValue {
         gpr: &GprFile, //  what project what this expression read in ?
         gpr_deps: &[&GprFile],
         scenars: &mut AllScenarios,
-        context: &WhenContext,
+        context: Scenario,
         current_pkg: PackageName,
     ) -> Result<Self, Error> {
         match expr {
@@ -85,13 +85,7 @@ impl ExprValue {
             }
             RawExpr::Str(s) => {
                 let mut v = PerScenario::new(Ustr::default());
-                v.merge_one(
-                    context,
-                    scenars,
-                    |v1, v2| *v1 = *v2,
-                    context.scenario,
-                    s,
-                );
+                v.merge_one(context, scenars, |v1, v2| *v1 = *v2, context, s);
                 Ok(ExprValue::Str(v))
             }
             RawExpr::List(ls) => {
@@ -202,7 +196,7 @@ mod tests {
     use crate::qualifiedname::QualifiedName;
     use crate::rawexpr::tests::{build_expr_list, build_expr_str};
     use crate::rawexpr::RawExpr;
-    use crate::scenarios::{AllScenarios, WhenContext};
+    use crate::scenarios::{AllScenarios, Scenario};
     use crate::simplename::SimpleName;
     use crate::values::ExprValue;
     use ustr::Ustr;
@@ -211,7 +205,6 @@ mod tests {
     fn test_eval() -> Result<(), Error> {
         let mut gpr = GprFile::new(std::path::Path::new("/"));
         let mut scenars = AllScenarios::default();
-        let context = WhenContext::new();
         let pkg = PackageName::None;
 
         // Evaluate a string
@@ -222,7 +215,7 @@ mod tests {
                 &gpr,
                 &[],
                 &mut scenars,
-                &context,
+                Scenario::default(),
                 pkg
             )?,
             ExprValue::new_with_str(Ustr::from("value")),
@@ -236,7 +229,7 @@ mod tests {
                 &gpr,
                 &[],
                 &mut scenars,
-                &context,
+                Scenario::default(),
                 pkg
             )?,
             ExprValue::new_with_str(Ustr::from("valuesuffix")),
@@ -250,7 +243,7 @@ mod tests {
                 &gpr,
                 &[],
                 &mut scenars,
-                &context,
+                Scenario::default(),
                 pkg
             )?,
             ExprValue::new_with_list(vec![
@@ -270,7 +263,7 @@ mod tests {
                 &gpr,
                 &[],
                 &mut scenars,
-                &context,
+                Scenario::default(),
                 pkg
             )?,
             // " valuesuffix, val2",
@@ -289,7 +282,7 @@ mod tests {
                 &gpr,
                 &[],
                 &mut scenars,
-                &context,
+                Scenario::default(),
                 pkg
             )?,
             ExprValue::new_with_list(vec![
@@ -308,7 +301,7 @@ mod tests {
                 &gpr,
                 &[],
                 &mut scenars,
-                &context,
+                Scenario::default(),
                 pkg
             )?,
             ExprValue::new_with_list(vec![
@@ -324,7 +317,7 @@ mod tests {
         gpr.declare(
             PackageName::None,
             SimpleName::Name(Ustr::from("var1")),
-            &context,
+            Scenario::default(),
             &mut scenars,
             ExprValue::new_with_str(Ustr::from("val1")),
         )?;
@@ -341,7 +334,7 @@ mod tests {
                 &gpr,
                 &[],
                 &mut scenars,
-                &context,
+                Scenario::default(),
                 pkg
             )?,
             ExprValue::new_with_str(Ustr::from("valueval1")),

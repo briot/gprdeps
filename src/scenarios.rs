@@ -26,71 +26,6 @@ pub struct CaseStmtScenario {
     // a WhenClause.
 }
 
-#[derive(Clone)]
-pub struct WhenClauseScenario {
-    // The scenario associated with this set of values.  This involves a
-    // single variable.
-    pub scenario: Scenario,
-}
-
-impl ::core::fmt::Debug for WhenClauseScenario {
-    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-        write!(f, "clause:{:?}", self.scenario)
-    }
-}
-
-impl WhenClauseScenario {
-    pub fn new(
-        scenars: &mut AllScenarios,
-        varname: Ustr,
-        mask: u64,
-        full_mask: u64,
-    ) -> Self {
-        let mut details = ScenarioDetails::default();
-        details.vars.insert(varname, mask);
-
-        let negate = !mask & full_mask;
-        let mut neg_details = ScenarioDetails::default();
-        neg_details.vars.insert(varname, negate);
-
-        WhenClauseScenario {
-            scenario: scenars.create_or_reuse(details),
-        }
-    }
-}
-
-/// Describes nested when clauses
-#[derive(Clone, Debug)]
-pub struct WhenContext {
-    pub clauses: Vec<WhenClauseScenario>,
-    pub scenario: Scenario,
-}
-
-impl WhenContext {
-    pub fn new() -> Self {
-        WhenContext {
-            clauses: Vec::new(),
-            scenario: Scenario::default(),
-        }
-    }
-
-    pub fn push(
-        &self,
-        scenars: &mut AllScenarios,
-        clause: WhenClauseScenario,
-    ) -> Option<Self> {
-        match scenars.intersection(self.scenario, clause.scenario) {
-            None => None,
-            Some(s) => {
-                let mut context2 = self.clone();
-                context2.clauses.push(clause);
-                context2.scenario = s;
-                Some(context2)
-            }
-        }
-    }
-}
-
 /// Describes the set of scenario variables covered by a scenario.  For each
 /// known scenario variables, we either have:
 ///    * no entry in vars: all values of the variables are valid
@@ -279,9 +214,10 @@ impl AllScenarios {
     /// "when others" that doesn't match anything)
     pub fn process_when_clause(
         &mut self,
+        context: Scenario,
         case_stmt: &mut CaseStmtScenario,
         when: &WhenClause,
-    ) -> Option<WhenClauseScenario> {
+    ) -> Option<Scenario> {
         let mut mask = 0_u64;
         let var = self.variables.get(&case_stmt.var).unwrap();
 
@@ -302,19 +238,19 @@ impl AllScenarios {
         // Special case: if a WhenClause covers all possible cases, we simply
         // return the default scenario, to avoid building a scenario which in
         // effect is a duplicate
-        if mask == case_stmt.full_mask {
-            Some(WhenClauseScenario {
-                scenario: Scenario::default(),
-            })
-        } else if mask == 0 {
+
+        if mask == 0 {
             None
+        } else if mask == case_stmt.full_mask {
+            Some(context)
         } else {
-            Some(WhenClauseScenario::new(
-                self,
-                case_stmt.var,
-                mask,
-                case_stmt.full_mask,
-            ))
+            // Scenario just for the WhenClause
+            let mut details = ScenarioDetails::default();
+            details.vars.insert(case_stmt.var, mask);
+            let when_scenario = self.create_or_reuse(details);
+
+            // Merged with the context
+            self.intersection(context, when_scenario)
         }
     }
 

@@ -5,7 +5,7 @@ use crate::perscenario::PerScenario;
 use crate::qualifiedname::QualifiedName;
 use crate::rawexpr::{Statement, StatementList};
 use crate::rawgpr::RawGPR;
-use crate::scenarios::{AllScenarios, Scenario, WhenContext};
+use crate::scenarios::{AllScenarios, Scenario};
 use crate::settings::Settings;
 use crate::simplename::SimpleName;
 use crate::values::ExprValue;
@@ -336,7 +336,7 @@ impl GprFile {
         &mut self,
         package: PackageName,
         name: SimpleName,
-        context: &WhenContext,
+        context: Scenario,
         scenars: &mut AllScenarios,
         mut delta: ExprValue,
     ) -> Result<(), Error> {
@@ -441,7 +441,7 @@ impl GprFile {
         &mut self,
         dependencies: &[&GprFile],
         scenarios: &mut AllScenarios,
-        context: &WhenContext,
+        context: Scenario,
         current_pkg: PackageName,
         statement: &Statement,
     ) -> std::result::Result<(), Error> {
@@ -561,31 +561,25 @@ impl GprFile {
                     };
 
                 for w in when {
-                    match scenarios.process_when_clause(&mut case_stmt, w) {
+                    match scenarios.process_when_clause(
+                        context,
+                        &mut case_stmt,
+                        w,
+                    ) {
                         None => {
                             if !w.body.is_empty() {
                                 // ??? Should report proper location
                                 Err(Error::UselessWhenClause)?;
                             }
                         }
-                        Some(clause) => {
-                            match context.push(scenarios, clause) {
-                                None => {
-                                    if !w.body.is_empty() {
-                                        // ??? Should report proper location
-                                        Err(Error::UselessWhenClause)?;
-                                    }
-                                }
-                                Some(c) => {
-                                    self.process_body(
-                                        dependencies,
-                                        scenarios,
-                                        &c,
-                                        current_pkg,
-                                        &w.body,
-                                    )?;
-                                }
-                            }
+                        Some(scenar) => {
+                            self.process_body(
+                                dependencies,
+                                scenarios,
+                                scenar,
+                                current_pkg,
+                                &w.body,
+                            )?;
                         }
                     }
                 }
@@ -599,7 +593,7 @@ impl GprFile {
         &mut self,
         dependencies: &[&GprFile],
         scenarios: &mut AllScenarios,
-        context: &WhenContext,
+        context: Scenario,
         current_pkg: PackageName,
         body: &StatementList,
     ) -> std::result::Result<(), Error> {
@@ -631,12 +625,10 @@ impl GprFile {
             }
         }
 
-        let context = WhenContext::new();
-
         self.process_body(
             dependencies,
             scenarios,
-            &context,
+            Scenario::default(),
             PackageName::None,
             &raw.body,
         )
