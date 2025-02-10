@@ -151,22 +151,22 @@ where
     {
         if let Some(s) = scenars.intersection(context, scenario) {
             let mut res = HashMap::new();
-            for (s1, v1) in self.values.iter_mut() {
-                if let Some(ns) = scenars.intersection(*s1, s) {
-                    let mut v2 = v1.clone();
-                    merge(&mut v2, value);
-                    res.insert(ns, v2);
+            std::mem::swap(&mut self.values, &mut res);
 
+            for (s1, mut v1) in res.into_iter() {
+                if let Some(ns) = scenars.intersection(s1, s) {
                     for negated in scenars.negate(s) {
-                        if let Some(ns) = scenars.intersection(*s1, negated) {
-                            res.insert(ns, v1.clone());
+                        if let Some(ns) = scenars.intersection(s1, negated) {
+                            self.values.insert(ns, v1.clone());
                         }
                     }
+
+                    merge(&mut v1, value);
+                    self.values.insert(ns, v1);
                 } else {
-                    res.insert(*s1, v1.clone());
+                    self.values.insert(s1, v1);
                 }
             }
-            self.values = res;
         }
     }
 }
