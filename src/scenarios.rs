@@ -146,7 +146,6 @@ impl AllScenarios {
         if s1 == s2 {
             return Some(s1);
         }
-
         let d1 = &self.scenarios[s1.0];
         let d2 = &self.scenarios[s2.0];
 
@@ -332,6 +331,12 @@ impl AllScenarios {
             self.variables.insert(var);
             Ok(ExprValue::Str(PerScenario::new_with_variable(&values)))
         }
+    }
+
+    /// Print statistics about scenario variables
+    pub fn print_stats(&self) {
+        println!("Scenario vars:{:-7}", self.variables.len());
+        println!("Scenarios:    {:-7}", self.scenarios.len());
     }
 
     pub fn describe(&self, scenario: Scenario) -> String {

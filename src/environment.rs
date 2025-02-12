@@ -346,6 +346,7 @@ impl Environment {
 
     /// Displays some stats about the graph
     pub fn print_stats(&self) {
+        self.scenarios.print_stats();
         println!("Graph nodes:  {:-7}", self.graph.node_count());
         println!("   Projects:     = {:-6}", self.gprs.len());
         println!("   Units:        + {:-6}", self.units.len());
