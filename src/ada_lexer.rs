@@ -27,6 +27,9 @@ impl<'a> AdaLexer<'a> {
         loop {
             match c {
                 '\n' | ' ' | '\t' | '\r' => {}
+                '#' => {   // preprocessor
+                   self.base.skip_to_eol();
+                }
                 '-' => {
                     if let Some('-') = self.base.peek_char() {
                         self.base.skip_to_eol();
