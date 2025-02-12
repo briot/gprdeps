@@ -50,8 +50,9 @@ fn main() -> Result<(), Error> {
         Action::GprShow {
             gprpath,
             print_vars,
+            trim,
         } => {
-            env.parse_all(&settings.root, &settings, false)?;
+            env.parse_all(&settings.root, &settings, trim)?;
             let gpr =
                 env.get_gpr(&gprpath).expect("Project not found in graph");
             gpr.print_details(&env.scenarios, print_vars);

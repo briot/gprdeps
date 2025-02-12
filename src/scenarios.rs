@@ -193,19 +193,39 @@ impl AllScenarios {
         &self,
         variable_values: &PerScenario<Ustr>,
     ) -> CaseStmtScenario {
-        let scenar = variable_values
+        let scenar_var = variable_values
             .iter()
             .next()
-            .expect("Must have at least one possible value")
-            .0;
-        let details = &self.scenarios[scenar.0];
-        let varname = details.vars.iter().next().unwrap().0;
-        assert_eq!(details.vars.len(), 1);
-        let typedef = self.variables.get(varname).expect("Unknown variable");
-        CaseStmtScenario {
-            var: *varname,
-            full_mask: typedef.full_mask(),
-            remaining: typedef.full_mask(),
+            .expect("Must have at least one possible value");
+        let details = &self.scenarios[scenar_var.0 .0];
+
+        match details.vars.len() {
+            // First case: value depends on a single typed scenario variable
+            1 => {
+                let varname = details.vars.iter().next().unwrap().0;
+                let typedef =
+                    self.variables.get(varname).expect("Unknown variable");
+                CaseStmtScenario {
+                    var: *varname,
+                    full_mask: typedef.full_mask(),
+                    remaining: typedef.full_mask(),
+                }
+            }
+
+            // Second case: a constant value (e.g. Prj'Target)
+            0 => CaseStmtScenario {
+                var: *scenar_var.1,
+                full_mask: 0,
+                remaining: 0,
+            },
+
+            _ => {
+                panic!(
+                "Variable used in case statement should have a simple value \
+                 that depends on exactly one scenario variable, but got {:?}",
+                self.describe(*scenar_var.0),
+            );
+            }
         }
     }
 
@@ -218,39 +238,67 @@ impl AllScenarios {
         case_stmt: &mut CaseStmtScenario,
         when: &WhenClause,
     ) -> Option<Scenario> {
-        let mut mask = 0_u64;
-        let var = self.variables.get(&case_stmt.var).unwrap();
+        // If the expression in Case was a constant, check whether this
+        // WhenClause would be used.  In this case, case_stmt.var is the
+        // actual value of the expression.
 
-        for val in &when.values {
-            match val {
-                StringOrOthers::Str(value_in_when) => {
-                    let m = var.mask(value_in_when);
-                    mask |= m;
-                    case_stmt.remaining &= !m;
-                }
-                StringOrOthers::Others => {
-                    mask = case_stmt.remaining;
-                    case_stmt.remaining = 0;
+        if case_stmt.full_mask == 0 {
+            let mut found = false;
+            for val in &when.values {
+                match val {
+                    StringOrOthers::Str(value_in_when) => {
+                        if *value_in_when == case_stmt.var {
+                            found = true;
+                            break;
+                        }
+                    }
+                    StringOrOthers::Others => {
+                        found = true;
+                        break;
+                    }
                 }
             }
-        }
 
-        // Special case: if a WhenClause covers all possible cases, we simply
-        // return the default scenario, to avoid building a scenario which in
-        // effect is a duplicate
-
-        if mask == 0 {
-            None
-        } else if mask == case_stmt.full_mask {
-            Some(context)
+            if found {
+                Some(context)
+            } else {
+                None
+            }
         } else {
-            // Scenario just for the WhenClause
-            let mut details = ScenarioDetails::default();
-            details.vars.insert(case_stmt.var, mask);
-            let when_scenario = self.create_or_reuse(details);
+            let mut mask = 0_u64;
+            let var = self.variables.get(&case_stmt.var).unwrap();
 
-            // Merged with the context
-            self.intersection(context, when_scenario)
+            for val in &when.values {
+                match val {
+                    StringOrOthers::Str(value_in_when) => {
+                        let m = var.mask(value_in_when);
+                        mask |= m;
+                        case_stmt.remaining &= !m;
+                    }
+                    StringOrOthers::Others => {
+                        mask = case_stmt.remaining;
+                        case_stmt.remaining = 0;
+                    }
+                }
+            }
+
+            // Special case: if a WhenClause covers all possible cases, we
+            // simply return the default scenario, to avoid building a scenario
+            // which in effect is a duplicate
+
+            if mask == 0 {
+                None
+            } else if mask == case_stmt.full_mask {
+                Some(context)
+            } else {
+                // Scenario just for the WhenClause
+                let mut details = ScenarioDetails::default();
+                details.vars.insert(case_stmt.var, mask);
+                let when_scenario = self.create_or_reuse(details);
+
+                // Merged with the context
+                self.intersection(context, when_scenario)
+            }
         }
     }
 
