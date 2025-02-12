@@ -57,7 +57,7 @@ impl std::hash::Hash for ScenarioVariable {
     where
         H: std::hash::Hasher,
     {
-        self.name.hash(state)
+        self.name.hash(state);
     }
 }
 
@@ -73,21 +73,5 @@ impl std::fmt::Display for ScenarioVariable {
 impl std::borrow::Borrow<Ustr> for ScenarioVariable {
     fn borrow(&self) -> &Ustr {
         &self.name
-    }
-}
-
-#[cfg(test)]
-pub mod tests {
-    use crate::scenario_variables::ScenarioVariable;
-
-    /// Mostly intended for tests: builds a set of strings
-    pub fn build_var(var: &ScenarioVariable, values: &[&str]) -> u64 {
-        let mut res = 0_u64;
-        for (idx, v) in var.valid.iter().enumerate() {
-            if values.contains(&v.as_str()) {
-                res |= 2_u64.pow(idx as u32);
-            }
-        }
-        res
     }
 }

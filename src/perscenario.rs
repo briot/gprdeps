@@ -175,8 +175,9 @@ where
 mod tests {
     use crate::errors::Error;
     use crate::perscenario::PerScenario;
-    use crate::scenarios::tests::{split, try_add_variable};
+    use crate::scenarios::tests::try_add_variable;
     use crate::scenarios::{AllScenarios, Scenario};
+    use ustr::Ustr;
 
     #[test]
     fn test_per_scenario() -> Result<(), Error> {
@@ -199,8 +200,7 @@ mod tests {
         // Now assume we are inside a case statement.
         //    case E1 is
         //       when a|b => V := 2;
-        let ctx = split(&mut scenars, Scenario::default(), "E1", &["a", "b"])
-            .unwrap();
+        let ctx = scenars.create_single(Ustr::from("E1"), 3); // a | b
 
         // First version: we merge one specific scenario:
         let mut v2 = v.clone();
@@ -226,14 +226,12 @@ mod tests {
         // Note that the result has multiple overlapping scenarios when E2=f
         // for instance, but they all result in the same value for a given
         // scenario.
-        let ctx =
-            split(&mut scenars, Scenario::default(), "E2", &["e"]).unwrap();
+        let ctx = scenars.create_single(Ustr::from("E2"), 1);
         let mut v3 = PerScenario::new(vec![]);
         v3.merge(&mut v2, ctx, &mut scenars, |old, new| old.push(*new));
         assert_eq!(
             v3.format(&scenars),
-            // "{E2=f:[], E1=c|d,E2=e:[1], E1=a|b,E2=e:[2], E1=a|b,E2=f:[], }"
-            "{E2=f:[], E1=a|b,E2=e:[2], E1=c|d,E2=e:[1], E1=c|d,E2=f:[], }"
+            "{E2=f:[], E1=c|d,E2=e:[1], E1=a|b,E2=e:[2], E1=a|b,E2=f:[], }" //"{E2=f:[], E1=a|b,E2=e:[2], E1=c|d,E2=e:[1], E1=c|d,E2=f:[], }"
         );
 
         Ok(())

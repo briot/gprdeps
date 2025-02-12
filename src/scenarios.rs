@@ -33,7 +33,17 @@ pub struct CaseStmtScenario {
 #[derive(Default, PartialEq, Clone)]
 struct ScenarioDetails {
     vars: UstrMap<u64>, // Variable name => bitmak of valid values
+                        //    hash: u64,
 }
+
+// impl std::hash::Hash for ScenarioDetails {
+//     fn hash<H>(&self, state: &mut H)
+//     where
+//         H: std::hash::Hasher,
+//     {
+//         self.vars.hash(state)
+//     }
+// }
 
 /// A pointer to a specific scenario.
 /// The default is a scenario that allows all values for all variables
@@ -85,6 +95,14 @@ impl AllScenarios {
         Scenario(self.scenarios.len() - 1)
     }
 
+    /// Create a scenario that involves a single variable, and a set of
+    /// valid values for it.
+    pub fn create_single(&mut self, varname: Ustr, mask: u64) -> Scenario {
+        let mut details = ScenarioDetails::default();
+        details.vars.insert(varname, mask);
+        self.create_or_reuse(details)
+    }
+
     /// Negate the scenario: it returns a series of possibly overlapping
     /// scenarios so that they do not overlap scenario, yet the whole set
     /// covers the full space.
@@ -93,22 +111,18 @@ impl AllScenarios {
     /// a scenario "E1=a|b,E2=e", this will return
     ///     not(a|b and e) = not(a|b) or not(e) = (E1=c|d) or (E2=f)
     pub fn negate(&mut self, scenario: Scenario) -> Vec<Scenario> {
-        let mut res = vec![];
-        let vars = &self.scenarios[scenario.0].vars;
-
         let mut all_negate = vec![];
-        for (varname, mask) in vars {
+        for (varname, mask) in &self.scenarios[scenario.0].vars {
             let var = self.variables.get(varname).unwrap();
             let m = !mask & var.full_mask();
             if m != 0 {
-                let mut details = ScenarioDetails::default();
-                details.vars.insert(*varname, m);
-                all_negate.push(details);
+                all_negate.push((*varname, m));
             }
         }
-
-        res.extend(all_negate.into_iter().map(|d| self.create_or_reuse(d)));
-        res
+        all_negate
+            .into_iter()
+            .map(|(varname, mask)| self.create_single(varname, mask))
+            .collect()
     }
 
     /// Splits a scenario along one specific variable.
@@ -174,8 +188,7 @@ impl AllScenarios {
                 }
             }
         }
-        let result = self.create_or_reuse(d);
-        Some(result)
+        Some(self.create_or_reuse(d))
     }
 
     /// Prepares the handling of a Case Statement in a project file.
@@ -291,9 +304,7 @@ impl AllScenarios {
                 Some(context)
             } else {
                 // Scenario just for the WhenClause
-                let mut details = ScenarioDetails::default();
-                details.vars.insert(case_stmt.var, mask);
-                let when_scenario = self.create_or_reuse(details);
+                let when_scenario = self.create_single(case_stmt.var, mask);
 
                 // Merged with the context
                 self.intersection(context, when_scenario)
@@ -314,9 +325,7 @@ impl AllScenarios {
             .iter()
             .enumerate()
             .map(|(idx, v)| {
-                let mut details = ScenarioDetails::default();
-                details.vars.insert(name, 2_u64.pow(idx as u32));
-                (*v, self.create_or_reuse(details))
+                (*v, self.create_single(name, 2_u64.pow(idx as u32)))
             })
             .collect();
 
@@ -378,39 +387,8 @@ impl AllScenarios {
 #[cfg(test)]
 pub mod tests {
     use crate::errors::Error;
-    use crate::scenario_variables::tests::build_var;
     use crate::scenarios::{AllScenarios, Scenario};
     use ustr::Ustr;
-
-    /// Restrict the scenario to a subset of values for the given variables.
-    /// This either returns an existing matching scenario, or a new one.
-    /// Returns None if the result never matches a valid combination of
-    /// scenarios.
-    pub fn split(
-        scenarios: &mut AllScenarios,
-        scenario: Scenario,
-        variable: &str,
-        values: &[&str],
-    ) -> Option<Scenario> {
-        // Prepare the new details
-        let mut tmp = scenarios.scenarios[scenario.0].clone();
-        let varname = Ustr::from(variable);
-        let var = scenarios.variables.get(&varname).unwrap();
-        let bitmask = build_var(var, values);
-        match tmp.vars.get_mut(&varname) {
-            None => {
-                tmp.vars.insert(varname, bitmask);
-            }
-            Some(v) => {
-                *v &= bitmask;
-                if (*v & var.full_mask()) == 0 {
-                    return None;
-                }
-            }
-        }
-
-        Some(scenarios.create_or_reuse(tmp))
-    }
 
     pub fn try_add_variable(
         scenarios: &mut AllScenarios,
@@ -439,28 +417,30 @@ pub mod tests {
 
         //  case Mode is
         //     when "debug" => ...
-        let s2 = split(&mut scenarios, s0, "MODE", &["debug"]);
-        assert_eq!(s2, Some(Scenario(1)));
-        assert_eq!(scenarios.describe(s2.unwrap()), "MODE=debug");
+        let s2 = scenarios.create_single(Ustr::from("MODE"), 1);
+        assert_eq!(s2, Scenario(1));
+        assert_eq!(scenarios.describe(s2), "MODE=debug");
 
         //  when others  => for Source_Dirs use ("src1", "src3");
         //     case Check is
-        let s3 = split(&mut scenarios, s0, "MODE", &["optimize", "lto"]);
-        assert_eq!(s3, Some(Scenario(7)));
-        assert_eq!(scenarios.describe(s3.unwrap()), "MODE=lto|optimize");
+        let s3 = scenarios.create_single(Ustr::from("MODE"), 6);
+        assert_eq!(s3, Scenario(7));
+        assert_eq!(scenarios.describe(s3), "MODE=lto|optimize");
 
-        let same = split(&mut scenarios, s0, "MODE", &["optimize", "lto"]);
-        assert_eq!(same, Some(Scenario(7)));
+        let same = scenarios.create_single(Ustr::from("MODE"), 6);
+        assert_eq!(same, Scenario(7));
 
-        let s4 = split(&mut scenarios, s3.unwrap(), "CHECK", &["most"]);
+        let check_most = scenarios.create_single(Ustr::from("CHECK"), 1);
+        let s4 = scenarios.intersection(s3, check_most);
         assert_eq!(s4, Some(Scenario(8)));
         assert_eq!(
             scenarios.describe(s4.unwrap()),
             "CHECK=most,MODE=lto|optimize"
         );
 
-        let s5 = split(&mut scenarios, s3.unwrap(), "CHECK", &["none", "some"]);
-        assert_eq!(s5, Some(Scenario(9)));
+        let check_none_some = scenarios.create_single(Ustr::from("CHECK"), 6);
+        let s5 = scenarios.intersection(s3, check_none_some);
+        assert_eq!(s5, Some(Scenario(10)));
         assert_eq!(
             scenarios.describe(s5.unwrap()),
             "CHECK=none|some,MODE=lto|optimize"
@@ -468,14 +448,14 @@ pub mod tests {
 
         //   case Check is
         //      when "none" => for Excluded_Source_Files use ("a.ads");
-        let s6 = split(&mut scenarios, s0, "CHECK", &["none"]);
-        assert_eq!(s6, Some(Scenario(5)));
-        assert_eq!(scenarios.describe(s6.unwrap()), "CHECK=none");
+        let check_none = scenarios.create_single(Ustr::from("CHECK"), 2);
+        assert_eq!(check_none, Scenario(5));
+        assert_eq!(scenarios.describe(check_none), "CHECK=none");
 
         //      when others => null;
-        let s7 = split(&mut scenarios, s0, "CHECK", &["some", "most"]);
-        assert_eq!(s7, Some(Scenario(10)));
-        assert_eq!(scenarios.describe(s7.unwrap()), "CHECK=most|some");
+        let s7 = scenarios.create_single(Ustr::from("CHECK"), 5);
+        assert_eq!(s7, Scenario(11));
+        assert_eq!(scenarios.describe(s7), "CHECK=most|some");
 
         Ok(())
     }
@@ -494,7 +474,7 @@ pub mod tests {
         // s0=everything
         // s1=MODE=debug
         //    => s1
-        let s1 = split(&mut scenarios, s0, "MODE", &["debug"]).unwrap();
+        let s1 = scenarios.create_single(Ustr::from("MODE"), 1);
         let res = scenarios.intersection(s0, s1);
         assert_eq!(res, Some(s1));
         let res = scenarios.intersection(s1, s0); // reverse order
@@ -503,7 +483,8 @@ pub mod tests {
         // s1=MODE=debug
         // s2=MODE=debug,CHECK=some
         //    => s2
-        let s2 = split(&mut scenarios, s1, "CHECK", &["some"]).unwrap();
+        let check_some = scenarios.create_single(Ustr::from("CHECK"), 4);
+        let s2 = scenarios.intersection(s1, check_some).unwrap();
         let res = scenarios.intersection(s1, s2);
         assert_eq!(res, Some(s2));
         let res = scenarios.intersection(s2, s1); // reverse order
@@ -512,25 +493,24 @@ pub mod tests {
         // s2=MODE=debug,CHECK=some
         // s3=CHECK=none|some
         //    => s2=MODE=debug,CHECK=some
-        let s3 = split(&mut scenarios, s0, "CHECK", &["none", "some"]).unwrap();
-        let res = scenarios.intersection(s2, s3);
+        let check_none_some = scenarios.create_single(Ustr::from("CHECK"), 6);
+        let res = scenarios.intersection(s2, check_none_some);
         assert_eq!(res, Some(s2));
-        let res = scenarios.intersection(s3, s2); // reverse order
+        let res = scenarios.intersection(check_none_some, s2); // reverse order
         assert_eq!(res, Some(s2));
 
         // s4=MODE=debug|optimize,CHECK=some
         // s5=MODE=lto|optimize,CHECK=some|most
         //    =>  s6=MODE=optimize,CHECK=some
-        let s4_step1 =
-            split(&mut scenarios, s0, "MODE", &["debug", "optimize"]).unwrap();
-        let s4 = split(&mut scenarios, s4_step1, "CHECK", &["some"]).unwrap();
-        let s5_step1 =
-            split(&mut scenarios, s0, "MODE", &["lto", "optimize"]).unwrap();
-        let s5 = split(&mut scenarios, s5_step1, "CHECK", &["some", "most"])
+        let mode_debug_opt = scenarios.create_single(Ustr::from("MODE"), 5);
+        let s4 = scenarios.intersection(mode_debug_opt, check_some).unwrap();
+        let mode_lto_opt = scenarios.create_single(Ustr::from("MODE"), 6);
+        let check_some_most = scenarios.create_single(Ustr::from("CHECK"), 5);
+        let s5 = scenarios
+            .intersection(mode_lto_opt, check_some_most)
             .unwrap();
-        let s6_step1 =
-            split(&mut scenarios, s0, "MODE", &["optimize"]).unwrap();
-        let s6 = split(&mut scenarios, s6_step1, "CHECK", &["some"]).unwrap();
+        let mode_opt = scenarios.create_single(Ustr::from("MODE"), 4);
+        let s6 = scenarios.intersection(mode_opt, check_some).unwrap();
         let res = scenarios.intersection(s4, s5);
         assert_eq!(res, Some(s6));
         let res = scenarios.intersection(s5, s4); // reverse order
