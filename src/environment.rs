@@ -1,10 +1,10 @@
 use crate::ada_lexer::{AdaLexer, AdaLexerOptions};
+use crate::allscenarios::AllScenarios;
 use crate::errors::Error;
 use crate::gpr::GprFile;
 use crate::gpr_scanner::{GprPathToIndex, GprScanner};
 use crate::graph::{DepGraph, Edge, Node, NodeIndex};
 use crate::rawgpr::RawGPR;
-use crate::scenarios::AllScenarios;
 use crate::settings::Settings;
 use crate::sourcefile::SourceFile;
 use crate::units::{QualifiedName, SourceKind};
@@ -178,7 +178,7 @@ impl Environment {
                 gpr.trim();
             }
             gpr.resolve_source_dirs(&mut all_source_dirs, settings)?;
-            gpr.resolve_source_files(&all_source_dirs, &mut self.scenarios);
+            gpr.resolve_source_files(&all_source_dirs);
         }
         Ok(())
     }

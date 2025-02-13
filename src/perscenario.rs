@@ -1,4 +1,5 @@
-use crate::scenarios::{AllScenarios, Scenario};
+use crate::allscenarios::AllScenarios;
+use crate::scenarios::Scenario;
 use std::collections::HashMap;
 use ustr::Ustr;
 
@@ -82,10 +83,14 @@ impl PerScenario<Ustr> {
     ///     E1 : On_Off := external ("e1");
     /// the returned value is
     ///     {"e1=on": "on",  "e1=off": "off"}
-    pub fn new_with_variable(values: &[(Ustr, Scenario)]) -> Self {
+    pub fn new_with_variable(
+        full_mask: Scenario,
+        values: &[(Ustr, Scenario)],
+    ) -> Self {
+        let base = Scenario::default().0 & !full_mask.0;
         let mut m = HashMap::new();
         for (u, s) in values {
-            m.insert(*s, *u);
+            m.insert(Scenario(s.0 | base), *u);
         }
         PerScenario { values: m }
     }
@@ -98,7 +103,7 @@ where
     #[cfg(test)]
     pub fn format(&self, scenars: &AllScenarios) -> String {
         let mut items = self.values.iter().collect::<Vec<_>>();
-        items.sort_by(|v1, v2| (v1.0).cmp(v2.0));
+        items.sort_by_key(|(s, _)| *s);
 
         let mut res = String::new();
         res.push('{');
@@ -149,18 +154,20 @@ where
     ) where
         F: Fn(&mut T, &U),
     {
-        if let Some(s) = scenars.intersection(context, scenario) {
+        let s = context & scenario;
+        if !scenars.never_matches(s) {
             let mut res = HashMap::new();
             std::mem::swap(&mut self.values, &mut res);
 
             for (s1, mut v1) in res.into_iter() {
-                if let Some(ns) = scenars.intersection(s1, s) {
+                let ns = s1 & s;
+                if !scenars.never_matches(ns) {
                     for negated in scenars.negate(s) {
-                        if let Some(ns) = scenars.intersection(s1, negated) {
-                            self.values.insert(ns, v1.clone());
+                        let s1_neg = s1 & negated;
+                        if !scenars.never_matches(s1_neg) {
+                            self.values.insert(s1_neg, v1.clone());
                         }
                     }
-
                     merge(&mut v1, value);
                     self.values.insert(ns, v1);
                 } else {
@@ -173,20 +180,20 @@ where
 
 #[cfg(test)]
 mod tests {
+    use crate::allscenarios::tests::{create_single, try_add_variable};
+    use crate::allscenarios::AllScenarios;
     use crate::errors::Error;
     use crate::perscenario::PerScenario;
-    use crate::scenarios::tests::try_add_variable;
-    use crate::scenarios::{AllScenarios, Scenario};
-    use ustr::Ustr;
+    use crate::scenarios::Scenario;
 
     #[test]
     fn test_per_scenario() -> Result<(), Error> {
         let mut scenars = AllScenarios::default();
-        try_add_variable(&mut scenars, "E1", &["a", "b", "c", "d"])?;
-        try_add_variable(&mut scenars, "E2", &["e", "f"])?;
+        try_add_variable(&mut scenars, "E1", &["a", "b", "c", "d"]);
+        try_add_variable(&mut scenars, "E2", &["e", "f"]);
 
         let zero = PerScenario::<u8>::new(0);
-        assert_eq!(zero.format(&scenars), "{*:0, }",);
+        assert_eq!(zero.format(&scenars), "{E1=*,E2=*:0, }",);
 
         // Splitting on s0 context has no effect.
         // Case of doing   V := 1  at the top level.
@@ -195,12 +202,12 @@ mod tests {
         v.merge(&mut one, Scenario::default(), &mut scenars, |old, new| {
             *old = *new
         });
-        assert_eq!(v.format(&scenars), "{*:1, }",);
+        assert_eq!(v.format(&scenars), "{E1=*,E2=*:1, }",);
 
         // Now assume we are inside a case statement.
         //    case E1 is
         //       when a|b => V := 2;
-        let ctx = scenars.create_single(Ustr::from("E1"), 3); // a | b
+        let ctx = create_single(&mut scenars, "E1", &["a", "b"]);
 
         // First version: we merge one specific scenario:
         let mut v2 = v.clone();
@@ -211,13 +218,13 @@ mod tests {
             Scenario::default(),
             &2,
         );
-        assert_eq!(v2.format(&scenars), "{E1=a|b:2, E1=c|d:1, }",);
+        assert_eq!(v2.format(&scenars), "{E1=a|b,E2=*:2, E1=c|d,E2=*:1, }",);
 
         // Second version: we merge another PerScenario value
         let mut v2 = v.clone();
         let mut two = PerScenario::<u8>::new(2);
         v2.merge(&mut two, ctx, &mut scenars, |old, new| *old = *new);
-        assert_eq!(v2.format(&scenars), "{E1=a|b:2, E1=c|d:1, }",);
+        assert_eq!(v2.format(&scenars), "{E1=a|b,E2=*:2, E1=c|d,E2=*:1, }",);
 
         // Now use the above in another case statement.
         //    L := ("a");
@@ -226,12 +233,12 @@ mod tests {
         // Note that the result has multiple overlapping scenarios when E2=f
         // for instance, but they all result in the same value for a given
         // scenario.
-        let ctx = scenars.create_single(Ustr::from("E2"), 1);
+        let ctx = create_single(&mut scenars, "E2", &["e"]);
         let mut v3 = PerScenario::new(vec![]);
         v3.merge(&mut v2, ctx, &mut scenars, |old, new| old.push(*new));
         assert_eq!(
             v3.format(&scenars),
-            "{E2=f:[], E1=c|d,E2=e:[1], E1=a|b,E2=e:[2], E1=a|b,E2=f:[], }" //"{E2=f:[], E1=a|b,E2=e:[2], E1=c|d,E2=e:[1], E1=c|d,E2=f:[], }"
+            "{E1=a|b,E2=e:[2], E1=c|d,E2=e:[1], E1=c|d,E2=f:[], E1=*,E2=f:[], }",
         );
 
         Ok(())

@@ -42,11 +42,6 @@ pub enum Error {
     #[error("Variable in case statement must be a string")]
     VariableMustBeString,
 
-    #[error(
-        "Scenario variable {0} already defined with another set of values"
-    )]
-    ScenarioTwice(Ustr),
-
     #[error("Wrong number of indices for {0}")]
     WrongIndexes(Ustr),
 

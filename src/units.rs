@@ -1,3 +1,4 @@
+use itertools::join;
 /// Source files are grouped into units.
 /// Those units describe at which level the dependencies occur in each
 /// particular language.
@@ -36,15 +37,7 @@ impl QualifiedName {
 
 impl std::fmt::Display for QualifiedName {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}",
-            self.0
-                .iter()
-                .map(|n| format!("{}", n))
-                .collect::<Vec<_>>()
-                .join(".")
-        )
+        write!(f, "{}", join(self.0.iter().map(|n| format!("{}", n)), "."))
     }
 }
 

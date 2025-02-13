@@ -1,11 +1,13 @@
+use crate::allscenarios::AllScenarios;
 use crate::errors::Error;
 use crate::gpr::GprFile;
 use crate::packagename::PackageName;
 use crate::perscenario::PerScenario;
 use crate::qualifiedname::QualifiedName;
 use crate::rawexpr::RawExpr;
-use crate::scenarios::{AllScenarios, Scenario};
+use crate::scenarios::Scenario;
 use crate::simplename::SimpleName;
+use itertools::join;
 use ustr::Ustr;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -170,18 +172,12 @@ impl ExprValue {
             }
             ExprValue::StrList(map) => {
                 map.two_columns(scenarios, indent, eol, |s| {
-                    s.iter()
-                        .map(|s| format!("{}", s))
-                        .collect::<Vec<_>>()
-                        .join(", ")
+                    join(s.iter().map(|s| format!("{}", s)), ", ")
                 })
             }
             ExprValue::PathList(map) => {
                 map.two_columns(scenarios, indent, eol, |s| {
-                    s.iter()
-                        .map(|s| format!("{}", s.display()))
-                        .collect::<Vec<_>>()
-                        .join(", ")
+                    join(s.iter().map(|s| format!("{}", s.display())), ", ")
                 })
             }
         }
@@ -190,13 +186,14 @@ impl ExprValue {
 
 #[cfg(test)]
 mod tests {
+    use crate::allscenarios::AllScenarios;
     use crate::errors::Error;
     use crate::gpr::GprFile;
     use crate::packagename::PackageName;
     use crate::qualifiedname::QualifiedName;
     use crate::rawexpr::tests::{build_expr_list, build_expr_str};
     use crate::rawexpr::RawExpr;
-    use crate::scenarios::{AllScenarios, Scenario};
+    use crate::scenarios::Scenario;
     use crate::simplename::SimpleName;
     use crate::values::ExprValue;
     use ustr::Ustr;
@@ -356,7 +353,7 @@ mod tests {
                V := ("a", E1, E2, E1);
                end P;"#,
         )?;
-        let mut scenarios = crate::scenarios::AllScenarios::default();
+        let mut scenarios = crate::allscenarios::AllScenarios::default();
         let gpr = crate::gpr::tests::process(&raw, &mut scenarios)?;
         gpr.print_details(&scenarios, true);
         crate::gpr::tests::assert_variable(
@@ -400,7 +397,7 @@ mod tests {
             end P;
             "#,
         )?;
-        let mut scenarios = crate::scenarios::AllScenarios::default();
+        let mut scenarios = crate::allscenarios::AllScenarios::default();
         let gpr = crate::gpr::tests::process(&raw, &mut scenarios)?;
         gpr.print_details(&scenarios, true);
         crate::gpr::tests::assert_variable(

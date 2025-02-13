@@ -1,3 +1,4 @@
+use crate::allscenarios::AllScenarios;
 use crate::directory::Directory;
 use crate::errors::Error;
 use crate::packagename::{PackageName, PACKAGE_NAME_VARIANTS};
@@ -5,7 +6,7 @@ use crate::perscenario::PerScenario;
 use crate::qualifiedname::QualifiedName;
 use crate::rawexpr::{Statement, StatementList};
 use crate::rawgpr::RawGPR;
-use crate::scenarios::{AllScenarios, Scenario};
+use crate::scenarios::Scenario;
 use crate::settings::Settings;
 use crate::simplename::SimpleName;
 use crate::values::ExprValue;
@@ -241,11 +242,7 @@ impl GprFile {
     }
 
     /// Return the list of source files for all scenarios
-    pub fn resolve_source_files(
-        &mut self,
-        all_dirs: &HashSet<Directory>,
-        scenarios: &mut AllScenarios,
-    ) {
+    pub fn resolve_source_files(&mut self, all_dirs: &HashSet<Directory>) {
         let source_dirs =
             self.pathlist_attr(PackageName::None, &SimpleName::SourceDirs);
         let mut files: HashMap<Scenario, Vec<(PathBuf, Ustr)>> = HashMap::new();
@@ -259,18 +256,14 @@ impl GprFile {
                         ExprValue::Str(v),
                     ) => {
                         for (scenar_attr, suffix) in v.iter() {
-                            match scenarios
-                                .intersection(*scenar_attr, *scenar_dir)
-                            {
-                                None => continue,
-                                Some(s) => {
-                                    let sfiles = files.entry(s).or_default();
-                                    for d in dirs_in_scenar {
-                                        if let Some(dir) = all_dirs.get(d) {
-                                            dir.filter_suffix(
-                                                suffix, *lang, sfiles,
-                                            );
-                                        }
+                            let s = *scenar_attr & *scenar_dir;
+                            if !s.is_empty() {
+                                let sfiles = files.entry(s).or_default();
+                                for d in dirs_in_scenar {
+                                    if let Some(dir) = all_dirs.get(d) {
+                                        dir.filter_suffix(
+                                            suffix, *lang, sfiles,
+                                        );
                                     }
                                 }
                             }
@@ -282,18 +275,14 @@ impl GprFile {
                         ExprValue::Str(v),
                     ) => {
                         for (scenar_attr, basename) in v.iter() {
-                            match scenarios
-                                .intersection(*scenar_attr, *scenar_dir)
-                            {
-                                None => continue,
-                                Some(s) => {
-                                    let sfiles = files.entry(s).or_default();
-                                    for d in dirs_in_scenar {
-                                        if let Some(dir) = all_dirs.get(d) {
-                                            dir.add_if_found(
-                                                basename, *CST_ADA, sfiles,
-                                            );
-                                        }
+                            let s = *scenar_attr & *scenar_dir;
+                            if !s.is_empty() {
+                                let sfiles = files.entry(s).or_default();
+                                for d in dirs_in_scenar {
+                                    if let Some(dir) = all_dirs.get(d) {
+                                        dir.add_if_found(
+                                            basename, *CST_ADA, sfiles,
+                                        );
                                     }
                                 }
                             }
@@ -475,7 +464,7 @@ impl GprFile {
 
                         // Check that this variable wasn't already declared
                         // with a different set of values.
-                        scenarios.try_add_variable(ext, valid)?
+                        scenarios.try_add_variable(ext, valid).value().clone()
                     }
                     _ => {
                         // Else we have a standard variable (either untyped
@@ -561,26 +550,24 @@ impl GprFile {
                     };
 
                 for w in when {
-                    match scenarios.process_when_clause(
+                    let scenar = scenarios.process_when_clause(
                         context,
                         &mut case_stmt,
                         w,
-                    ) {
-                        None => {
-                            if !w.body.is_empty() {
-                                // ??? Should report proper location
-                                Err(Error::UselessWhenClause)?;
-                            }
+                    );
+                    if scenar.is_empty() {
+                        if !w.body.is_empty() {
+                            // ??? Should report proper location
+                            Err(Error::UselessWhenClause)?;
                         }
-                        Some(scenar) => {
-                            self.process_body(
-                                dependencies,
-                                scenarios,
-                                scenar,
-                                current_pkg,
-                                &w.body,
-                            )?;
-                        }
+                    } else {
+                        self.process_body(
+                            dependencies,
+                            scenarios,
+                            scenar,
+                            current_pkg,
+                            &w.body,
+                        )?;
                     }
                 }
             }
@@ -679,12 +666,12 @@ impl std::fmt::Display for GprFile {
 #[cfg(test)]
 pub mod tests {
     use crate::ada_lexer::{AdaLexer, AdaLexerOptions};
+    use crate::allscenarios::AllScenarios;
     use crate::errors::Error;
     use crate::gpr::GprFile;
     use crate::gpr_scanner::GprScanner;
     use crate::packagename::PackageName;
     use crate::rawgpr::RawGPR;
-    use crate::scenarios::AllScenarios;
     use crate::settings::Settings;
     use crate::simplename::SimpleName;
     use std::path::Path;

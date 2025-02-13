@@ -1,5 +1,6 @@
+use crate::allscenarios::AllScenarios;
 use crate::errors::Error;
-use crate::scenarios::{AllScenarios, Scenario};
+use crate::scenarios::Scenario;
 use crate::units::QualifiedName;
 use petgraph::algo::toposort;
 use petgraph::graph::Graph;

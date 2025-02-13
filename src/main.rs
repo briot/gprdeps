@@ -1,5 +1,6 @@
 mod ada_lexer;
 mod ada_scanner;
+mod allscenarios;
 mod base_lexer;
 mod cli;
 mod cpp_lexer;
