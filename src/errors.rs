@@ -79,6 +79,12 @@ pub enum Error {
         //  backtrace: std::backtrace::Backtrace,
     },
 
+    #[error("{source}")]
+    FmtIo {
+        #[from]
+        source: std::fmt::Error,
+    },
+
     #[error("Invalid graph node type {0}")]
     InvalidGraphNode(String),
 

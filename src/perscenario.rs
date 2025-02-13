@@ -3,6 +3,9 @@ use crate::scenarios::Scenario;
 use std::collections::HashMap;
 use ustr::Ustr;
 
+#[cfg(test)]
+use std::fmt::Write;
+
 /// A lot of expressions and variables in projects will have a value that
 /// differs depending on the scenario.
 /// The set of values must cover the whole space of scenarios (and the functions
@@ -110,7 +113,7 @@ where
         for (s, v) in items {
             res.push_str(&scenars.describe(*s));
             res.push(':');
-            res.push_str(&format!("{:?}", v));
+            let _ = write!(res, "{:?}", v); // ignore errors in tests
             res.push_str(", ");
         }
         res.push('}');

@@ -19,12 +19,6 @@ impl Default for Scenario {
     }
 }
 
-impl std::fmt::Display for Scenario {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "s{}", self.0)
-    }
-}
-
 impl Scenario {
     /// A scenario that never applies
     pub fn empty() -> Self {

@@ -10,6 +10,7 @@ use crate::sourcefile::SourceFile;
 use crate::units::{QualifiedName, SourceKind};
 use petgraph::visit::EdgeRef;
 use std::collections::{HashMap, HashSet};
+use std::fmt::Write;
 use std::path::{Path, PathBuf};
 use ustr::Ustr;
 
@@ -402,10 +403,11 @@ impl Environment {
                     self.graph.get_specs(&mut self.scenarios, node)
                 {
                     d.push('\n');
-                    d.push_str(&format!(
+                    write!(
+                        d,
                         "      {} ",
                         self.graph.get_source(nodeidx)?.display()
-                    ));
+                    )?;
                     for s in scenars {
                         d.push(' ');
                         d.push_str(&self.scenarios.describe(s));

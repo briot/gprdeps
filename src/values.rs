@@ -168,16 +168,16 @@ impl ExprValue {
     ) -> String {
         match self {
             ExprValue::Str(map) => {
-                map.two_columns(scenarios, indent, eol, |s| format!("{}", s))
+                map.two_columns(scenarios, indent, eol, |s| s.to_string())
             }
             ExprValue::StrList(map) => {
                 map.two_columns(scenarios, indent, eol, |s| {
-                    join(s.iter().map(|s| format!("{}", s)), ", ")
+                    join(s.iter(), ", ")
                 })
             }
             ExprValue::PathList(map) => {
                 map.two_columns(scenarios, indent, eol, |s| {
-                    join(s.iter().map(|s| format!("{}", s.display())), ", ")
+                    join(s.iter().map(|s| s.display()), ", ")
                 })
             }
         }

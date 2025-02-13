@@ -37,7 +37,7 @@ impl QualifiedName {
 
 impl std::fmt::Display for QualifiedName {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", join(self.0.iter().map(|n| format!("{}", n)), "."))
+        write!(f, "{}", join(self.0.iter(), "."))
     }
 }
 

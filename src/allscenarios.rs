@@ -5,7 +5,7 @@
 use crate::perscenario::PerScenario;
 use crate::rawexpr::WhenClause;
 use crate::scenario_variables::ScenarioVariable;
-use crate::scenarios::{ScenarioFactory, Scenario};
+use crate::scenarios::{Scenario, ScenarioFactory};
 use crate::simplename::StringOrOthers;
 use itertools::join;
 use ustr::{Ustr, UstrMap};
