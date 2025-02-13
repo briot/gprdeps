@@ -3,9 +3,10 @@ use ustr::Ustr;
 #[derive(Eq, PartialEq)]
 pub struct ScenarioVariable {
     name: Ustr,
-    valid: Vec<Ustr>,
+    valid: Vec<(Ustr, u64)>,
 
-    // bitmask set to 1 for all entries in valid
+    // bitmask set to 1 for all entries in valid, and all other variables
+    // unset.  This is used for case statements to resolve "others".
     full_mask: u64,
 }
 
@@ -13,22 +14,23 @@ impl ScenarioVariable {
     /// Create a new scenario variable and its list of valid values.
     /// The list of values must be sorted, so that we can easily compare two
     /// such lists in the future.
-    pub fn new(name: Ustr, valid: &[Ustr]) -> Self {
+    pub fn new(name: Ustr, valid: Vec<(Ustr, u64)>) -> Self {
+        let full_mask = 2_u64.pow(valid.len() as u32) - 1;
         ScenarioVariable {
             name,
-            valid: valid.into(),
-            full_mask: 2_u64.pow(valid.len() as u32) - 1,
+            valid,
+            full_mask,
         }
     }
 
     /// Check whether this variable has the exact same set of valid values.
     /// The list of values must be sorted.
-    pub fn has_same_valid(&self, valid: &[Ustr]) -> bool {
+    pub fn has_same_valid(&self, valid: &[(Ustr, u64)]) -> bool {
         self.valid == valid
     }
 
     /// Show the list of valid values (sorted alphabetically)
-    pub fn list_valid(&self) -> &[Ustr] {
+    pub fn list_valid(&self) -> &[(Ustr, u64)] {
         &self.valid
     }
 
@@ -39,9 +41,9 @@ impl ScenarioVariable {
 
     /// The mask for one specific value of the variable
     pub fn mask(&self, value: &Ustr) -> u64 {
-        for (idx, val) in self.valid.iter().enumerate() {
+        for (val, mask) in self.valid.iter() {
             if val == value {
-                return 2_u64.pow(idx as u32);
+                return *mask;
             }
         }
         0

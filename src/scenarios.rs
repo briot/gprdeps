@@ -36,19 +36,10 @@ struct ScenarioDetails {
                         //    hash: u64,
 }
 
-// impl std::hash::Hash for ScenarioDetails {
-//     fn hash<H>(&self, state: &mut H)
-//     where
-//         H: std::hash::Hasher,
-//     {
-//         self.vars.hash(state)
-//     }
-// }
-
 /// A pointer to a specific scenario.
 /// The default is a scenario that allows all values for all variables
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, PartialOrd, Ord, Hash)]
-pub struct Scenario(pub(crate) usize);
+pub struct Scenario(usize);
 
 impl std::fmt::Display for Scenario {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -321,24 +312,28 @@ impl AllScenarios {
         name: Ustr,
         valid: &[Ustr],
     ) -> Result<ExprValue, Error> {
-        let values: Vec<(Ustr, Scenario)> = valid
+        let values: Vec<(Ustr, u64)> = valid
             .iter()
             .enumerate()
-            .map(|(idx, v)| {
-                (*v, self.create_single(name, 2_u64.pow(idx as u32)))
-            })
+            .map(|(idx, v)| (*v, 2_u64.pow(idx as u32)))
             .collect();
 
+        let val: Vec<(Ustr, Scenario)> = values
+            .iter()
+            .map(|(str, mask)| (*str, self.create_single(name, *mask)))
+            .collect();
+        let expr = ExprValue::Str(PerScenario::new_with_variable(&val));
+
         if let Some(v) = self.variables.get(&name) {
-            if v.has_same_valid(valid) {
-                Ok(ExprValue::Str(PerScenario::new_with_variable(&values)))
+            if v.has_same_valid(&values) {
+                Ok(expr)
             } else {
                 Err(Error::ScenarioTwice(name))
             }
         } else {
-            let var = ScenarioVariable::new(name, valid);
+            let var = ScenarioVariable::new(name, values.clone());
             self.variables.insert(var);
-            Ok(ExprValue::Str(PerScenario::new_with_variable(&values)))
+            Ok(expr)
         }
     }
 
@@ -346,6 +341,9 @@ impl AllScenarios {
     pub fn print_stats(&self) {
         println!("Scenario vars:{:-7}", self.variables.len());
         println!("Scenarios:    {:-7}", self.scenarios.len());
+        let total_valid: usize =
+            self.variables.iter().map(|v| v.list_valid().len()).sum();
+        println!("    values:   {:-7}", total_valid);
     }
 
     pub fn describe(&self, scenario: Scenario) -> String {
@@ -370,7 +368,7 @@ impl AllScenarios {
                         .enumerate()
                         .filter_map(|(idx, v)| {
                             if d & 2_u64.pow(idx as u32) != 0 {
-                                Some(v.as_str())
+                                Some(v.0.as_str())
                             } else {
                                 None
                             }
