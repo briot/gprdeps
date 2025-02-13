@@ -5,7 +5,7 @@
 use crate::perscenario::PerScenario;
 use crate::rawexpr::WhenClause;
 use crate::scenario_variables::ScenarioVariable;
-use crate::scenarios::{Mask, Scenario};
+use crate::scenarios::{ScenarioFactory, Scenario};
 use crate::simplename::StringOrOthers;
 use itertools::join;
 use ustr::{Ustr, UstrMap};
@@ -20,25 +20,17 @@ pub struct CaseStmtScenario {
     // ??? Could be directly a &ScenarioVariable
     full_mask: Scenario,
     // A mask that covers all possible values for the variable
-    remaining: Mask,
+    remaining: Scenario,
     // The bitmask that lists all values of the variable not yet covered by
     // a WhenClause.
 }
 
 /// The collection of all variants of scenarios needed to analyze the project
 /// tree.  Each scenario is unique.
+#[derive(Default)]
 pub struct AllScenarios {
     variables: UstrMap<ScenarioVariable>,
-    next_mask: Mask,
-}
-
-impl Default for AllScenarios {
-    fn default() -> Self {
-        Self {
-            variables: Default::default(),
-            next_mask: 1,
-        }
-    }
+    factory: ScenarioFactory,
 }
 
 impl AllScenarios {
@@ -72,12 +64,12 @@ impl AllScenarios {
         &self,
         scenario: Scenario,
     ) -> impl std::iter::Iterator<Item = Scenario> + '_ {
-        let mask = scenario.0;
+        let mask = scenario;
         self.variables.values().filter_map(move |var| {
-            let negate_var_only = !mask & var.full_mask().0;
-            let all_other_vars = !var.full_mask().0;
-            if negate_var_only != 0 {
-                Some(Scenario(all_other_vars | negate_var_only))
+            let negate_var_only = !mask & var.full_mask();
+            let all_other_vars = !var.full_mask();
+            if !negate_var_only.is_empty() {
+                Some(all_other_vars | negate_var_only)
             } else {
                 None
             }
@@ -115,16 +107,16 @@ impl AllScenarios {
             return CaseStmtScenario {
                 var: *scenar_and_varname.1,
                 full_mask: Scenario::empty(),
-                remaining: 0,
+                remaining: Scenario::empty(),
             };
         }
 
         for v in self.variables.values() {
-            if (mask.0 | v.full_mask().0) == Scenario::default().0 {
+            if (mask | v.full_mask()) == Scenario::default() {
                 return CaseStmtScenario {
                     var: *v.name(),
                     full_mask: v.full_mask(),
-                    remaining: v.full_mask().0,
+                    remaining: v.full_mask(),
                 };
             }
         }
@@ -164,23 +156,23 @@ impl AllScenarios {
             }
             Scenario::empty()
         } else {
-            let mut mask = 0;
+            let mut mask = Scenario::empty();
             let var = self.variables.get(&case_stmt.var).unwrap();
-            let all_other_vars = !var.full_mask().0;
+            let all_other_vars = !var.full_mask();
             for val in &when.values {
                 match val {
                     StringOrOthers::Str(value_in_when) => {
                         let m = var.mask(value_in_when);
-                        mask |= m;
-                        case_stmt.remaining &= !m;
+                        mask = mask | m;
+                        case_stmt.remaining = case_stmt.remaining & !m;
                     }
                     StringOrOthers::Others => {
                         mask = case_stmt.remaining;
-                        case_stmt.remaining = 0;
+                        case_stmt.remaining = Scenario::empty();
                     }
                 }
             }
-            Scenario(all_other_vars | (context.0 & mask))
+            all_other_vars | (context & mask)
         }
     }
 
@@ -207,20 +199,18 @@ impl AllScenarios {
                 }
             })
             .or_insert_with(|| {
-                let mut mask = self.next_mask;
-                let mut full_mask = 0;
+                let mut full_mask = Scenario::empty();
                 let values: Vec<(Ustr, Scenario)> = valid
                     .iter()
                     .map(|v| {
-                        let res = (*v, Scenario(mask));
-                        full_mask |= mask;
-                        mask *= 2;
+                        let s = self.factory.get_next();
+                        let res = (*v, s);
+                        full_mask = full_mask | s;
                         res
                     })
                     .collect();
 
-                self.next_mask = mask;
-                ScenarioVariable::new(name, values, Scenario(full_mask))
+                ScenarioVariable::new(name, values, full_mask)
             })
     }
 
@@ -255,11 +245,11 @@ pub mod tests {
         values: &[&str],
     ) -> Scenario {
         let var = scenarios.variables.get(&Ustr::from(varname)).unwrap();
-        let mut mask = !var.full_mask().0;
+        let mut mask = !var.full_mask();
         for v in values {
-            mask |= var.mask(&Ustr::from(v));
+            mask = mask | var.mask(&Ustr::from(v));
         }
-        Scenario(mask)
+        mask
     }
 
     pub fn try_add_variable(

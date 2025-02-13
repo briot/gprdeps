@@ -87,10 +87,10 @@ impl PerScenario<Ustr> {
         full_mask: Scenario,
         values: &[(Ustr, Scenario)],
     ) -> Self {
-        let base = Scenario::default().0 & !full_mask.0;
+        let base = Scenario::default() & !full_mask;
         let mut m = HashMap::new();
         for (u, s) in values {
-            m.insert(Scenario(s.0 | base), *u);
+            m.insert(s | base, *u);
         }
         PerScenario { values: m }
     }
