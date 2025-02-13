@@ -5,7 +5,7 @@
 use crate::perscenario::PerScenario;
 use crate::rawexpr::WhenClause;
 use crate::scenario_variables::ScenarioVariable;
-use crate::scenarios::Scenario;
+use crate::scenarios::{Mask, Scenario};
 use crate::simplename::StringOrOthers;
 use itertools::join;
 use ustr::{Ustr, UstrMap};
@@ -20,7 +20,7 @@ pub struct CaseStmtScenario {
     // ??? Could be directly a &ScenarioVariable
     full_mask: Scenario,
     // A mask that covers all possible values for the variable
-    remaining: u64,
+    remaining: Mask,
     // The bitmask that lists all values of the variable not yet covered by
     // a WhenClause.
 }
@@ -29,7 +29,7 @@ pub struct CaseStmtScenario {
 /// tree.  Each scenario is unique.
 pub struct AllScenarios {
     variables: UstrMap<ScenarioVariable>,
-    next_mask: u64,
+    next_mask: Mask,
 }
 
 impl Default for AllScenarios {
@@ -164,7 +164,7 @@ impl AllScenarios {
             }
             Scenario::empty()
         } else {
-            let mut mask = 0_u64;
+            let mut mask = 0;
             let var = self.variables.get(&case_stmt.var).unwrap();
             let all_other_vars = !var.full_mask().0;
             for val in &when.values {
@@ -208,7 +208,7 @@ impl AllScenarios {
             })
             .or_insert_with(|| {
                 let mut mask = self.next_mask;
-                let mut full_mask = 0_u64;
+                let mut full_mask = 0;
                 let values: Vec<(Ustr, Scenario)> = valid
                     .iter()
                     .map(|v| {

@@ -1,19 +1,21 @@
-/// All scenario variables are stored as a bitmask.
-/// It includes all variables (new ones could be discovered later, after a
-/// specific scenario has been created).
-/// For instance, if the first variable has 3 possible values, the second
-/// variable has 2 possible values, and so on, scenarios will be a bitmask
-/// like:
-///     [0 1 1][0 1][0 0 ....]
+//! All scenario variables are stored as a bitmask.
+//! It includes all variables (new ones could be discovered later, after a
+//! specific scenario has been created).
+//! For instance, if the first variable has 3 possible values, the second
+//! variable has 2 possible values, and so on, scenarios will be a bitmask
+//! like:
+//!     [0 1 1][0 1][0 0 ....]
+
+pub type Mask = u64;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Ord, Hash)]
-pub struct Scenario(pub(crate) u64);
+pub struct Scenario(pub(crate) Mask);
 
 impl Default for Scenario {
     /// The default value is a scenario that applies to all values for all
     /// variables.
     fn default() -> Self {
-        Scenario(u64::MAX)
+        Scenario(Mask::MAX)
     }
 }
 

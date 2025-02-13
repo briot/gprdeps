@@ -1,5 +1,5 @@
 use crate::perscenario::PerScenario;
-use crate::scenarios::Scenario;
+use crate::scenarios::{Mask, Scenario};
 use crate::values::ExprValue;
 use itertools::join;
 use ustr::Ustr;
@@ -94,7 +94,7 @@ impl ScenarioVariable {
     }
 
     /// The mask for one specific value of the variable
-    pub fn mask(&self, value: &Ustr) -> u64 {
+    pub fn mask(&self, value: &Ustr) -> Mask {
         match self.valid.iter().find(|(val, _)| val == value) {
             None => 0,
             Some(item) => item.1 .0,
