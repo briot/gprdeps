@@ -42,13 +42,12 @@ impl Default for AllScenarios {
 }
 
 impl AllScenarios {
+    /// True if this scenario is not applicable (cannot occur in practice).
+    /// This is the case if for at least one of the variables the mask is 0.
     pub fn never_matches(&self, scenario: Scenario) -> bool {
-        for var in self.variables.values() {
-            if (scenario & var.full_mask()) == Scenario::empty() {
-                return true;
-            }
-        }
-        false
+        self.variables
+            .values()
+            .any(|var| (scenario & var.full_mask()) == Scenario::empty())
     }
 
     /// Negate the scenario: it returns a series of possibly overlapping
@@ -69,16 +68,20 @@ impl AllScenarios {
     ///    not(a|b and e) = not(a|b) or not(e) = (E1=c|d) or (E2=f)
     ///    b 0011 11 11    # E1=c|d, E2=*, E3=*
     ///    b 1111 01 11    # E1=*,   E2=f, E3=*
-    pub fn negate(&mut self, scenario: Scenario) -> Vec<Scenario> {
-        let mut all_negate = vec![];
-        for var in self.variables.values() {
-            let negate_var_only = !scenario.0 & var.full_mask().0;
+    pub fn negate(
+        &self,
+        scenario: Scenario,
+    ) -> impl std::iter::Iterator<Item = Scenario> + '_ {
+        let mask = scenario.0;
+        self.variables.values().filter_map(move |var| {
+            let negate_var_only = !mask & var.full_mask().0;
             let all_other_vars = !var.full_mask().0;
             if negate_var_only != 0 {
-                all_negate.push(Scenario(all_other_vars | negate_var_only));
+                Some(Scenario(all_other_vars | negate_var_only))
+            } else {
+                None
             }
-        }
-        all_negate
+        })
     }
 
     /// Prepares the handling of a Case Statement in a project file.
