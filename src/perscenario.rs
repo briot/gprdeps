@@ -197,7 +197,7 @@ mod tests {
         try_add_variable(&mut scenars, "E2", &["e", "f"]);
 
         let zero = PerScenario::<u8>::new(0);
-        assert_eq!(zero.format(&scenars), "{E1=*,E2=*:0, }",);
+        assert_eq!(zero.format(&scenars), "{*:0, }",);
 
         // Splitting on s0 context has no effect.
         // Case of doing   V := 1  at the top level.
@@ -206,7 +206,7 @@ mod tests {
         v.merge(&mut one, Scenario::default(), &mut scenars, |old, new| {
             *old = *new
         });
-        assert_eq!(v.format(&scenars), "{E1=*,E2=*:1, }",);
+        assert_eq!(v.format(&scenars), "{*:1, }",);
 
         // Now assume we are inside a case statement.
         //    case E1 is
@@ -222,13 +222,13 @@ mod tests {
             Scenario::default(),
             &2,
         );
-        assert_eq!(v2.format(&scenars), "{E1=a|b,E2=*:2, E1=c|d,E2=*:1, }",);
+        assert_eq!(v2.format(&scenars), "{E1=a|b:2, E1=c|d:1, }",);
 
         // Second version: we merge another PerScenario value
         let mut v2 = v.clone();
         let mut two = PerScenario::<u8>::new(2);
         v2.merge(&mut two, ctx, &mut scenars, |old, new| *old = *new);
-        assert_eq!(v2.format(&scenars), "{E1=a|b,E2=*:2, E1=c|d,E2=*:1, }",);
+        assert_eq!(v2.format(&scenars), "{E1=a|b:2, E1=c|d:1, }",);
 
         // Now use the above in another case statement.
         //    L := ("a");
@@ -237,14 +237,16 @@ mod tests {
         // Note that the result has multiple overlapping scenarios when E2=f
         // for instance, but they all result in the same value for a given
         // scenario.
+        // The actual output may vary depending how Rust iterates a hash map
+        // in merge().
         let ctx = create_single(&mut scenars, "E2", &["e"]);
         let mut v3 = PerScenario::new(vec![]);
         v3.merge(&mut v2, ctx, &mut scenars, |old, new| old.push(*new));
         let out = v3.format(&scenars);
         let expect1 =
-            "{E1=a|b,E2=e:[2], E1=c|d,E2=e:[1], E1=c|d,E2=f:[], E1=*,E2=f:[], }";
+            "{E1=a|b,E2=e:[2], E1=c|d,E2=e:[1], E1=c|d,E2=f:[], E2=f:[], }";
         let expect2 =
-            "{E1=a|b,E2=e:[2], E1=c|d,E2=e:[1], E1=a|b,E2=f:[], E1=*,E2=f:[], }";
+            "{E1=a|b,E2=e:[2], E1=c|d,E2=e:[1], E1=a|b,E2=f:[], E2=f:[], }";
         if out != expect1 && out != expect2 {
             assert_eq!(out, expect1);
         }

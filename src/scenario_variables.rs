@@ -68,7 +68,8 @@ impl ScenarioVariable {
     /// Describe the mask using the actual values (for debug purposes)
     pub fn describe(&self, scenario: Scenario) -> String {
         if (scenario & self.full_mask) == self.full_mask {
-            format!("{}=*", self.name)
+            String::new()
+            // format!("{}=*", self.name)
         } else {
             format!(
                 "{}={}",

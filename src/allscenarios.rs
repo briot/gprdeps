@@ -238,7 +238,17 @@ impl AllScenarios {
         // Sort display, for tests
         let mut vars = self.variables.iter().collect::<Vec<_>>();
         vars.sort_by_key(|(name, _)| *name);
-        join(vars.iter().map(|(_, v)| v.describe(scenario)), ",")
+        let res = join(
+            vars.iter()
+                .map(|(_, v)| v.describe(scenario))
+                .filter(|s| !s.is_empty()),
+            ",",
+        );
+        if res.is_empty() {
+            "*".to_string()
+        } else {
+            res
+        }
     }
 }
 
@@ -281,7 +291,7 @@ pub mod tests {
         try_add_variable(&mut scenarios, "MODE", &["debug", "lto", "optimize"]);
 
         let s0 = Scenario::default();
-        assert_eq!(scenarios.describe(s0), "MODE=*");
+        assert_eq!(scenarios.describe(s0), "*");
 
         //  case Mode is
         //     when "debug" => ...
@@ -311,11 +321,11 @@ pub mod tests {
         //   case Check is
         //      when "none" => for Excluded_Source_Files use ("a.ads");
         let check_none = create_single(&mut scenarios, "CHECK", &["none"]);
-        assert_eq!(scenarios.describe(check_none), "CHECK=none,MODE=*");
+        assert_eq!(scenarios.describe(check_none), "CHECK=none");
 
         //      when others => null;
         let s7 = create_single(&mut scenarios, "CHECK", &["most", "none"]);
-        assert_eq!(scenarios.describe(s7), "CHECK=most|none,MODE=*");
+        assert_eq!(scenarios.describe(s7), "CHECK=most|none");
 
         Ok(())
     }
