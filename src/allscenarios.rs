@@ -1,3 +1,4 @@
+use crate::errors::Error;
 /// Project data can vary based on the values of one or more variables.
 /// These variables (named "scenario variables") are typed (so can only take
 /// a specific set of values), and can be tested in case statements.
@@ -184,8 +185,9 @@ impl AllScenarios {
         &'a mut self,
         name: Ustr,
         valid: &[Ustr],
-    ) -> &'a ScenarioVariable {
-        self.variables
+    ) -> Result<&'a ScenarioVariable, Error> {
+        let mut error: Option<Error> = None;
+        let res = self.variables
             .entry(name)
             .and_modify(|v| {
                 if !v.has_same_valid(valid) {
@@ -200,18 +202,28 @@ impl AllScenarios {
             })
             .or_insert_with(|| {
                 let mut full_mask = Scenario::empty();
-                let values: Vec<(Ustr, Scenario)> = valid
+                let values: Result<Vec<(Ustr, Scenario)>, Error> = valid
                     .iter()
                     .map(|v| {
-                        let s = self.factory.get_next();
-                        let res = (*v, s);
+                        let s = self.factory.get_next()?;
                         full_mask = full_mask | s;
-                        res
+                        Ok((*v, s))
                     })
                     .collect();
 
-                ScenarioVariable::new(name, values, full_mask)
-            })
+                match values {
+                    Ok(v) => ScenarioVariable::new(name, v, full_mask),
+                    Err(e) => {
+                        error = Some(e);
+                        ScenarioVariable::new(name, Vec::new(), full_mask)
+                    }
+                }
+            });
+
+        match error {
+            None => Ok(res),
+            Some(e) => Err(e),
+        }
     }
 
     /// Print statistics about scenario variables
@@ -257,7 +269,7 @@ pub mod tests {
         name: &str,
         valid: &[&str],
     ) {
-        scenarios.try_add_variable(
+        let _ = scenarios.try_add_variable(
             Ustr::from(name),
             &valid.iter().map(|s| Ustr::from(s)).collect::<Vec<_>>(),
         );

@@ -198,6 +198,15 @@ mod tests {
     use crate::values::ExprValue;
     use ustr::Ustr;
 
+    macro_rules! assert_err {
+        ($expression:expr, $($pattern:tt)+) => {
+            match $expression {
+                $($pattern)+ => (),
+                ref e => panic!("expected `{}` but got `{:?}`", stringify!($($pattern)+), e),
+            }
+        }
+    }
+
     #[test]
     fn test_eval() -> Result<(), Error> {
         let mut gpr = GprFile::new(std::path::Path::new("/"));
@@ -410,6 +419,41 @@ mod tests {
              e1=on,e2=off  a, f, b, e\n\
              e1=on,e2=on   a, f, b, d",
         );
+
+        Ok(())
+    }
+
+    /// Check what happens when we have too many scenario variables and too
+    /// many valid values (overflow of the Mask)
+    #[test]
+    fn mask_overflow() -> Result<(), Error> {
+        let raw = crate::gpr::tests::parse(
+            r#"project P is
+               type T is ("a", "b", "c", "d");
+               E1 : T := external ("e1");
+               E2 : T := external ("e2");
+               E3 : T := external ("e3");
+               E4 : T := external ("e4");
+               E5 : T := external ("e5");
+               E6 : T := external ("e6");
+               E7 : T := external ("e7");
+               E8 : T := external ("e8");
+               E9 : T := external ("e9");
+               E10 : T := external ("e10");
+               E11 : T := external ("e11");
+               E12 : T := external ("e12");
+               E13 : T := external ("e13");
+               E14 : T := external ("e14");
+               E15 : T := external ("e15");
+               E16 : T := external ("e16");
+               E17 : T := external ("e17");
+               end P;
+            "#,
+        )?;
+        let mut scenarios = crate::allscenarios::AllScenarios::default();
+        let gpr = crate::gpr::tests::process(&raw, &mut scenarios);
+        assert_err!(gpr, Err(Error::WithPath {error, ..})
+            if matches!(*error, Error::TooManyScenarioVariables));
 
         Ok(())
     }

@@ -6,6 +6,8 @@
 //! like:
 //!     [0 1 1][0 1][0 0 ....]
 
+use crate::errors::Error;
+
 type Mask = u64;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Ord, Hash)]
@@ -44,10 +46,13 @@ impl Default for ScenarioFactory {
 }
 
 impl ScenarioFactory {
-    pub fn get_next(&mut self) -> Scenario {
+    pub fn get_next(&mut self) -> Result<Scenario, Error> {
         let s = Scenario(self.next_mask);
-        self.next_mask *= 2;
-        s
+        match self.next_mask.checked_mul(2) {
+           None => Err(Error::TooManyScenarioVariables)?,
+           Some(u) => self.next_mask = u,
+        }
+        Ok(s)
     }
 }
 
@@ -57,6 +62,14 @@ impl ::core::ops::BitAnd<Scenario> for Scenario {
     type Output = Scenario;
 
     fn bitand(self, rhs: Scenario) -> Self::Output {
+        Scenario(self.0 & rhs.0)
+    }
+}
+
+impl ::core::ops::BitAnd<&Scenario> for &Scenario {
+    type Output = Scenario;
+
+    fn bitand(self, rhs: &Scenario) -> Self::Output {
         Scenario(self.0 & rhs.0)
     }
 }

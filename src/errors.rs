@@ -66,6 +66,9 @@ pub enum Error {
     #[error("Wrong use of &")]
     WrongAmpersand,
 
+    #[error("Too many scenario variables or values for them")]
+    TooManyScenarioVariables,
+
     #[error("{0} not found")]
     NotFound(String),
 
