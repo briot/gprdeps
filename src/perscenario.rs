@@ -146,6 +146,31 @@ impl<T> PerScenario<T> {
         }
         res
     }
+
+    /// Create a new value.
+    pub fn new_with_combine<U, V, F>(
+        scenars: &mut AllScenarios,
+        left: &PerScenario<U>,
+        right: &PerScenario<V>,
+        merge: F,
+    ) -> Self
+    where
+        F: Fn(&U, &V) -> T,
+    {
+        let mut res = PerScenario { values: HashMap::new() };
+
+        // Because both left and right both cover the whole space, it is
+        // enough to intersect values here, we do not care about "negate()"
+        for (sl, vl) in &left.values {
+            for (sr, vr) in &right.values {
+                let s = sl & sr;
+                if !scenars.never_matches(s) {
+                    res.values.insert(s, merge(vl, vr));
+                }
+            }
+        }
+        res
+    }
 }
 
 impl PerScenario<Ustr> {

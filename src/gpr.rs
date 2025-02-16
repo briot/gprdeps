@@ -52,7 +52,6 @@ fn keep_attribute(name: &SimpleName) -> bool {
 /// A specific GPR file
 /// Such an object is independent of the scanner that created it, though it
 /// needs an Environment object to resolve paths.
-#[derive(Default)]
 pub struct GprFile {
     pub name: Ustr,
     path: PathBuf,
@@ -63,7 +62,21 @@ pub struct GprFile {
         ExprValue,  // value for each scenario
     >; PACKAGE_NAME_VARIANTS],
 
-    pub source_files: HashMap<Scenario, Vec<(PathBuf, Ustr)>>, // path and lang
+    pub source_files: PerScenario<Vec<(PathBuf, Ustr)>>, // path and lang
+    pub main_files: PerScenario<Vec<(PathBuf, Ustr)>>,
+}
+
+impl Default for GprFile {
+    fn default() -> Self {
+        GprFile {
+            name: Default::default(),
+            path: Default::default(),
+            types: Default::default(),
+            values: Default::default(),
+            source_files: PerScenario::new(vec![]),
+            main_files: PerScenario::new(vec![]),
+        }
+    }
 }
 
 impl GprFile {
@@ -138,15 +151,6 @@ impl GprFile {
         }
     }
 
-    // Find which scenarios are actually useful for this project
-    //    pub fn find_used_scenarios(&self, useful: &mut HashSet<Scenario>) {
-    //        for pkg in 0..PACKAGE_NAME_VARIANTS {
-    //            for v in self.values[pkg].values() {
-    //                v.find_used_scenarios(useful);
-    //            }
-    //        }
-    //    }
-
     /// Resolve relative paths, and cleanup ".." from the name.
     /// It optionally resolves symbolic links, in which case it might fail if
     /// the file doesn't exist on the disk.
@@ -171,14 +175,28 @@ impl GprFile {
         }
     }
 
-    // Retrieve the value of a string list attribute
-    fn strlist_attr(
+    // Retrieve the value of a string attribute
+    pub fn str_attr(
         &self,
         pkg: PackageName,
         name: &SimpleName,
-    ) -> &PerScenario<Vec<Ustr>> {
+    ) -> Option<&PerScenario<Ustr>> {
         match self.values[pkg as usize].get(name) {
-            Some(ExprValue::StrList(v)) => v,
+            Some(ExprValue::Str(v)) => Some(v),
+            None => None,
+            v => panic!("Wrong type for attribute {}{}, {:?}", pkg, name, v),
+        }
+    }
+
+    // Retrieve the value of a string list attribute
+    pub fn strlist_attr(
+        &self,
+        pkg: PackageName,
+        name: &SimpleName,
+    ) -> Option<&PerScenario<Vec<Ustr>>> {
+        match self.values[pkg as usize].get(name) {
+            Some(ExprValue::StrList(v)) => Some(v),
+            None => None,
             v => panic!("Wrong type for attribute {}{}, {:?}", pkg, name, v),
         }
     }
@@ -203,8 +221,9 @@ impl GprFile {
         dirs: &mut HashSet<Directory>,
         settings: &Settings,
     ) -> Result<(), Error> {
-        let sourcedirs =
-            self.strlist_attr(PackageName::None, &SimpleName::SourceDirs);
+        let sourcedirs = self
+            .strlist_attr(PackageName::None, &SimpleName::SourceDirs)
+            .expect("Source_Dirs should always have a value");
         let paths = sourcedirs.map(|dirs_in_scenario| {
             let mut for_scenar = Vec::new();
             for d in dirs_in_scenario {
@@ -242,10 +261,19 @@ impl GprFile {
     }
 
     /// Return the list of source files for all scenarios
-    pub fn resolve_source_files(&mut self, all_dirs: &HashSet<Directory>) {
+    pub fn resolve_source_files(
+        &mut self,
+        scenars: &mut AllScenarios,
+        all_dirs: &HashSet<Directory>,
+    ) {
+        // ??? Should use the source files attribute
+        //   let source_files =
+        //       self.str_attr(PackageName::None, &SimpleName::SourceFiles);
+
         let source_dirs =
             self.pathlist_attr(PackageName::None, &SimpleName::SourceDirs);
-        let mut files: HashMap<Scenario, Vec<(PathBuf, Ustr)>> = HashMap::new();
+        let mut files: PerScenario<Vec<(PathBuf, Ustr)>> =
+            PerScenario::new(vec![]);
 
         for (scenar_dir, dirs_in_scenar) in source_dirs.iter() {
             for (name, val) in &self.values[PackageName::Naming as usize] {
@@ -255,10 +283,11 @@ impl GprFile {
                         | SimpleName::BodySuffix(lang),
                         ExprValue::Str(v),
                     ) => {
-                        for (scenar_attr, suffix) in v.iter() {
-                            let s = *scenar_attr & *scenar_dir;
-                            if !s.is_empty() {
-                                let sfiles = files.entry(s).or_default();
+                        files.update(
+                            v,
+                            Scenario::default(),
+                            scenars,
+                            |sfiles, suffix| {
                                 for d in dirs_in_scenar {
                                     if let Some(dir) = all_dirs.get(d) {
                                         dir.filter_suffix(
@@ -266,18 +295,32 @@ impl GprFile {
                                         );
                                     }
                                 }
-                            }
-                        }
+                            },
+                        );
+                        //                        for (scenar_attr, suffix) in v.iter() {
+                        //                            let s = scenar_attr & scenar_dir;
+                        //                            if !s.is_empty() {
+                        //                                let sfiles = files.entry(s).or_default();
+                        //                                for d in dirs_in_scenar {
+                        //                                    if let Some(dir) = all_dirs.get(d) {
+                        //                                        dir.filter_suffix(
+                        //                                            suffix, *lang, sfiles,
+                        //                                        );
+                        //                                    }
+                        //                                }
+                        //                            }
+                        //                        }
                     }
 
                     (
                         SimpleName::Spec(_) | SimpleName::Body(_),
                         ExprValue::Str(v),
                     ) => {
-                        for (scenar_attr, basename) in v.iter() {
-                            let s = *scenar_attr & *scenar_dir;
-                            if !s.is_empty() {
-                                let sfiles = files.entry(s).or_default();
+                        files.update(
+                            v,
+                            Scenario::default(),
+                            scenars,
+                            |sfiles, basename| {
                                 for d in dirs_in_scenar {
                                     if let Some(dir) = all_dirs.get(d) {
                                         dir.add_if_found(
@@ -285,8 +328,22 @@ impl GprFile {
                                         );
                                     }
                                 }
-                            }
-                        }
+                            },
+                        );
+
+                        // for (scenar_attr, basename) in v.iter() {
+                        //     let s = scenar_attr & scenar_dir;
+                        //     if !s.is_empty() {
+                        //         let sfiles = files.entry(s).or_default();
+                        //         for d in dirs_in_scenar {
+                        //             if let Some(dir) = all_dirs.get(d) {
+                        //                 dir.add_if_found(
+                        //                     basename, *CST_ADA, sfiles,
+                        //                 );
+                        //             }
+                        //         }
+                        //     }
+                        // }
                     }
                     _ => {}
                 }
@@ -294,6 +351,66 @@ impl GprFile {
         }
 
         self.source_files = files;
+    }
+
+    /// Return the list of main files for all scenarios
+    pub fn resolve_main_files(&mut self, scenarios: &AllScenarios) {
+        return;
+        //        match self.strlist_attr(PackageName::None, &SimpleName::Main) {
+        //            None => {}
+        //            Some(main_attr) => {
+        //                //let mut main = ExprValue::new_with_list([]);
+        //
+        //                let mut main: HashMap<Scenario, Vec<(PathBuf, Ustr)>> =
+        //                    HashMap::new();
+        //                for (scenar, files) in main_attr.iter() {
+        //                    let mut base_to_path = HashMap::new();
+        //
+        //                    for (s_scenar, s_files) in &self.source_files {
+        //                        if !scenarios.never_matches(s_scenar & scenar) {
+        //                            for (path, lang) in s_files {
+        //                                base_to_path
+        //                                    .entry(
+        //                                        path.file_name()
+        //                                            .expect("Can't compute basename")
+        //                                            .to_str()
+        //                                            .expect("Invalid unicode name"),
+        //                                    )
+        //                                    .and_modify(|(p, _)| {
+        //                                        if *p != path {
+        //                                            panic!(
+        //                                                "{:?}: Multiple files match \
+        //                                                    {:?}: \
+        //                                                    {:?} and {:?}, scenario {}",
+        //                                                self.path,
+        //                                                path.file_name(),
+        //                                                path,
+        //                                                p,
+        //                                                scenarios.describe(*scenar),
+        //                                            );
+        //                                        }
+        //                                    })
+        //                                    .or_insert((path, lang));
+        //                            }
+        //                        }
+        //                    }
+        //                    main.insert(
+        //                        *scenar,
+        //                        files
+        //                            .iter()
+        //                            .map(|f| {
+        //                                base_to_path
+        //                                    .get(f.as_str())
+        //                                    .expect("cannot resolve basename")
+        //                            })
+        //                            .cloned()
+        //                            .map(|(p, l)| (p.clone(), *l))
+        //                            .collect(),
+        //                    );
+        //                }
+        //                self.main_files = main;
+        //            }
+        //        }
     }
 
     /// Declare a new type
@@ -339,16 +456,16 @@ impl GprFile {
 
         match (&mut old, &mut delta) {
             (ExprValue::Str(ov), ExprValue::Str(d)) => {
-                ov.merge(d, context, scenars, |old, new| *old = *new);
+                ov.update(d, context, scenars, |old, new| *old = *new);
             }
             (ExprValue::StrList(ov), ExprValue::Str(d)) => {
-                ov.merge(d, context, scenars, |old, new| *old = vec![*new]);
+                ov.update(d, context, scenars, |old, new| *old = vec![*new]);
             }
             (ExprValue::StrList(ov), ExprValue::StrList(d)) => {
-                ov.merge(d, context, scenars, |old, new| *old = new.clone());
+                ov.update(d, context, scenars, |old, new| *old = new.clone());
             }
             (ExprValue::PathList(ov), ExprValue::PathList(d)) => {
-                ov.merge(d, context, scenars, |old, new| *old = new.clone());
+                ov.update(d, context, scenars, |old, new| *old = new.clone());
             }
             _ => {
                 Err(Error::VariableMustBeString)?;
@@ -714,5 +831,34 @@ pub mod tests {
             Some(a) => a.format(scenarios, "", "\n"),
         };
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn find_source_files() -> Result<(), Error> {
+        let raw = crate::gpr::tests::parse(
+            r#"project P is
+               type T is ("a", "b", "c");
+               E1 : T := external ("e1");
+               E2 : T := external ("e2");
+
+               case E1 is
+                  when "a" => for Source_Dirs use ("dir_a", "dir_shared");
+                  when "b" => for Source_Dirs use ("dir_b", "dir_shared");
+                  when "c" => for Source_Dirs use ("dir_c", "dir_shared");
+               end case;
+
+               package Naming is
+                  case E2 is
+                     when "a" | "b" => for Spec_Suffix ("Ada") use ".1.ads";
+                     when "c" => for Spec_Suffix ("Ada") use ".2.ads";
+                  end case;
+               end Naming;
+
+               end P;"#,
+        )?;
+        let mut scenarios = crate::allscenarios::AllScenarios::default();
+        let gpr = crate::gpr::tests::process(&raw, &mut scenarios)?;
+        gpr.print_details(&scenarios, true);
+        Ok(())
     }
 }

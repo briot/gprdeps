@@ -43,7 +43,6 @@ pub enum Edge {
     UnitSeparate(Scenario),  // from unit to source files
     SourceImports, // from source file to unit (??? should depend on scenario)
     UnitImports(Scenario), // from unit to unit
-                   // duplicates the SourceImporte edges
 }
 
 /// A unified dependency graph, for both projects and source files

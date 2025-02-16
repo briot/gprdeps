@@ -5,6 +5,7 @@ use std::path::PathBuf;
 
 pub enum Action {
     Stats,
+    SourceUnused,
     Dependencies {
         direct_only: bool,
         path: PathBuf,
@@ -67,6 +68,9 @@ pub fn parse_cli() -> Result<(Settings, Action), Error> {
                             arg!(<PATH> "Path to the source file")
                                 .value_parser(clap::value_parser!(PathBuf)),
                         ]),
+                )
+                .subcommand(
+                    Command::new("unused").about("Show unused source files"),
                 ),
         )
         .subcommand(
@@ -117,6 +121,7 @@ pub fn parse_cli() -> Result<(Settings, Action), Error> {
                     path: get_path(importsub, "PATH")?,
                 },
             )),
+            Some(("unused", _)) => Ok((settings, Action::SourceUnused)),
             _ => unreachable!(),
         },
         Some(("gpr", sub)) => match sub.subcommand() {

@@ -9,6 +9,7 @@ use crate::settings::Settings;
 use crate::sourcefile::SourceFile;
 use crate::units::{QualifiedName, SourceKind};
 use petgraph::visit::EdgeRef;
+use petgraph::Direction;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 use std::path::{Path, PathBuf};
@@ -179,7 +180,8 @@ impl Environment {
                 gpr.trim();
             }
             gpr.resolve_source_dirs(&mut all_source_dirs, settings)?;
-            gpr.resolve_source_files(&all_source_dirs);
+            gpr.resolve_source_files(&mut self.scenarios, &all_source_dirs);
+            gpr.resolve_main_files(&self.scenarios);
         }
         Ok(())
     }
@@ -264,7 +266,7 @@ impl Environment {
         for (path, gpridx) in gprindexes {
             let gpr = gprs.get_mut(&path).unwrap();
 
-            for (scenario, sources) in &gpr.source_files {
+            for (scenario, sources) in gpr.source_files.iter() {
                 for (path, lang) in sources {
                     match self.add_source(path, *lang) {
                         None => {
@@ -297,6 +299,11 @@ impl Environment {
                             // Duplicate the source-level dependencies as
                             // unit-level dependencies. This makes traversing
                             // the graph much easier.
+                            // ??? Though likely incorrect: if we have unit A
+                            // in two different projects, and file F depends
+                            // on A, we can resolve the dependency, but then
+                            // the graph shows a UnitImports to A without
+                            // telling us which of the two A.
                             let source_deps =
                                 self //  Need tmp vector
                                     .graph
@@ -419,6 +426,40 @@ impl Environment {
         }
         deps.sort();
         println!("{}", deps.join("\n"));
+        Ok(())
+    }
+
+    /// Report all source files that are never imported.
+    /// Ignore those units that are "main" units for a project.
+    /// Ignore files in specific directories (typically, third-party libraries)
+    pub fn show_unused_sources(&self) -> Result<(), Error> {
+        // Find all main units
+        for g in self.gprs.values() {
+            for m in g.main_files.iter() {
+                println!("main {:?}", m);
+            }
+        }
+
+        for n in self.graph.0.node_indices() {
+            let node = &self.graph.0[n];
+            if let Node::Unit(qname) = node {
+                let mut count = 0;
+                for e in self.graph.0.edges_directed(n, Direction::Incoming) {
+                    if let Edge::SourceImports = e.weight() {
+                        count += 1;
+                        //                        println!(
+                        //                            "MANU    imported by {:?}",
+                        //                            self.graph.0[e.source()],
+                        //                        );
+                    }
+                }
+
+                if count == 0 {
+                    println!("MANU unused unit {:?}", qname);
+                }
+            }
+        }
+
         Ok(())
     }
 

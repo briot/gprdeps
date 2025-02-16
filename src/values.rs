@@ -365,7 +365,6 @@ mod tests {
         )?;
         let mut scenarios = crate::allscenarios::AllScenarios::default();
         let gpr = crate::gpr::tests::process(&raw, &mut scenarios)?;
-        gpr.print_details(&scenarios, true);
         crate::gpr::tests::assert_variable(
             &gpr,
             PackageName::None,
@@ -409,7 +408,6 @@ mod tests {
         )?;
         let mut scenarios = crate::allscenarios::AllScenarios::default();
         let gpr = crate::gpr::tests::process(&raw, &mut scenarios)?;
-        gpr.print_details(&scenarios, true);
         crate::gpr::tests::assert_variable(
             &gpr,
             PackageName::None,

@@ -48,6 +48,10 @@ fn main() -> Result<(), Error> {
                 env.show_indirect_dependencies(&path)?;
             }
         }
+        Action::SourceUnused => {
+            env.parse_all(&settings.root, &settings, true)?;
+            env.show_unused_sources()?;
+        }
         Action::GprShow {
             gprpath,
             print_vars,
@@ -63,21 +67,12 @@ fn main() -> Result<(), Error> {
     // TODO: should simplify edges to merge scenarios when possible.  Currently,
     //    this merging is done in get_specs(), but it would be better to have it
     //    directly in the graph instead.  See scenario in get_specs()
-    // TODO: support for --root as a gpr project, and only load its deps
     // TODO: support for GPR_PROJECT_PATH
-    // TODO: instead of trimming projects, just don't insert attributes
-    //    This fails on general.gpr, because a variable references an attribute
-    //    that we are not keeping.
-    // TODO: improve performance for scenario: should use a bitmask to known
-    //    which values are valid, then we can use "&", "|" and "!" to intersect
-    //    multiple scenarios.
-
-    // BUG:
-    // scenarios for valgrind unit are wrong.  We get
-    //    checking=off,tasking=on    and checking=on,tasking=off
-    // when it should be for all scenarios
-    // Similar for task_initialization:
-    //    checking=off   /  tasking=off  / checking=on,tasking=on
+    //
+    // BUG: multiple units with the same name in the project tree would not
+    //    work (likely the graph is correct, but since we resolve dependencies
+    //    based on unit name, and not file name, we would not know which of the
+    //    two units we depend on).
 
     // BUG: We should not be able to resolve system files, unless we use
     // --runtime. As if we were looking up dependencies from projects we do not
