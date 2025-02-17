@@ -40,7 +40,7 @@ impl AllScenarios {
     pub fn never_matches(&self, scenario: Scenario) -> bool {
         self.variables
             .values()
-            .any(|var| (scenario & var.full_mask()) == Scenario::empty())
+            .any(|var| (scenario & var.full_mask()).is_empty())
     }
 
     /// Negate the scenario: it returns a series of possibly overlapping

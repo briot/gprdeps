@@ -93,30 +93,58 @@ impl<T> PerScenario<T> {
         T: Clone,
         F: Fn(&mut T, &U),
     {
+        let mut to_replace = Vec::new();
+
         // ??? Order of iteration may vary, resulting in test output changes
         for (s2, v2) in &right.values {
             let s = context & s2;
-            if !scenars.never_matches(s) {
-                let mut res = HashMap::new();
-                std::mem::swap(&mut self.values, &mut res);
-
-                for (s1, mut v1) in res.into_iter() {
-                    let ns = s1 & s;
-                    if !scenars.never_matches(ns) {
-                        for negated in scenars.negate(s) {
-                            let s1_neg = s1 & negated;
-                            if !scenars.never_matches(s1_neg) {
-                                self.values.insert(s1_neg, v1.clone());
-                            }
+            to_replace.extend(
+                self.values
+                    .keys()
+                    .filter(|s1| !scenars.never_matches(*s1 & s)),
+            );
+            for s1 in &to_replace {
+                if let Some(mut v1) = self.values.remove(s1) {
+                    for negated in scenars.negate(s) {
+                        let s1_neg = s1 & negated;
+                        if !scenars.never_matches(s1_neg) {
+                            self.values.insert(s1_neg, v1.clone());
                         }
-                        merge(&mut v1, v2);
-                        self.values.insert(ns, v1);
-                    } else {
-                        self.values.insert(s1, v1);
                     }
+                    merge(&mut v1, v2);
+                    self.values.insert(s1 & s, v1);
+                }
+            }
+            to_replace.clear();
+        }
+    }
+
+    /// Create a new value.
+    pub fn new_with_combine<U, V, F>(
+        scenars: &mut AllScenarios,
+        left: &PerScenario<U>,
+        right: &PerScenario<V>,
+        merge: F,
+    ) -> Self
+    where
+        F: Fn(&U, &V) -> T,
+    {
+        let mut res = PerScenario {
+            values: HashMap::new(),
+        };
+
+        // Because left and right both cover the whole space, it is
+        // enough to intersect values here, we do not care about "negate()"
+        // ??? But doesn't work if we have a context.
+        for (sl, vl) in &left.values {
+            for (sr, vr) in &right.values {
+                let s = sl & sr;
+                if !scenars.never_matches(s) {
+                    res.values.insert(s, merge(vl, vr));
                 }
             }
         }
+        res
     }
 }
 

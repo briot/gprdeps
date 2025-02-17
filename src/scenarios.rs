@@ -80,6 +80,14 @@ impl ::core::ops::BitAnd<&Scenario> for &Scenario {
     }
 }
 
+impl ::core::ops::BitAnd<Scenario> for &Scenario {
+    type Output = Scenario;
+
+    fn bitand(self, rhs: Scenario) -> Self::Output {
+        Scenario(self.0 & rhs.0)
+    }
+}
+
 impl ::core::ops::BitAnd<&Scenario> for Scenario {
     type Output = Scenario;
 
