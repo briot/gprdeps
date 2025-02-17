@@ -34,7 +34,7 @@ impl ExprValue {
     /// several scenarios if it is referencing another variable.
     pub fn new_with_raw(
         expr: &RawExpr,
-        gpr: &GprFile, //  what project what this expression read in ?
+        gpr: &GprFile, //  what project was this expression read in ?
         gpr_deps: &[&GprFile],
         scenars: &mut AllScenarios,
         context: Scenario,
@@ -420,6 +420,39 @@ mod tests {
              e1=on,e2=on   a, f, b, d",
         );
 
+        Ok(())
+    }
+
+    #[test]
+    fn split_full() -> Result<(), Error> {
+        let raw = crate::gpr::tests::parse(
+            r#"project P is
+               type On_Off is ("on", "off");
+               E1 : On_Off := external ("e1");
+               E2 : On_Off := external ("e2");
+
+               V := "a";
+               case E1 is
+                  when "on" =>
+                     case E2 is
+                        when "on" =>
+                           V := "b";
+                      end case;
+               end case;
+            end P;
+            "#,
+        )?;
+        let mut scenarios = crate::allscenarios::AllScenarios::default();
+        let gpr = crate::gpr::tests::process(&raw, &mut scenarios)?;
+        crate::gpr::tests::assert_variable(
+            &gpr,
+            PackageName::None,
+            "v",
+            &scenarios,
+            "e1=off      a\n\
+             e1=on,e2=on b\n\
+             e2=off      a",
+        );
         Ok(())
     }
 

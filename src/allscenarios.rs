@@ -159,7 +159,7 @@ impl AllScenarios {
         } else {
             let mut mask = Scenario::empty();
             let var = self.variables.get(&case_stmt.var).unwrap();
-            let all_other_vars = !var.full_mask();
+            let all_other_vars = !var.full_mask() & context;
             for val in &when.values {
                 match val {
                     StringOrOthers::Str(value_in_when) => {
