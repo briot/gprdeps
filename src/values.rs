@@ -87,7 +87,8 @@ impl ExprValue {
             }
             RawExpr::Str(s) => {
                 let mut v = PerScenario::new(Ustr::default());
-                v.merge_one(context, scenars, |v1, v2| *v1 = *v2, context, s);
+                let s2 = PerScenario::new(*s);  // static value, all scenarios
+                v.update(&s2, context, scenars, |v1, v2| *v1 = *v2);
                 Ok(ExprValue::Str(v))
             }
             RawExpr::List(ls) => {
@@ -108,7 +109,7 @@ impl ExprValue {
                         ExprValue::Str(per_scenario) => {
                             // The string's scenario doesn't change anything in
                             // the list, so we can just add it.
-                            values.merge(
+                            values.update(
                                 per_scenario,
                                 context,
                                 scenars,
@@ -139,17 +140,17 @@ impl ExprValue {
                 )?;
                 match (&mut l_eval, &mut r_eval) {
                     (ExprValue::Str(ls), ExprValue::Str(rs)) => {
-                        ls.merge(rs, context, scenars, |v1, v2| {
+                        ls.update(rs, context, scenars, |v1, v2| {
                             let mut res = v1.as_str().to_string();
                             res.push_str(v2.as_str());
                             *v1 = Ustr::from(&res);
                         });
                     }
                     (ExprValue::StrList(ls), ExprValue::Str(rs)) => {
-                        ls.merge(rs, context, scenars, |v1, v2| v1.push(*v2));
+                        ls.update(rs, context, scenars, |v1, v2| v1.push(*v2));
                     }
                     (ExprValue::StrList(ls), ExprValue::StrList(rs)) => {
-                        ls.merge(rs, context, scenars, |v1, v2| v1.extend(v2));
+                        ls.update(rs, context, scenars, |v1, v2| v1.extend(v2));
                     }
                     _ => Err(Error::WrongAmpersand)?,
                 }

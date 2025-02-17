@@ -10,8 +10,14 @@ use crate::errors::Error;
 
 type Mask = u64;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, Eq, PartialEq, PartialOrd, Ord, Hash)]
 pub struct Scenario(Mask);
+
+impl ::core::fmt::Debug for Scenario {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:b}", self.0)
+    }
+}
 
 impl Default for Scenario {
     /// The default value is a scenario that applies to all values for all

@@ -315,10 +315,10 @@ impl GprFile {
 
     /// Declare a new named object (or assign a new value to an existing
     /// object).  Note that what we receive are delta values, which only
-    /// have values for the current context (e.g. case statements).
+    /// have relevant values for the current context (e.g. case statements).
     ///     case E is
     ///        when "on" =>   V := V1 & V2;
-    /// then delta should be the value of V1 & V2 and will only include a
+    /// then delta should be the value of V1 & V2 and might only include a
     /// value for the scenario "E=on".  But if V already had values for other
     /// scenarios they should be preserved.
     pub fn declare(
