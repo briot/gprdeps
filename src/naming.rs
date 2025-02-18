@@ -19,6 +19,7 @@ pub struct Naming {
     pub body_suffix: HashMap<Ustr, Ustr>, // lang->body suffix
     pub spec_files: HashMap<Ustr, Ustr>, // unit name -> spec file name
     pub body_files: HashMap<Ustr, Ustr>, // unit name -> body file name
+    pub main: Option<HashSet<Ustr>>,   // basenames of main units
 }
 
 impl Naming {
@@ -48,7 +49,11 @@ impl Naming {
             Some(sf) => sf.contains(basename),
         };
         if valid {
-            Some(SourceFile::new(path, lang))
+            let is_main = match &self.main {
+                None => false,
+                Some(m) => m.contains(basename),
+            };
+            Some(SourceFile::new(path, lang, is_main))
         } else {
             None
         }

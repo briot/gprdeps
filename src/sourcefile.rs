@@ -16,11 +16,11 @@ pub struct SourceFile {
 }
 
 impl SourceFile {
-    pub fn new(path: &Path, lang: Ustr) -> Self {
+    pub fn new(path: &Path, lang: Ustr, is_main: bool) -> Self {
         SourceFile {
             path: path.to_owned(),
             lang,
-            is_main: false,
+            is_main,
         }
     }
 

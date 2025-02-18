@@ -239,6 +239,15 @@ impl GprFile {
             });
         }
 
+        if let Some(sf) =
+            self.strlist_attr(PackageName::None, &SimpleName::Main)
+        {
+            naming.update(sf, Scenario::default(), scenars, |naming, files| {
+                naming.main = Some(files.iter().cloned().collect());
+            });
+        }
+
+
         naming.update(
             self.strlist_attr(PackageName::None, &SimpleName::Languages)
                 .expect("Languages attribute is always defined"),
@@ -303,9 +312,6 @@ impl GprFile {
         self.sources =
             self.naming.map(|naming| naming.find_source_files(all_dirs));
     }
-
-    /// Return the list of main files for all scenarios
-    pub fn resolve_main_files(&mut self, _scenarios: &AllScenarios) {}
 
     /// Declare a new type
     pub fn declare_type(

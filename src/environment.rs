@@ -333,7 +333,6 @@ impl Environment {
             gpr.resolve_source_dirs(&mut all_source_dirs, settings)?;
             gpr.resolve_naming(&mut self.scenarios);
             gpr.resolve_source_files(&all_source_dirs);
-            gpr.resolve_main_files(&self.scenarios);
         }
 
         self.add_sources_to_graph(gprindexes, &mut gprmap)?;
