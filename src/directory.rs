@@ -28,35 +28,27 @@ impl Directory {
         Self { path, files }
     }
 
-    /// Find all files matching the given suffix.
-    pub fn filter_suffix(
-        &self,
-        suffix: &str,
-        lang: Ustr,
-        files: &mut Vec<(PathBuf, Ustr)>, // path and lang
-    ) {
-        for (filename, f) in &self.files {
-            if filename.as_str().ends_with(suffix) {
-                files.push((f.clone(), lang));
-            }
-        }
+    /// Returns basename and full path for all files with the correct suffix
+    pub fn find_suffix<'a>(
+        &'a self,
+        suffix: &'a str,
+    ) -> impl Iterator<Item = (&'a Ustr, &'a PathBuf)> + 'a {
+        self.files
+            .iter()
+            .filter(move |(filename, _)| filename.as_str().ends_with(suffix))
     }
 
     /// If the given basename matches a file from the directory, add its full
     /// path to the list of files in `files`.
     /// Return true if the file was found
-    pub fn add_if_found(
-        &self,
-        basename: &Ustr,
-        lang: Ustr,
-        files: &mut Vec<(PathBuf, Ustr)>,
-    ) -> bool {
-        if let Some(path) = self.files.get(basename) {
-            files.push((path.clone(), lang));
-            true
-        } else {
-            false
-        }
+    pub fn add_basenames<'a, ITER>(
+        &'a self,
+        basenames: ITER, //  &'a [Ustr],
+    ) -> impl Iterator<Item = (&'a Ustr, &'a PathBuf)> + 'a
+    where
+        ITER: Iterator<Item = &'a Ustr> + 'a,
+    {
+        basenames.filter_map(|b| self.files.get(b).map(|path| (b, path)))
     }
 }
 

@@ -1,6 +1,7 @@
 use crate::allscenarios::AllScenarios;
 use crate::directory::Directory;
 use crate::errors::Error;
+use crate::naming::Naming;
 use crate::packagename::{PackageName, PACKAGE_NAME_VARIANTS};
 use crate::perscenario::PerScenario;
 use crate::qualifiedname::QualifiedName;
@@ -9,6 +10,7 @@ use crate::rawgpr::RawGPR;
 use crate::scenarios::Scenario;
 use crate::settings::Settings;
 use crate::simplename::SimpleName;
+use crate::sourcefile::SourceFile;
 use crate::values::ExprValue;
 use path_clean::PathClean;
 use std::collections::{HashMap, HashSet};
@@ -52,6 +54,7 @@ fn keep_attribute(name: &SimpleName) -> bool {
 /// A specific GPR file
 /// Such an object is independent of the scanner that created it, though it
 /// needs an Environment object to resolve paths.
+#[derive(Default)]
 pub struct GprFile {
     pub name: Ustr,
     path: PathBuf,
@@ -62,21 +65,13 @@ pub struct GprFile {
         ExprValue,  // value for each scenario
     >; PACKAGE_NAME_VARIANTS],
 
-    pub source_files: PerScenario<Vec<(PathBuf, Ustr)>>, // path and lang
-    pub main_files: PerScenario<Vec<(PathBuf, Ustr)>>,
-}
+    // List of source directories, after resolving relative paths and /** from
+    // the Source_Dirs attribute
+    pub source_dirs: PerScenario<Vec<PathBuf>>,
 
-impl Default for GprFile {
-    fn default() -> Self {
-        GprFile {
-            name: Default::default(),
-            path: Default::default(),
-            types: Default::default(),
-            values: Default::default(),
-            source_files: PerScenario::new(vec![]),
-            main_files: PerScenario::new(vec![]),
-        }
-    }
+    // The Naming scheme, and list of source files
+    pub naming: PerScenario<Naming>,
+    pub sources: PerScenario<Vec<SourceFile>>,
 }
 
 impl GprFile {
@@ -175,19 +170,6 @@ impl GprFile {
         }
     }
 
-    // Retrieve the value of a string attribute
-    pub fn str_attr(
-        &self,
-        pkg: PackageName,
-        name: &SimpleName,
-    ) -> Option<&PerScenario<Ustr>> {
-        match self.values[pkg as usize].get(name) {
-            Some(ExprValue::Str(v)) => Some(v),
-            None => None,
-            v => panic!("Wrong type for attribute {}{}, {:?}", pkg, name, v),
-        }
-    }
-
     // Retrieve the value of a string list attribute
     pub fn strlist_attr(
         &self,
@@ -197,18 +179,6 @@ impl GprFile {
         match self.values[pkg as usize].get(name) {
             Some(ExprValue::StrList(v)) => Some(v),
             None => None,
-            v => panic!("Wrong type for attribute {}{}, {:?}", pkg, name, v),
-        }
-    }
-
-    // Retrieve the value of a path list attribute
-    fn pathlist_attr(
-        &self,
-        pkg: PackageName,
-        name: &SimpleName,
-    ) -> &PerScenario<Vec<PathBuf>> {
-        match self.values[pkg as usize].get(name) {
-            Some(ExprValue::PathList(v)) => v,
             v => panic!("Wrong type for attribute {}{}, {:?}", pkg, name, v),
         }
     }
@@ -224,7 +194,7 @@ impl GprFile {
         let sourcedirs = self
             .strlist_attr(PackageName::None, &SimpleName::SourceDirs)
             .expect("Source_Dirs should always have a value");
-        let paths = sourcedirs.map(|dirs_in_scenario| {
+        self.source_dirs = sourcedirs.map(|dirs_in_scenario| {
             let mut for_scenar = Vec::new();
             for d in dirs_in_scenario {
                 if d.ends_with("/**") {
@@ -253,165 +223,89 @@ impl GprFile {
             }
             for_scenar
         });
-
-        self.values[PackageName::None as usize]
-            .insert(SimpleName::SourceDirs, ExprValue::PathList(paths));
-
         Ok(())
     }
 
-    /// Return the list of source files for all scenarios
-    pub fn resolve_source_files(
-        &mut self,
-        scenars: &mut AllScenarios,
-        all_dirs: &HashSet<Directory>,
-    ) {
-        // ??? Should use the source files attribute
-        //   let source_files =
-        //       self.str_attr(PackageName::None, &SimpleName::SourceFiles);
+    /// Resolve the naming scheme for each scenario
+    pub fn resolve_naming(&mut self, scenars: &mut AllScenarios) {
+        let mut naming =
+            self.source_dirs.map(|d| Naming::new_with_dirs(d.clone()));
 
-        let source_dirs =
-            self.pathlist_attr(PackageName::None, &SimpleName::SourceDirs);
-        let mut files: PerScenario<Vec<(PathBuf, Ustr)>> =
-            PerScenario::new(vec![]);
+        if let Some(sf) =
+            self.strlist_attr(PackageName::None, &SimpleName::SourceFiles)
+        {
+            naming.update(sf, Scenario::default(), scenars, |naming, files| {
+                naming.set_source_files(files.iter().cloned().collect())
+            });
+        }
 
-        for (scenar_dir, dirs_in_scenar) in source_dirs.iter() {
-            for (name, val) in &self.values[PackageName::Naming as usize] {
-                match (name, val) {
-                    (
-                        SimpleName::SpecSuffix(lang)
-                        | SimpleName::BodySuffix(lang),
-                        ExprValue::Str(v),
-                    ) => {
-                        files.update(
-                            v,
-                            Scenario::default(),
-                            scenars,
-                            |sfiles, suffix| {
-                                for d in dirs_in_scenar {
-                                    if let Some(dir) = all_dirs.get(d) {
-                                        dir.filter_suffix(
-                                            suffix, *lang, sfiles,
-                                        );
-                                    }
-                                }
-                            },
-                        );
-                        //                        for (scenar_attr, suffix) in v.iter() {
-                        //                            let s = scenar_attr & scenar_dir;
-                        //                            if !s.is_empty() {
-                        //                                let sfiles = files.entry(s).or_default();
-                        //                                for d in dirs_in_scenar {
-                        //                                    if let Some(dir) = all_dirs.get(d) {
-                        //                                        dir.filter_suffix(
-                        //                                            suffix, *lang, sfiles,
-                        //                                        );
-                        //                                    }
-                        //                                }
-                        //                            }
-                        //                        }
-                    }
+        naming.update(
+            self.strlist_attr(PackageName::None, &SimpleName::Languages)
+                .expect("Languages attribute is always defined"),
+            Scenario::default(),
+            scenars,
+            |naming, langs| naming.set_languages(langs.clone()),
+        );
 
-                    (
-                        SimpleName::Spec(_) | SimpleName::Body(_),
-                        ExprValue::Str(v),
-                    ) => {
-                        files.update(
-                            v,
-                            Scenario::default(),
-                            scenars,
-                            |sfiles, basename| {
-                                for d in dirs_in_scenar {
-                                    if let Some(dir) = all_dirs.get(d) {
-                                        dir.add_if_found(
-                                            basename, *CST_ADA, sfiles,
-                                        );
-                                    }
-                                }
-                            },
-                        );
-
-                        // for (scenar_attr, basename) in v.iter() {
-                        //     let s = scenar_attr & scenar_dir;
-                        //     if !s.is_empty() {
-                        //         let sfiles = files.entry(s).or_default();
-                        //         for d in dirs_in_scenar {
-                        //             if let Some(dir) = all_dirs.get(d) {
-                        //                 dir.add_if_found(
-                        //                     basename, *CST_ADA, sfiles,
-                        //                 );
-                        //             }
-                        //         }
-                        //     }
-                        // }
-                    }
-                    _ => {}
+        for (name, val) in &self.values[PackageName::Naming as usize] {
+            match (name, val) {
+                (SimpleName::SpecSuffix(lang), ExprValue::Str(v)) => {
+                    naming.update(
+                        v,
+                        Scenario::default(),
+                        scenars,
+                        |naming, suffix| {
+                            naming.spec_suffix.insert(*lang, *suffix);
+                        },
+                    );
+                }
+                (SimpleName::BodySuffix(lang), ExprValue::Str(v)) => {
+                    naming.update(
+                        v,
+                        Scenario::default(),
+                        scenars,
+                        |naming, suffix| {
+                            naming.body_suffix.insert(*lang, *suffix);
+                        },
+                    );
+                }
+                (SimpleName::Spec(unit), ExprValue::Str(v)) => {
+                    naming.update(
+                        v,
+                        Scenario::default(),
+                        scenars,
+                        |naming, filename| {
+                            naming.spec_files.insert(*unit, *filename);
+                        },
+                    );
+                }
+                (SimpleName::Body(unit), ExprValue::Str(v)) => {
+                    naming.update(
+                        v,
+                        Scenario::default(),
+                        scenars,
+                        |naming, filename| {
+                            naming.body_files.insert(*unit, *filename);
+                        },
+                    );
+                }
+                _ => {
+                    panic!("Unexpected attribute Naming'{}", name);
                 }
             }
         }
 
-        self.source_files = files;
+        self.naming = naming;
+    }
+
+    /// Return the list of source files for all scenarios
+    pub fn resolve_source_files(&mut self, all_dirs: &HashSet<Directory>) {
+        self.sources =
+            self.naming.map(|naming| naming.find_source_files(all_dirs));
     }
 
     /// Return the list of main files for all scenarios
-    pub fn resolve_main_files(&mut self, scenarios: &AllScenarios) {
-        return;
-        //        match self.strlist_attr(PackageName::None, &SimpleName::Main) {
-        //            None => {}
-        //            Some(main_attr) => {
-        //                //let mut main = ExprValue::new_with_list([]);
-        //
-        //                let mut main: HashMap<Scenario, Vec<(PathBuf, Ustr)>> =
-        //                    HashMap::new();
-        //                for (scenar, files) in main_attr.iter() {
-        //                    let mut base_to_path = HashMap::new();
-        //
-        //                    for (s_scenar, s_files) in &self.source_files {
-        //                        if !scenarios.never_matches(s_scenar & scenar) {
-        //                            for (path, lang) in s_files {
-        //                                base_to_path
-        //                                    .entry(
-        //                                        path.file_name()
-        //                                            .expect("Can't compute basename")
-        //                                            .to_str()
-        //                                            .expect("Invalid unicode name"),
-        //                                    )
-        //                                    .and_modify(|(p, _)| {
-        //                                        if *p != path {
-        //                                            panic!(
-        //                                                "{:?}: Multiple files match \
-        //                                                    {:?}: \
-        //                                                    {:?} and {:?}, scenario {}",
-        //                                                self.path,
-        //                                                path.file_name(),
-        //                                                path,
-        //                                                p,
-        //                                                scenarios.describe(*scenar),
-        //                                            );
-        //                                        }
-        //                                    })
-        //                                    .or_insert((path, lang));
-        //                            }
-        //                        }
-        //                    }
-        //                    main.insert(
-        //                        *scenar,
-        //                        files
-        //                            .iter()
-        //                            .map(|f| {
-        //                                base_to_path
-        //                                    .get(f.as_str())
-        //                                    .expect("cannot resolve basename")
-        //                            })
-        //                            .cloned()
-        //                            .map(|(p, l)| (p.clone(), *l))
-        //                            .collect(),
-        //                    );
-        //                }
-        //                self.main_files = main;
-        //            }
-        //        }
-    }
+    pub fn resolve_main_files(&mut self, _scenarios: &AllScenarios) {}
 
     /// Declare a new type
     pub fn declare_type(
@@ -462,9 +356,6 @@ impl GprFile {
                 ov.update(d, context, scenars, |old, new| *old = vec![*new]);
             }
             (ExprValue::StrList(ov), ExprValue::StrList(d)) => {
-                ov.update(d, context, scenars, |old, new| *old = new.clone());
-            }
-            (ExprValue::PathList(ov), ExprValue::PathList(d)) => {
                 ov.update(d, context, scenars, |old, new| *old = new.clone());
             }
             _ => {

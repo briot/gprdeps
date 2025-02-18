@@ -55,8 +55,8 @@ impl ScenarioFactory {
     pub fn get_next(&mut self) -> Result<Scenario, Error> {
         let s = Scenario(self.next_mask);
         match self.next_mask.checked_mul(2) {
-           None => Err(Error::TooManyScenarioVariables)?,
-           Some(u) => self.next_mask = u,
+            None => Err(Error::TooManyScenarioVariables)?,
+            Some(u) => self.next_mask = u,
         }
         Ok(s)
     }

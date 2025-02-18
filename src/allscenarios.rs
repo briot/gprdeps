@@ -187,7 +187,8 @@ impl AllScenarios {
         valid: &[Ustr],
     ) -> Result<&'a ScenarioVariable, Error> {
         let mut error: Option<Error> = None;
-        let res = self.variables
+        let res = self
+            .variables
             .entry(name)
             .and_modify(|v| {
                 if !v.has_same_valid(valid) {

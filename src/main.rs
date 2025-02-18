@@ -13,6 +13,7 @@ mod findfile;
 mod gpr;
 mod gpr_scanner;
 mod graph;
+mod naming;
 mod packagename;
 mod perscenario;
 mod qualifiedname;

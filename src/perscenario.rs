@@ -17,6 +17,15 @@ pub struct PerScenario<T> {
     values: HashMap<Scenario, T>,
 }
 
+impl<T> Default for PerScenario<T>
+where
+    T: Default,
+{
+    fn default() -> Self {
+        PerScenario::new(T::default())
+    }
+}
+
 impl<T> PerScenario<T> {
     /// Create a new value, with a default value valid for all scenarios
     pub fn new(default_val: T) -> Self {
@@ -117,59 +126,6 @@ impl<T> PerScenario<T> {
             }
             to_replace.clear();
         }
-    }
-
-    /// Create a new value.
-    pub fn new_with_combine<U, V, F>(
-        scenars: &mut AllScenarios,
-        left: &PerScenario<U>,
-        right: &PerScenario<V>,
-        merge: F,
-    ) -> Self
-    where
-        F: Fn(&U, &V) -> T,
-    {
-        let mut res = PerScenario {
-            values: HashMap::new(),
-        };
-
-        // Because left and right both cover the whole space, it is
-        // enough to intersect values here, we do not care about "negate()"
-        // ??? But doesn't work if we have a context.
-        for (sl, vl) in &left.values {
-            for (sr, vr) in &right.values {
-                let s = sl & sr;
-                if !scenars.never_matches(s) {
-                    res.values.insert(s, merge(vl, vr));
-                }
-            }
-        }
-        res
-    }
-
-    /// Create a new value.
-    pub fn new_with_combine<U, V, F>(
-        scenars: &mut AllScenarios,
-        left: &PerScenario<U>,
-        right: &PerScenario<V>,
-        merge: F,
-    ) -> Self
-    where
-        F: Fn(&U, &V) -> T,
-    {
-        let mut res = PerScenario { values: HashMap::new() };
-
-        // Because both left and right both cover the whole space, it is
-        // enough to intersect values here, we do not care about "negate()"
-        for (sl, vl) in &left.values {
-            for (sr, vr) in &right.values {
-                let s = sl & sr;
-                if !scenars.never_matches(s) {
-                    res.values.insert(s, merge(vl, vr));
-                }
-            }
-        }
-        res
     }
 }
 

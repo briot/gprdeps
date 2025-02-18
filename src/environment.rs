@@ -13,7 +13,6 @@ use petgraph::Direction;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 use std::path::{Path, PathBuf};
-use ustr::Ustr;
 
 type RawGPRs = HashMap<NodeIndex, RawGPR>;
 type UnitsMap = HashMap<QualifiedName, NodeIndex>;
@@ -22,7 +21,6 @@ type GprMap = HashMap<PathBuf, GprFile>;
 #[derive(Clone)]
 struct FileInfo {
     file_node: NodeIndex, // Node for the source file
-    _lang: Ustr,          // Language of the source file
     kind: SourceKind,     // Role the file plays in its unit
     unit_node: NodeIndex, // The node for the unit in the graph
 }
@@ -164,28 +162,6 @@ impl Environment {
         Ok(gprs)
     }
 
-    /// Resolve all source dirs and source files as found in the project, once
-    /// we have processed all projects.
-    /// Remove all attributes we do not actually need, which makes some
-    /// scenarios useless too.
-    fn find_sources(
-        &mut self,
-        gprs: &mut GprMap,
-        settings: &Settings,
-        trim_attributes: bool,
-    ) -> Result<(), Error> {
-        let mut all_source_dirs = HashSet::new();
-        for gpr in gprs.values_mut() {
-            if trim_attributes {
-                gpr.trim();
-            }
-            gpr.resolve_source_dirs(&mut all_source_dirs, settings)?;
-            gpr.resolve_source_files(&mut self.scenarios, &all_source_dirs);
-            gpr.resolve_main_files(&self.scenarios);
-        }
-        Ok(())
-    }
-
     /// Add a unit to the graph, if not there yet
     fn add_unit(&mut self, unitname: QualifiedName) -> NodeIndex {
         // ??? Can we avoid the clone here if the unit is already there
@@ -203,21 +179,25 @@ impl Environment {
 
     /// Retrieve or add source file to the graph.
     /// Returns the node for the source, and information about the unit.
-    fn add_source(&mut self, path: &PathBuf, lang: Ustr) -> Option<FileInfo> {
-        match self.files.get(path) {
+    fn add_source(&mut self, source: &SourceFile) -> Option<FileInfo> {
+        match self.files.get(&source.path) {
             Some(None) => None,
             Some(Some(info)) => Some(info.clone()),
             None => {
-                let sidx = self.graph.add_node(Node::Source(path.clone()));
-                let mut s = SourceFile::new(path, lang);
-                match s.parse() {
+                let sidx =
+                    self.graph.add_node(Node::Source(source.path.clone()));
+                match source.parse() {
                     Err(e) => {
-                        println!("Failed to parse {}: {}", path.display(), e);
-                        self.files.insert(path.clone(), None);
+                        println!(
+                            "Failed to parse {}: {}",
+                            source.path.display(),
+                            e
+                        );
+                        self.files.insert(source.path.clone(), None);
                         None
                     }
                     Ok(info) if info.unitname == QualifiedName::default() => {
-                        self.files.insert(path.clone(), None);
+                        self.files.insert(source.path.clone(), None);
                         None
                     }
                     Ok(info) => {
@@ -244,11 +224,11 @@ impl Environment {
                         }
                         let details = FileInfo {
                             file_node: sidx,
-                            _lang: lang,
                             kind: info.kind,
                             unit_node: uidx,
                         };
-                        self.files.insert(path.clone(), Some(details.clone()));
+                        self.files
+                            .insert(source.path.clone(), Some(details.clone()));
                         Some(details)
                     }
                 }
@@ -265,10 +245,9 @@ impl Environment {
     ) -> Result<(), Error> {
         for (path, gpridx) in gprindexes {
             let gpr = gprs.get_mut(&path).unwrap();
-
-            for (scenario, sources) in gpr.source_files.iter() {
-                for (path, lang) in sources {
-                    match self.add_source(path, *lang) {
+            for (scenario, sources) in gpr.sources.iter() {
+                for s in sources {
+                    match self.add_source(s) {
                         None => {
                             // File is being discarded for some reason
                         }
@@ -345,7 +324,18 @@ impl Environment {
         let rawfiles: RawGPRs =
             self.parse_raw_gprs(&mut gprindexes, settings)?;
         let mut gprmap: GprMap = self.process_projects(rawfiles)?;
-        self.find_sources(&mut gprmap, settings, trim_attributes)?;
+
+        let mut all_source_dirs = HashSet::new();
+        for gpr in gprmap.values_mut() {
+            if trim_attributes {
+                gpr.trim();
+            }
+            gpr.resolve_source_dirs(&mut all_source_dirs, settings)?;
+            gpr.resolve_naming(&mut self.scenarios);
+            gpr.resolve_source_files(&all_source_dirs);
+            gpr.resolve_main_files(&self.scenarios);
+        }
+
         self.add_sources_to_graph(gprindexes, &mut gprmap)?;
 
         self.gprs = gprmap;
@@ -435,8 +425,12 @@ impl Environment {
     pub fn show_unused_sources(&self) -> Result<(), Error> {
         // Find all main units
         for g in self.gprs.values() {
-            for m in g.main_files.iter() {
-                println!("main {:?}", m);
+            for (_, source) in g.sources.iter() {
+                for m in source {
+                    if m.is_main {
+                        println!("main {:?}", m.path);
+                    }
+                }
             }
         }
 
@@ -447,10 +441,10 @@ impl Environment {
                 for e in self.graph.0.edges_directed(n, Direction::Incoming) {
                     if let Edge::SourceImports = e.weight() {
                         count += 1;
-                        //                        println!(
-                        //                            "MANU    imported by {:?}",
-                        //                            self.graph.0[e.source()],
-                        //                        );
+                        // println!(
+                        //     "MANU    imported by {:?}",
+                        //     self.graph.0[e.source()],
+                        // );
                     }
                 }
 

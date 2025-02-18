@@ -14,7 +14,6 @@ use ustr::Ustr;
 pub enum ExprValue {
     Str(PerScenario<Ustr>),
     StrList(PerScenario<Vec<Ustr>>),
-    PathList(PerScenario<Vec<std::path::PathBuf>>),
 }
 
 impl ExprValue {
@@ -87,7 +86,7 @@ impl ExprValue {
             }
             RawExpr::Str(s) => {
                 let mut v = PerScenario::new(Ustr::default());
-                let s2 = PerScenario::new(*s);  // static value, all scenarios
+                let s2 = PerScenario::new(*s); // static value, all scenarios
                 v.update(&s2, context, scenars, |v1, v2| *v1 = *v2);
                 Ok(ExprValue::Str(v))
             }
@@ -174,11 +173,6 @@ impl ExprValue {
             ExprValue::StrList(map) => {
                 map.two_columns(scenarios, indent, eol, |s| {
                     join(s.iter(), ", ")
-                })
-            }
-            ExprValue::PathList(map) => {
-                map.two_columns(scenarios, indent, eol, |s| {
-                    join(s.iter().map(|s| s.display()), ", ")
                 })
             }
         }

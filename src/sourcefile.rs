@@ -8,10 +8,11 @@ use crate::units::SourceInfo;
 use std::path::{Path, PathBuf};
 use ustr::Ustr;
 
-#[derive(Default)]
+#[derive(Clone, Debug, Default)]
 pub struct SourceFile {
-    path: PathBuf,
-    lang: Ustr, // Lower-case
+    pub path: PathBuf,
+    pub lang: Ustr, // Lower-case
+    pub is_main: bool,
 }
 
 impl SourceFile {
@@ -19,14 +20,15 @@ impl SourceFile {
         SourceFile {
             path: path.to_owned(),
             lang,
+            is_main: false,
         }
     }
 
     /// Parse the source file to extract the unit name and the dependencies.
-    /// It should return an empty unit name if the file should be ignored (for instance in Ada
-    /// there is a `pragma no_body`, or in C there are preprocessor directives that make the file
-    /// empty for the compiler).
-    pub fn parse(&mut self) -> Result<SourceInfo, Error> {
+    /// It should return an empty unit name if the file should be ignored (for
+    /// instance in Ada there is a `pragma no_body`, or in C there are
+    /// preprocessor directives that make the file empty for the compiler).
+    pub fn parse(&self) -> Result<SourceInfo, Error> {
         let mut file = File::new(&self.path)?;
         match self.lang.as_str() {
             "ada" => AdaScanner::parse(AdaLexer::new(
