@@ -6,15 +6,8 @@ use std::path::PathBuf;
 pub enum Action {
     Stats,
     SourceUnused,
-    Dependencies {
-        direct_only: bool,
-        path: PathBuf,
-    },
-    GprShow {
-        gprpath: PathBuf,
-        print_vars: bool,
-        trim: bool,
-    },
+    Dependencies { direct_only: bool, path: PathBuf },
+    GprShow { gprpath: PathBuf, print_vars: bool },
 }
 
 fn to_abs(relpath: &PathBuf) -> Result<PathBuf, Error> {
@@ -48,6 +41,9 @@ pub fn parse_cli() -> Result<(Settings, Action), Error> {
                 .global(true)
                 .default_value(".")
                 .value_parser(clap::value_parser!(PathBuf)),
+            arg!(--trim  "Only show subset of attributes")
+                .global(false)
+                .action(ArgAction::SetTrue),
         ])
         .subcommand(
             Command::new("stats")
@@ -87,8 +83,6 @@ pub fn parse_cli() -> Result<(Settings, Action), Error> {
                                 .value_parser(clap::value_parser!(PathBuf)),
                             arg!(--print_vars  "Display values of variables")
                                 .action(ArgAction::SetTrue),
-                            arg!(--trim  "Only show subset of attributes")
-                                .action(ArgAction::SetTrue),
                         ]),
                 ),
         )
@@ -109,6 +103,7 @@ pub fn parse_cli() -> Result<(Settings, Action), Error> {
             .unwrap_or_else(|| {
                 std::env::current_dir().or_else(|_| Ok(PathBuf::from("/")))
             })?,
+        trim: matches.get_flag("trim"),
     };
 
     match matches.subcommand() {
@@ -130,7 +125,6 @@ pub fn parse_cli() -> Result<(Settings, Action), Error> {
                 Action::GprShow {
                     gprpath: get_path(showsub, "PROJECT")?,
                     print_vars: showsub.get_flag("print_vars"),
-                    trim: showsub.get_flag("trim"),
                 },
             )),
             _ => unreachable!(),

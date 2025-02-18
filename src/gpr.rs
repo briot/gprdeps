@@ -297,8 +297,9 @@ impl GprFile {
                         },
                     );
                 }
+                (SimpleName::DotReplacement, _) => {}
                 _ => {
-                    panic!("Unexpected attribute Naming'{}", name);
+                    panic!("Unexpected attribute Naming{}", name);
                 }
             }
         }

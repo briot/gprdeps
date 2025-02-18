@@ -35,14 +35,13 @@ use crate::errors::Error;
 fn main() -> Result<(), Error> {
     let (settings, action) = parse_cli()?;
     let mut env = Environment::default();
+    env.parse_all(&settings.root, &settings, settings.trim)?;
 
     match action {
         Action::Stats => {
-            env.parse_all(&settings.root, &settings, true)?;
             env.print_stats();
         }
         Action::Dependencies { direct_only, path } => {
-            env.parse_all(&settings.root, &settings, true)?;
             if direct_only {
                 env.show_direct_dependencies(&path)?;
             } else {
@@ -50,15 +49,12 @@ fn main() -> Result<(), Error> {
             }
         }
         Action::SourceUnused => {
-            env.parse_all(&settings.root, &settings, true)?;
             env.show_unused_sources()?;
         }
         Action::GprShow {
             gprpath,
             print_vars,
-            trim,
         } => {
-            env.parse_all(&settings.root, &settings, trim)?;
             let gpr =
                 env.get_gpr(&gprpath).expect("Project not found in graph");
             gpr.print_details(&env.scenarios, print_vars);
