@@ -297,7 +297,16 @@ impl GprFile {
                         },
                     );
                 }
-                (SimpleName::DotReplacement, _) => {}
+                (SimpleName::DotReplacement, ExprValue::Str(v)) => {
+                    naming.update(
+                        v,
+                        Scenario::default(),
+                        scenars,
+                        |naming, repl| {
+                            naming.dot_replacement = *repl;
+                        },
+                    );
+                }
                 _ => {
                     panic!("Unexpected attribute Naming{}", name);
                 }

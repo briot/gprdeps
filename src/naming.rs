@@ -24,6 +24,7 @@ pub struct Naming {
     pub spec_files: HashMap<Ustr, Ustr>, // unit name -> spec file name
     pub body_files: HashMap<Ustr, Ustr>, // unit name -> body file name
     pub main: Option<HashSet<Ustr>>, // basenames of main units
+    pub dot_replacement: Ustr,   // for Ada
 }
 
 /// Information for a source file in a project.  The `file` part is shared
@@ -104,6 +105,8 @@ impl Naming {
                 }
 
                 if self.languages.contains(&CST_ADA) {
+                    // ??? Use dot_replacement to resolve unit names
+
                     for (b, p) in dir.add_basenames(self.spec_files.values()) {
                         let s = self.register_source(env, *CST_ADA, b, p)?;
                         if let Some(s) = s {
