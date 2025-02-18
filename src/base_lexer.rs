@@ -1,7 +1,7 @@
 use crate::errors::Error;
 use crate::files::File;
+use crate::qnames::QName;
 use crate::tokens::{Token, TokenKind};
-use crate::units::QualifiedName;
 use std::path::PathBuf;
 use ustr::Ustr;
 
@@ -255,16 +255,13 @@ impl<LEXER: Lexer> BaseScanner<LEXER> {
     /// Expect a fully qualified name.  Depending on the language, this might
     /// take the form "parent.child" (e.g. Ada), or "crate::name" (e.g. Rust)
     /// or any other.
-    pub fn expect_qname(
-        &mut self,
-        sep: TokenKind,
-    ) -> Result<QualifiedName, Error> {
+    pub fn expect_qname(&mut self, sep: TokenKind) -> Result<QName, Error> {
         let n = self.expect_identifier()?;
         let mut result = vec![n];
 
         loop {
             if self.peek() != sep {
-                return Ok(QualifiedName::new(result));
+                return Ok(QName::new(result));
             }
             self.safe_next()?;
             let n = self.expect_identifier()?;

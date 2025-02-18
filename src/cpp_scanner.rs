@@ -1,8 +1,9 @@
 use crate::base_lexer::BaseScanner;
 use crate::cpp_lexer::CppLexer;
 use crate::errors::Error;
+use crate::qnames::QName;
+use crate::sourcefile::{ParseResult, SourceKind};
 use crate::tokens::TokenKind;
-use crate::units::{QualifiedName, SourceInfo, SourceKind};
 use std::path::Path;
 use ustr::Ustr;
 
@@ -11,12 +12,12 @@ pub struct CppScanner<'a> {
 }
 
 impl<'a> CppScanner<'a> {
-    pub fn parse(lex: CppLexer<'a>, path: &Path) -> Result<SourceInfo, Error> {
+    pub fn parse(lex: CppLexer<'a>, path: &Path) -> Result<ParseResult, Error> {
         let mut scan = Self {
             base: BaseScanner::new(lex),
         };
-        let mut info = SourceInfo {
-            unitname: QualifiedName::new(vec![Ustr::from(
+        let mut info = ParseResult {
+            unitname: QName::new(vec![Ustr::from(
                 path.as_os_str().to_str().unwrap(),
             )]),
             kind: SourceKind::Implementation,
@@ -28,7 +29,7 @@ impl<'a> CppScanner<'a> {
                 TokenKind::EndOfFile => break,
                 TokenKind::HashInclude(path) => {
                     scan.base.next_token(); // consume keyword
-                    info.deps.insert(QualifiedName::new(vec![path]));
+                    info.deps.insert(QName::new(vec![path]));
                     Ok(())
                 }
                 TokenKind::Identifier(_) => {

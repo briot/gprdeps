@@ -1,7 +1,7 @@
 use crate::allscenarios::AllScenarios;
 use crate::errors::Error;
+use crate::qnames::QName;
 use crate::scenarios::Scenario;
-use crate::units::QualifiedName;
 use petgraph::algo::toposort;
 use petgraph::graph::Graph;
 use petgraph::visit::Bfs;
@@ -15,7 +15,7 @@ pub type NodeIndex = petgraph::graph::NodeIndex<u32>;
 #[derive(Debug)]
 pub enum Node {
     Project(PathBuf),
-    Unit(QualifiedName),
+    Unit(QName),
     Source(PathBuf), //  ??? Should be UStr
 }
 
@@ -55,7 +55,7 @@ impl DepGraph {
         }
     }
 
-    pub fn get_unit(&self, idx: NodeIndex) -> Result<QualifiedName, Error> {
+    pub fn get_unit(&self, idx: NodeIndex) -> Result<QName, Error> {
         match &self.0[idx] {
             Node::Unit(qname) => Ok(qname.clone()),
             u => Err(Error::InvalidGraphNode(format!("{:?}", u))),

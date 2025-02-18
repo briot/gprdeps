@@ -1,7 +1,8 @@
 use crate::allscenarios::AllScenarios;
 use crate::directory::Directory;
+use crate::environment::Environment;
 use crate::errors::Error;
-use crate::naming::Naming;
+use crate::naming::{FileInGPR, Naming};
 use crate::packagename::{PackageName, PACKAGE_NAME_VARIANTS};
 use crate::perscenario::PerScenario;
 use crate::qualifiedname::QualifiedName;
@@ -10,7 +11,6 @@ use crate::rawgpr::RawGPR;
 use crate::scenarios::Scenario;
 use crate::settings::Settings;
 use crate::simplename::SimpleName;
-use crate::sourcefile::SourceFile;
 use crate::values::ExprValue;
 use path_clean::PathClean;
 use std::collections::{HashMap, HashSet};
@@ -71,7 +71,7 @@ pub struct GprFile {
 
     // The Naming scheme, and list of source files
     pub naming: PerScenario<Naming>,
-    pub sources: PerScenario<Vec<SourceFile>>,
+    pub sources: PerScenario<Vec<FileInGPR>>,
 }
 
 impl GprFile {
@@ -247,7 +247,6 @@ impl GprFile {
             });
         }
 
-
         naming.update(
             self.strlist_attr(PackageName::None, &SimpleName::Languages)
                 .expect("Languages attribute is always defined"),
@@ -308,9 +307,16 @@ impl GprFile {
     }
 
     /// Return the list of source files for all scenarios
-    pub fn resolve_source_files(&mut self, all_dirs: &HashSet<Directory>) {
-        self.sources =
-            self.naming.map(|naming| naming.find_source_files(all_dirs));
+    pub fn resolve_source_files(
+        &mut self,
+        env: &mut Environment,
+        all_dirs: &HashSet<Directory>,
+    ) {
+        self.sources = self.naming.map(|naming| {
+            naming
+                .find_source_files(env, all_dirs)
+                .expect("should handle error")
+        });
     }
 
     /// Declare a new type

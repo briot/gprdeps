@@ -13,49 +13,30 @@ use itertools::join;
 use ustr::Ustr;
 
 #[derive(Clone, Debug, Default, Hash, Eq, PartialEq)]
-pub struct QualifiedName(pub Vec<Ustr>);
+pub struct QName(pub Vec<Ustr>);
 
-impl QualifiedName {
+impl QName {
     pub fn new(qname: Vec<Ustr>) -> Self {
-        QualifiedName(qname)
+        QName(qname)
     }
     pub fn from_slice(qname: &[Ustr]) -> Self {
-        QualifiedName(qname.to_vec())
+        QName(qname.to_vec())
     }
 
-    pub fn join(&mut self, child: QualifiedName) {
+    pub fn join(&mut self, child: QName) {
         self.0.extend(child.0);
     }
 
-    pub fn parent(&self) -> Option<QualifiedName> {
+    pub fn parent(&self) -> Option<QName> {
         match self.0.len() {
             0 => None,
-            s => Some(QualifiedName::from_slice(&self.0[0..s - 1])),
+            s => Some(QName::from_slice(&self.0[0..s - 1])),
         }
     }
 }
 
-impl std::fmt::Display for QualifiedName {
+impl std::fmt::Display for QName {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", join(self.0.iter(), "."))
     }
-}
-
-/// What is the semantic of a source file within a unit.
-/// In C, units are made up of a single file, so this is always the
-/// implementation.
-#[derive(Debug, Copy, Clone)]
-pub enum SourceKind {
-    Spec,
-    Implementation,
-    Separate,
-}
-
-/// The data structure returned when parsing one source file.
-/// All SourceInfo with the same unitname will be merged.
-#[derive(Debug)]
-pub struct SourceInfo {
-    pub unitname: QualifiedName,
-    pub kind: SourceKind,
-    pub deps: std::collections::HashSet<QualifiedName>,
 }

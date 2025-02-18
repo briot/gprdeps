@@ -1,8 +1,9 @@
 use crate::ada_lexer::AdaLexer;
 use crate::base_lexer::BaseScanner;
 use crate::errors::Error;
+use crate::qnames::QName;
+use crate::sourcefile::{ParseResult, SourceKind};
 use crate::tokens::TokenKind;
-use crate::units::{QualifiedName, SourceInfo, SourceKind};
 use ustr::Ustr;
 
 pub struct AdaScanner<'a> {
@@ -11,12 +12,12 @@ pub struct AdaScanner<'a> {
 
 impl<'a> AdaScanner<'a> {
     /// Parse an Ada source file, and return the unit name
-    pub fn parse(lex: AdaLexer<'a>) -> Result<SourceInfo, Error> {
+    pub fn parse(lex: AdaLexer<'a>) -> Result<ParseResult, Error> {
         let mut scan = Self {
             base: BaseScanner::new(lex),
         };
-        let mut info = SourceInfo {
-            unitname: QualifiedName::default(),
+        let mut info = ParseResult {
+            unitname: QName::default(),
             kind: SourceKind::Spec,
             deps: Default::default(),
         };
@@ -31,7 +32,7 @@ impl<'a> AdaScanner<'a> {
                 TokenKind::Pragma => {
                     let name = scan.parse_pragma()?;
                     if name == "no_body" {
-                        info.unitname = QualifiedName::default();
+                        info.unitname = QName::default();
                         break;
                     }
                     Ok(())
@@ -91,7 +92,7 @@ impl<'a> AdaScanner<'a> {
     fn parse_with_or_use_clause(
         &mut self,
         kind: TokenKind,
-        info: &mut SourceInfo,
+        info: &mut ParseResult,
     ) -> Result<(), Error> {
         if kind == TokenKind::Use && TokenKind::Type == self.base.peek() {
             self.base.next_token(); // consume "use type"
@@ -111,7 +112,7 @@ impl<'a> AdaScanner<'a> {
         Ok(())
     }
 
-    fn parse_separate(&mut self) -> Result<QualifiedName, Error> {
+    fn parse_separate(&mut self) -> Result<QName, Error> {
         self.base.expect(TokenKind::OpenParenthesis)?;
         let sep = self.base.expect_qname(TokenKind::Dot)?;
         self.base.expect(TokenKind::CloseParenthesis)?;

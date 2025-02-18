@@ -72,6 +72,9 @@ pub enum Error {
     #[error("{0} not found")]
     NotFound(String),
 
+    #[error("File {0} registered twice with different languages")]
+    InconsistentFileLang(std::path::PathBuf),
+
     #[error("{0} while reading {1}")]
     IoWithPath(std::io::Error, std::path::PathBuf),
 

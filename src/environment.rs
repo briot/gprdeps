@@ -4,30 +4,25 @@ use crate::errors::Error;
 use crate::gpr::GprFile;
 use crate::gpr_scanner::{GprPathToIndex, GprScanner};
 use crate::graph::{DepGraph, Edge, Node, NodeIndex};
+use crate::qnames::QName;
 use crate::rawgpr::RawGPR;
 use crate::settings::Settings;
-use crate::sourcefile::SourceFile;
-use crate::units::{QualifiedName, SourceKind};
+use crate::sourcefile::{SourceFile, SourceKind};
 use petgraph::visit::EdgeRef;
 use petgraph::Direction;
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
+use ustr::Ustr;
 
 type RawGPRs = HashMap<NodeIndex, RawGPR>;
-type UnitsMap = HashMap<QualifiedName, NodeIndex>;
+type UnitsMap = HashMap<QName, NodeIndex>;
 type GprMap = HashMap<PathBuf, GprFile>;
 
-#[derive(Clone)]
-struct FileInfo {
-    file_node: NodeIndex, // Node for the source file
-    kind: SourceKind,     // Role the file plays in its unit
-    unit_node: NodeIndex, // The node for the unit in the graph
-}
-
-// Maps files to details about the file.  Contains None when the file is to
-// be ignored for some reason
-type SourceFilesMap = HashMap<PathBuf, Option<FileInfo>>;
+// Maps files to details about the file.
+type SourceFilesMap = HashMap<PathBuf, Rc<RefCell<SourceFile>>>;
 
 /// The whole set of gpr files
 #[derive(Default)]
@@ -162,78 +157,92 @@ impl Environment {
         Ok(gprs)
     }
 
-    /// Add a unit to the graph, if not there yet
-    fn add_unit(&mut self, unitname: QualifiedName) -> NodeIndex {
-        // ??? Can we avoid the clone here if the unit is already there
-        *self
-            .units
-            .entry(unitname.clone())
-            .or_insert_with(|| self.graph.add_node(Node::Unit(unitname)))
-    }
+    /// Create a new SourceFile, or return an existing one for the same path.
+    /// It is an error if the same file has already been registered with
+    /// different attributes.
+    pub fn register_source(
+        &mut self,
+        path: &Path,
+        lang: Ustr,
+    ) -> Result<Rc<RefCell<SourceFile>>, Error> {
+        //  ??? Can we use raw_entry to avoid the clone
+        let f = self.files.entry(path.into()).or_insert_with(|| {
+            let sidx = self.graph.add_node(Node::Source(path.into()));
+            let mut s = SourceFile::new(path, lang, sidx)
+                .expect("Should deal with error");
+            if s.unitname != QName::default() {
+                let u = Environment::add_unit(
+                    &mut self.units,
+                    &mut self.graph,
+                    &s.unitname,
+                );
+                s.unit_node = Some(u);
 
-    /// Add a new dependency from the source to a given unit
-    fn add_source_import(&mut self, source: NodeIndex, unit: QualifiedName) {
-        let u = self.add_unit(unit);
-        self.graph.add_edge(source, u, Edge::SourceImports);
-    }
-
-    /// Retrieve or add source file to the graph.
-    /// Returns the node for the source, and information about the unit.
-    fn add_source(&mut self, source: &SourceFile) -> Option<FileInfo> {
-        match self.files.get(&source.path) {
-            Some(None) => None,
-            Some(Some(info)) => Some(info.clone()),
-            None => {
-                let sidx =
-                    self.graph.add_node(Node::Source(source.path.clone()));
-                match source.parse() {
-                    Err(e) => {
-                        println!(
-                            "Failed to parse {}: {}",
-                            source.path.display(),
-                            e
-                        );
-                        self.files.insert(source.path.clone(), None);
-                        None
-                    }
-                    Ok(info) if info.unitname == QualifiedName::default() => {
-                        self.files.insert(source.path.clone(), None);
-                        None
-                    }
-                    Ok(info) => {
-                        for dep in info.deps {
-                            self.add_source_import(sidx, dep);
-                        }
-
-                        // Automatically depend on parent unit
-                        if let Some(parent) = info.unitname.parent() {
-                            self.add_source_import(sidx, parent);
-                        }
-
-                        // An implementation or separate depends on everything
-                        // from the same unit, but the spec doesn't.
-                        let uidx = self.add_unit(info.unitname);
-                        match info.kind {
-                            SourceKind::Spec => {}
-                            SourceKind::Implementation
-                            | SourceKind::Separate => self.graph.add_edge(
-                                sidx,
-                                uidx,
-                                Edge::SourceImports,
-                            ),
-                        }
-                        let details = FileInfo {
-                            file_node: sidx,
-                            kind: info.kind,
-                            unit_node: uidx,
-                        };
-                        self.files
-                            .insert(source.path.clone(), Some(details.clone()));
-                        Some(details)
+                // An implementation or separate depends on everything
+                // from the same unit, but the spec doesn't.
+                match s.kind {
+                    SourceKind::Spec => {}
+                    SourceKind::Implementation | SourceKind::Separate => {
+                        self.graph.add_edge(s.file_node, u, Edge::SourceImports)
                     }
                 }
             }
+            for dep in &s.deps {
+                Environment::add_source_import(
+                    &mut self.units,
+                    &mut self.graph,
+                    s.file_node,
+                    dep,
+                );
+            }
+
+            // Automatically depend on parent unit
+            if let Some(parent) = s.unitname.parent() {
+                Environment::add_source_import(
+                    &mut self.units,
+                    &mut self.graph,
+                    s.file_node,
+                    &parent,
+                );
+            }
+
+            Rc::new(RefCell::new(s))
+        });
+
+        if f.borrow().lang != lang {
+            Err(Error::InconsistentFileLang(path.into()))
+        } else {
+            Ok(f.clone())
         }
+    }
+
+    /// Add a unit to the graph, if not there yet
+    fn add_unit(
+        units: &mut UnitsMap,
+        graph: &mut DepGraph,
+        unitname: &QName,
+    ) -> NodeIndex {
+        match units.get(unitname) {
+            Some(u) => *u,
+            None => {
+                units.insert(
+                    unitname.clone(),
+                    graph.add_node(Node::Unit(unitname.clone())),
+                );
+                *units.get(unitname).unwrap()
+            }
+        }
+    }
+
+    /// Add a new dependency from the source to a given unit
+    fn add_source_import(
+        units: &mut UnitsMap,
+        graph: &mut DepGraph,
+        source: NodeIndex,
+        unit: &QName,
+    ) {
+        let u = Environment::add_unit(units, graph, unit);
+        graph.add_edge(source, u, Edge::SourceImports);
     }
 
     /// Create graph nodes for the source files, and group the files into
@@ -247,62 +256,49 @@ impl Environment {
             let gpr = gprs.get_mut(&path).unwrap();
             for (scenario, sources) in gpr.sources.iter() {
                 for s in sources {
-                    match self.add_source(s) {
-                        None => {
-                            // File is being discarded for some reason
-                        }
-                        Some(info) => {
-                            // Add edges
-                            self.graph.add_edge(
-                                gpridx,
-                                info.file_node,
-                                Edge::ProjectSource(*scenario),
+                    let sm = s.file.borrow();
+
+                    self.graph.add_edge(
+                        gpridx,
+                        sm.file_node,
+                        Edge::ProjectSource(*scenario),
+                    );
+
+                    if let Some(u) = sm.unit_node {
+                        self.graph.add_edge(
+                            u,
+                            sm.file_node,
+                            match sm.kind {
+                                SourceKind::Spec => Edge::UnitSpec(*scenario),
+                                SourceKind::Implementation => {
+                                    Edge::UnitImpl(*scenario)
+                                }
+                                SourceKind::Separate => {
+                                    Edge::UnitSeparate(*scenario)
+                                }
+                            },
+                        );
+
+                        // Duplicate the source-level dependencies as
+                        // unit-level dependencies. This makes traversing
+                        // the graph much easier.
+                        // ??? Though likely incorrect: if we have unit A
+                        // in two different projects, and file F depends
+                        // on A, we can resolve the dependency, but then
+                        // the graph shows a UnitImports to A without
+                        // telling us which of the two A.
+                        for depunit in &sm.deps {
+                            let dep_node = Environment::add_unit(
+                                &mut self.units,
+                                &mut self.graph,
+                                depunit,
                             );
 
                             self.graph.add_edge(
-                                info.unit_node,
-                                info.file_node,
-                                match info.kind {
-                                    SourceKind::Spec => {
-                                        Edge::UnitSpec(*scenario)
-                                    }
-                                    SourceKind::Implementation => {
-                                        Edge::UnitImpl(*scenario)
-                                    }
-                                    SourceKind::Separate => {
-                                        Edge::UnitSeparate(*scenario)
-                                    }
-                                },
+                                u,
+                                dep_node,
+                                Edge::UnitImports(*scenario),
                             );
-
-                            // Duplicate the source-level dependencies as
-                            // unit-level dependencies. This makes traversing
-                            // the graph much easier.
-                            // ??? Though likely incorrect: if we have unit A
-                            // in two different projects, and file F depends
-                            // on A, we can resolve the dependency, but then
-                            // the graph shows a UnitImports to A without
-                            // telling us which of the two A.
-                            let source_deps =
-                                self //  Need tmp vector
-                                    .graph
-                                    .0
-                                    .edges(info.file_node)
-                                    .filter(|e| {
-                                        matches!(
-                                            e.weight(),
-                                            Edge::SourceImports
-                                        )
-                                    })
-                                    .map(|e| e.target())
-                                    .collect::<Vec<_>>();
-                            for d in source_deps {
-                                self.graph.add_edge(
-                                    info.unit_node,
-                                    d,
-                                    Edge::UnitImports(*scenario),
-                                );
-                            }
                         }
                     }
                 }
@@ -332,7 +328,7 @@ impl Environment {
             }
             gpr.resolve_source_dirs(&mut all_source_dirs, settings)?;
             gpr.resolve_naming(&mut self.scenarios);
-            gpr.resolve_source_files(&all_source_dirs);
+            gpr.resolve_source_files(self, &all_source_dirs);
         }
 
         self.add_sources_to_graph(gprindexes, &mut gprmap)?;
@@ -357,13 +353,12 @@ impl Environment {
             .files
             .get(&std::path::PathBuf::from(path))
             .ok_or(Error::NotFound("File not found in graph".into()))?
-            .clone()
-            .ok_or(Error::NotFound("File has no relevant content".into()))?
             .clone();
+        let file = info.borrow();
         let mut direct_deps = self
             .graph
             .0
-            .edges(info.file_node)
+            .edges(file.file_node)
             .filter(|e| matches!(e.weight(), Edge::SourceImports))
             .filter_map(|e| self.graph.get_unit(e.target()).ok())
             .map(|e| format!("   {}", e))
@@ -382,16 +377,22 @@ impl Environment {
             .files
             .get(&std::path::PathBuf::from(path))
             .ok_or(Error::NotFound("File not found in graph".into()))?
-            .clone()
-            .ok_or(Error::NotFound("File has no relevant content".into()))?;
+            .clone();
+        let file = info.borrow();
+        let unit_node = match file.unit_node {
+            None => {
+                return Err(Error::NotFound("No unit for this file".into()))
+            }
+            Some(u) => u,
+        };
         let filtered =
             petgraph::visit::EdgeFiltered::from_fn(&self.graph.0, |e| {
                 matches!(e.weight(), Edge::UnitImports(_))
             });
-        let mut dfs = petgraph::visit::Dfs::new(&filtered, info.unit_node);
+        let mut dfs = petgraph::visit::Dfs::new(&filtered, unit_node);
         let mut deps = Vec::new();
         while let Some(node) = dfs.next(&filtered) {
-            if node != info.file_node {
+            if node != file.file_node {
                 let mut d: String =
                     format!("   {}", self.graph.get_unit(node)?);
 
@@ -422,17 +423,6 @@ impl Environment {
     /// Ignore those units that are "main" units for a project.
     /// Ignore files in specific directories (typically, third-party libraries)
     pub fn show_unused_sources(&self) -> Result<(), Error> {
-        // Find all main units
-        for g in self.gprs.values() {
-            for (_, source) in g.sources.iter() {
-                for m in source {
-                    if m.is_main {
-                        println!("main {:?}", m.path);
-                    }
-                }
-            }
-        }
-
         for n in self.graph.0.node_indices() {
             let node = &self.graph.0[n];
             if let Node::Unit(qname) = node {

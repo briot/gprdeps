@@ -16,6 +16,7 @@ mod graph;
 mod naming;
 mod packagename;
 mod perscenario;
+mod qnames;
 mod qualifiedname;
 mod rawexpr;
 mod rawgpr;
@@ -25,7 +26,6 @@ mod settings;
 mod simplename;
 mod sourcefile;
 mod tokens;
-mod units;
 mod values;
 
 use crate::cli::{parse_cli, Action};

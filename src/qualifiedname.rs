@@ -1,4 +1,4 @@
-/// A fully qualified name.
+/// A fully qualified name in the scanner.
 /// The scanner itself cannot distinguish between attributes, variables and
 /// function names, this requires access to the symbol table.  For instance:
 ///     for Source_Files use Source_Files & (..);  --  an attribute

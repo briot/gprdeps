@@ -1,7 +1,11 @@
 use crate::directory::Directory;
+use crate::environment::Environment;
+use crate::errors::Error;
 use crate::sourcefile::SourceFile;
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 use ustr::Ustr;
 
 lazy_static::lazy_static! {
@@ -19,7 +23,16 @@ pub struct Naming {
     pub body_suffix: HashMap<Ustr, Ustr>, // lang->body suffix
     pub spec_files: HashMap<Ustr, Ustr>, // unit name -> spec file name
     pub body_files: HashMap<Ustr, Ustr>, // unit name -> body file name
-    pub main: Option<HashSet<Ustr>>,   // basenames of main units
+    pub main: Option<HashSet<Ustr>>, // basenames of main units
+}
+
+/// Information for a source file in a project.  The `file` part is shared
+/// amongst all projects, but whether the file is a main depends on the
+/// project and the scenario.
+/// This struct is for a single scenario.
+pub struct FileInGPR {
+    pub file: Rc<RefCell<SourceFile>>,
+    pub is_main: bool,
 }
 
 impl Naming {
@@ -40,10 +53,11 @@ impl Naming {
 
     fn register_source(
         &self,
+        environ: &mut Environment,
         lang: Ustr,
         basename: &Ustr,
         path: &Path,
-    ) -> Option<SourceFile> {
+    ) -> Result<Option<FileInGPR>, Error> {
         let valid = match &self.source_files {
             None => true,
             Some(sf) => sf.contains(basename),
@@ -53,9 +67,13 @@ impl Naming {
                 None => false,
                 Some(m) => m.contains(basename),
             };
-            Some(SourceFile::new(path, lang, is_main))
+            let s = environ.register_source(path, lang)?;
+            Ok(Some(FileInGPR {
+                file: s.clone(),
+                is_main,
+            }))
         } else {
-            None
+            Ok(None)
         }
     }
 
@@ -63,39 +81,44 @@ impl Naming {
     /// cache and includes all source directories in any of the loaded projects.
     pub fn find_source_files(
         &self,
+        env: &mut Environment,
         all_dirs: &HashSet<Directory>,
-    ) -> Vec<SourceFile> {
+    ) -> Result<Vec<FileInGPR>, Error> {
         let mut files = Vec::new();
 
         for d in &self.source_dirs {
             if let Some(dir) = all_dirs.get(d) {
                 for lang in &self.languages {
-                    files.extend(
-                        dir.find_suffix(&self.spec_suffix[lang]).filter_map(
-                            |(b, p)| self.register_source(*lang, b, p),
-                        ),
-                    );
-                    files.extend(
-                        dir.find_suffix(&self.body_suffix[lang]).filter_map(
-                            |(b, p)| self.register_source(*lang, b, p),
-                        ),
-                    );
+                    for (b, p) in dir.find_suffix(&self.spec_suffix[lang]) {
+                        let s = self.register_source(env, *lang, b, p)?;
+                        if let Some(s) = s {
+                            files.push(s);
+                        }
+                    }
+                    for (b, p) in dir.find_suffix(&self.body_suffix[lang]) {
+                        let s = self.register_source(env, *lang, b, p)?;
+                        if let Some(s) = s {
+                            files.push(s);
+                        }
+                    }
                 }
 
                 if self.languages.contains(&CST_ADA) {
-                    files.extend(
-                        dir.add_basenames(self.spec_files.values()).filter_map(
-                            |(b, p)| self.register_source(*CST_ADA, b, p),
-                        ),
-                    );
-                    files.extend(
-                        dir.add_basenames(self.body_files.values()).filter_map(
-                            |(b, p)| self.register_source(*CST_ADA, b, p),
-                        ),
-                    );
+                    for (b, p) in dir.add_basenames(self.spec_files.values()) {
+                        let s = self.register_source(env, *CST_ADA, b, p)?;
+                        if let Some(s) = s {
+                            files.push(s);
+                        }
+                    }
+                    for (b, p) in dir.add_basenames(self.body_files.values()) {
+                        let s = self.register_source(env, *CST_ADA, b, p)?;
+                        if let Some(s) = s {
+                            files.push(s);
+                        }
+                    }
                 }
             }
         }
-        files
+        Ok(files)
     }
 }
