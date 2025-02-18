@@ -204,7 +204,8 @@ mod tests {
 
     #[test]
     fn test_eval() -> Result<(), Error> {
-        let mut gpr = GprFile::new(std::path::Path::new("/"));
+        let mut gpr =
+            GprFile::new(std::path::Path::new("/"), false, false, false);
         let mut scenars = AllScenarios::default();
         let pkg = PackageName::None;
 

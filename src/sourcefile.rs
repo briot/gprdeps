@@ -6,7 +6,7 @@ use crate::errors::Error;
 use crate::files::File;
 use crate::graph::NodeIndex;
 use crate::qnames::QName;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use ustr::Ustr;
 
 /// What is the semantic of a source file within a unit.
@@ -27,12 +27,17 @@ pub struct ParseResult {
 
 #[derive(Debug)]
 pub struct SourceFile {
+    pub path: PathBuf,
     pub lang: Ustr, // Lower-case
     pub unitname: QName,
     pub kind: SourceKind,
     pub file_node: NodeIndex, // Node for the source file
     pub unit_node: Option<NodeIndex>, // The node for the unit in the graph
     pub deps: std::collections::HashSet<QName>,
+
+    // Is this file ever marked as a Library_Interface for one project in
+    // one scenario ?
+    pub is_library_interface: bool,
 }
 
 impl SourceFile {
@@ -62,12 +67,14 @@ impl SourceFile {
         };
 
         Ok(SourceFile {
+            path: path.to_owned(),
             lang,
             file_node,
             unit_node: None,
             unitname: info.unitname,
             kind: info.kind,
             deps: info.deps,
+            is_library_interface: false,
         })
     }
 }

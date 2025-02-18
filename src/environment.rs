@@ -19,7 +19,7 @@ use ustr::Ustr;
 
 type RawGPRs = HashMap<NodeIndex, RawGPR>;
 type UnitsMap = HashMap<QName, NodeIndex>;
-type GprMap = HashMap<PathBuf, GprFile>;
+pub type GprMap = HashMap<PathBuf, GprFile>;
 
 // Maps files to details about the file.
 type SourceFilesMap = HashMap<PathBuf, Rc<RefCell<SourceFile>>>;
@@ -145,7 +145,12 @@ impl Environment {
                 .iter()
                 .map(|i| self.graph.get_project(*i).map(|path| &gprs[path]))
                 .collect::<Result<Vec<_>, _>>()?;
-            let mut gpr = GprFile::new(&raw.path);
+            let mut gpr = GprFile::new(
+                &raw.path,
+                raw.is_abstract,
+                raw.is_aggregate,
+                raw.is_library,
+            );
             gpr.process(
                 raw,
                 raw.extends.as_ref().and_then(|e| gprs.get(e)),
@@ -180,12 +185,12 @@ impl Environment {
 
                 // An implementation or separate depends on everything
                 // from the same unit, but the spec doesn't.
-                match s.kind {
-                    SourceKind::Spec => {}
-                    SourceKind::Implementation | SourceKind::Separate => {
-                        self.graph.add_edge(s.file_node, u, Edge::SourceImports)
-                    }
-                }
+                //                match s.kind {
+                //                    SourceKind::Spec => {}
+                //                    SourceKind::Implementation | SourceKind::Separate => {
+                //                        self.graph.add_edge(s.file_node, u, Edge::SourceImports)
+                //                    }
+                //                }
             }
             for dep in &s.deps {
                 Environment::add_source_import(
@@ -331,6 +336,15 @@ impl Environment {
             gpr.resolve_source_files(self, &all_source_dirs);
         }
 
+        // One we have processed everything, another pass
+        for gpr in gprmap.values() {
+            gpr.resolve_library_interface(
+                &mut self.scenarios,
+                &gprmap,
+                settings,
+            );
+        }
+
         self.add_sources_to_graph(gprindexes, &mut gprmap)?;
 
         self.gprs = gprmap;
@@ -423,26 +437,48 @@ impl Environment {
     /// Ignore those units that are "main" units for a project.
     /// Ignore files in specific directories (typically, third-party libraries)
     pub fn show_unused_sources(&self) -> Result<(), Error> {
-        for n in self.graph.0.node_indices() {
-            let node = &self.graph.0[n];
-            if let Node::Unit(qname) = node {
+        for gpr in self.gprs.values() {
+            let units: HashSet<_> = gpr
+                .sources
+                .iter()
+                .flat_map(|(_, sources)| sources.iter())
+                .filter(|s| !s.is_main) // main unit is always "used"
+                .filter(|s| s.file.borrow().lang == "ada") // only Ada files
+                .filter(|s| !s.file.borrow().is_library_interface)
+                .filter(|s| {
+                    !s.file
+                        .borrow()
+                        .path
+                        .starts_with("/home/briot/dbc/deepblue/External")
+                })
+                .filter_map(|s| s.file.borrow().unit_node)
+                .collect();
+
+            for unit_node in units {
                 let mut count = 0;
-                for e in self.graph.0.edges_directed(n, Direction::Incoming) {
+                for e in
+                    self.graph.0.edges_directed(unit_node, Direction::Incoming)
+                {
                     if let Edge::SourceImports = e.weight() {
                         count += 1;
                         // println!(
-                        //     "MANU    imported by {:?}",
+                        //     "MANU {:?}: {:?} imports {:?}",
+                        //     gpr,
                         //     self.graph.0[e.source()],
+                        //     self.graph.0[unit_node],
                         // );
+                        break;
                     }
                 }
 
                 if count == 0 {
-                    println!("MANU unused unit {:?}", qname);
+                    println!(
+                        "MANU {:?} unused unit {:?}",
+                        gpr, self.graph.0[unit_node]
+                    );
                 }
             }
         }
-
         Ok(())
     }
 

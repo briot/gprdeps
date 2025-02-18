@@ -1,6 +1,7 @@
 use crate::directory::Directory;
 use crate::environment::Environment;
 use crate::errors::Error;
+use crate::qnames::QName;
 use crate::sourcefile::SourceFile;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -23,8 +24,10 @@ pub struct Naming {
     pub body_suffix: HashMap<Ustr, Ustr>, // lang->body suffix
     pub spec_files: HashMap<Ustr, Ustr>, // unit name -> spec file name
     pub body_files: HashMap<Ustr, Ustr>, // unit name -> body file name
-    pub main: Option<HashSet<Ustr>>, // basenames of main units
-    pub dot_replacement: Ustr,   // for Ada
+
+    pub main: Option<HashSet<Ustr>>, // base names of main files
+    pub library_interfaces: Option<HashSet<QName>>, //  Unit names
+    pub dot_replacement: Ustr,       // for Ada
 }
 
 /// Information for a source file in a project.  The `file` part is shared

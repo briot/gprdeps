@@ -93,9 +93,6 @@ pub enum Error {
 
     #[error("Invalid graph node type {0}")]
     InvalidGraphNode(String),
-
-    #[error("When clause can never match")]
-    UselessWhenClause,
 }
 
 impl Error {

@@ -19,6 +19,11 @@ impl QName {
     pub fn new(qname: Vec<Ustr>) -> Self {
         QName(qname)
     }
+
+    pub fn from_str(qname: &Ustr, dot_repl: &str) -> Self {
+        QName(qname.split(dot_repl).map(Ustr::from).collect())
+    }
+
     pub fn from_slice(qname: &[Ustr]) -> Self {
         QName(qname.to_vec())
     }

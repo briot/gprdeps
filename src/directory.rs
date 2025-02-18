@@ -43,7 +43,7 @@ impl Directory {
     /// Return true if the file was found
     pub fn add_basenames<'a, ITER>(
         &'a self,
-        basenames: ITER, //  &'a [Ustr],
+        basenames: ITER,
     ) -> impl Iterator<Item = (&'a Ustr, &'a PathBuf)> + 'a
     where
         ITER: Iterator<Item = &'a Ustr> + 'a,

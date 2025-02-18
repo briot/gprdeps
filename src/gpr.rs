@@ -1,10 +1,11 @@
 use crate::allscenarios::AllScenarios;
 use crate::directory::Directory;
-use crate::environment::Environment;
+use crate::environment::{Environment, GprMap};
 use crate::errors::Error;
 use crate::naming::{FileInGPR, Naming};
 use crate::packagename::{PackageName, PACKAGE_NAME_VARIANTS};
 use crate::perscenario::PerScenario;
+use crate::qnames::QName;
 use crate::qualifiedname::QualifiedName;
 use crate::rawexpr::{Statement, StatementList};
 use crate::rawgpr::RawGPR;
@@ -57,6 +58,9 @@ fn keep_attribute(name: &SimpleName) -> bool {
 #[derive(Default)]
 pub struct GprFile {
     pub name: Ustr,
+    is_library: bool,
+    is_aggregate: bool,
+    is_abstract: bool,
     path: PathBuf,
     types: [HashMap<SimpleName, Vec<Ustr>>; PACKAGE_NAME_VARIANTS],
 
@@ -75,9 +79,17 @@ pub struct GprFile {
 }
 
 impl GprFile {
-    pub fn new(path: &Path) -> Self {
+    pub fn new(
+        path: &Path,
+        is_abstract: bool,
+        is_aggregate: bool,
+        is_library: bool,
+    ) -> Self {
         let mut s = Self {
             path: path.to_path_buf(),
+            is_abstract,
+            is_aggregate,
+            is_library,
             ..Default::default()
         };
 
@@ -247,6 +259,16 @@ impl GprFile {
             });
         }
 
+        if let Some(sf) =
+            self.strlist_attr(PackageName::None, &SimpleName::LibraryInterface)
+        {
+            naming.update(sf, Scenario::default(), scenars, |naming, units| {
+                naming.library_interfaces = Some(
+                    units.iter().map(|u| QName::from_str(u, ".")).collect(),
+                );
+            });
+        }
+
         naming.update(
             self.strlist_attr(PackageName::None, &SimpleName::Languages)
                 .expect("Languages attribute is always defined"),
@@ -322,11 +344,71 @@ impl GprFile {
         env: &mut Environment,
         all_dirs: &HashSet<Directory>,
     ) {
-        self.sources = self.naming.map(|naming| {
-            naming
-                .find_source_files(env, all_dirs)
-                .expect("should handle error")
-        });
+        if !self.is_abstract && (!self.is_library || !self.is_aggregate) {
+            self.sources = self.naming.map(|naming| {
+                naming
+                    .find_source_files(env, all_dirs)
+                    .expect("should handle error")
+            });
+        }
+    }
+
+    /// Once all projects have been processed, this goes through aggregate
+    /// library projects and mark the sources of their aggregated projects
+    /// as library interface, as needed.
+    pub fn resolve_library_interface(
+        &self,
+        scenars: &mut AllScenarios,
+        gprs: &GprMap,
+        settings: &Settings,
+    ) {
+        if !self.is_library || !self.is_aggregate {
+            return;
+        }
+
+        let intf =
+            self.strlist_attr(PackageName::None, &SimpleName::LibraryInterface);
+        let prj =
+            self.strlist_attr(PackageName::None, &SimpleName::ProjectFiles);
+        if let Some(intf) = intf {
+            if let Some(prj) = prj {
+                let mut prj_intf: PerScenario<(Vec<QName>, Vec<&GprFile>)> =
+                    intf.map(|i| {
+                        (
+                            i.iter().map(|i| QName::from_str(i, ".")).collect(),
+                            vec![],
+                        )
+                    });
+                prj_intf.update(
+                    prj,
+                    Scenario::default(),
+                    scenars,
+                    |prj_int, p| {
+                        prj_int.1.extend(
+                            p.iter()
+                                .filter_map(|p| {
+                                    self.normalize_path(p, settings)
+                                })
+                                .filter_map(|p| gprs.get(&p)),
+                        )
+                    },
+                );
+
+                for (s, prj_int) in prj_intf.iter() {
+                    for gpr in &prj_int.1 {
+                        for (s2, sources) in gpr.sources.iter() {
+                            if s & s2 != Scenario::empty() {
+                                for source in sources.iter() {
+                                    let mut sm = source.file.borrow_mut();
+                                    sm.is_library_interface =
+                                        prj_int.0.contains(&sm.unitname);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     /// Declare a new type
@@ -588,7 +670,8 @@ impl GprFile {
                     if scenar.is_empty() {
                         if !w.body.is_empty() {
                             // ??? Should report proper location
-                            Err(Error::UselessWhenClause)?;
+                            //Err(Error::UselessWhenClause)?;
+                            println!("{:?} Useless when clause", self);
                         }
                     } else {
                         self.process_body(
@@ -724,7 +807,12 @@ pub mod tests {
         raw: &RawGPR,
         scenarios: &mut AllScenarios,
     ) -> Result<GprFile, Error> {
-        let mut gpr = GprFile::new(&raw.path);
+        let mut gpr = GprFile::new(
+            &raw.path,
+            raw.is_abstract,
+            raw.is_aggregate,
+            raw.is_library,
+        );
         gpr.process(raw, None, &[], scenarios)?;
         Ok(gpr)
     }
