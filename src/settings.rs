@@ -18,7 +18,7 @@ pub struct Settings {
     pub runtime_gpr: Vec<PathBuf>,
 
     // The root directory, underneath which we look for all project files
-    pub root: PathBuf,
+    pub root: Vec<PathBuf>,
 
     // Whether to remove some attributes from projects (all the ones not used
     // by this tool)

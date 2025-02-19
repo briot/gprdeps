@@ -92,17 +92,17 @@ pub fn parse_cli() -> Result<(Settings, Action), Error> {
         report_missing_source_dirs: matches.get_flag("missing_sources"),
         resolve_symbolic_links: matches.get_flag("symlinks"),
         runtime_gpr: matches
-            .get_many::<PathBuf>("runtime")
-            .into_iter() // Item is ValuesRef<PathBuf>
+            .get_many::<PathBuf>("runtime") // Option<ValuesRef<PathBuf>>
+            .into_iter() // Item=ValuesRef<PathBuf>
             .flatten() // Item is &PathBuf
             .filter_map(|p| to_abs(p).ok()) // Item is PathBuf
-            .collect::<Vec<PathBuf>>(),
+            .collect(),
         root: matches
-            .get_one::<PathBuf>("root")
-            .map(to_abs) // Option<Result<PathBuf>>
-            .unwrap_or_else(|| {
-                std::env::current_dir().or_else(|_| Ok(PathBuf::from("/")))
-            })?,
+            .get_many::<PathBuf>("root")
+            .into_iter()
+            .flatten()
+            .filter_map(|p| to_abs(p).ok()) // Item is PathBuf
+            .collect(),
         trim: matches.get_flag("trim"),
     };
 

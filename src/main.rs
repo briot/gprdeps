@@ -35,7 +35,7 @@ use crate::errors::Error;
 fn main() -> Result<(), Error> {
     let (settings, action) = parse_cli()?;
     let mut env = Environment::default();
-    env.parse_all(&settings.root, &settings, settings.trim)?;
+    env.parse_all(&settings)?;
 
     match action {
         Action::Stats => {

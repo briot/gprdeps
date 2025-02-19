@@ -56,7 +56,6 @@ impl Environment {
     /// Insert dummy nodes in the graph, so that we have an index
     fn find_all_gpr(
         &mut self,
-        root: &Path,
         settings: &Settings,
     ) -> GprPathToIndex {
         let mut gprs = GprPathToIndex::new();
@@ -65,11 +64,13 @@ impl Environment {
             self.implicit_projects.push(nodeidx);
         }
 
-        if root.is_file() {
-            self.register_gpr(root.to_path_buf(), &mut gprs);
-        } else {
-            for gpr in crate::findfile::FileFind::new(root) {
-                self.register_gpr(gpr, &mut gprs);
+        for root in &settings.root {
+            if root.is_file() {
+                self.register_gpr(root.to_path_buf(), &mut gprs);
+            } else {
+                for gpr in crate::findfile::FileFind::new(root) {
+                    self.register_gpr(gpr, &mut gprs);
+                }
             }
         }
         gprs
@@ -316,19 +317,16 @@ impl Environment {
     /// dependency graph.
     pub fn parse_all(
         &mut self,
-        path_or_gpr: &Path,
         settings: &Settings,
-        trim_attributes: bool,
     ) -> Result<(), Error> {
-        let mut gprindexes: GprPathToIndex =
-            self.find_all_gpr(path_or_gpr, settings);
+        let mut gprindexes: GprPathToIndex = self.find_all_gpr(settings);
         let rawfiles: RawGPRs =
             self.parse_raw_gprs(&mut gprindexes, settings)?;
         let mut gprmap: GprMap = self.process_projects(rawfiles)?;
 
         let mut all_source_dirs = HashSet::new();
         for gpr in gprmap.values_mut() {
-            if trim_attributes {
+            if settings.trim {
                 gpr.trim();
             }
             gpr.resolve_source_dirs(&mut all_source_dirs, settings)?;
