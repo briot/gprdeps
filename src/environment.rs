@@ -437,47 +437,48 @@ impl Environment {
     /// Ignore those units that are "main" units for a project.
     /// Ignore files in specific directories (typically, third-party libraries)
     pub fn show_unused_sources(&self) -> Result<(), Error> {
-        for gpr in self.gprs.values() {
-            let units: HashSet<_> = gpr
-                .sources
-                .iter()
-                .flat_map(|(_, sources)| sources.iter())
-                .filter(|s| !s.is_main) // main unit is always "used"
-                .filter(|s| s.file.borrow().lang == "ada") // only Ada files
-                .filter(|s| !s.file.borrow().is_library_interface)
-                .filter(|s| {
-                    !s.file
-                        .borrow()
-                        .path
-                        .starts_with("/home/briot/dbc/deepblue/External")
-                })
-                .filter_map(|s| s.file.borrow().unit_node)
-                .collect();
+        let paths: HashSet<_> = self
+            .gprs
+            .values()
+            .flat_map(|gpr| gpr.sources.iter()) // get project soures
+            .flat_map(|(_, sources)| sources.iter()) // for all scenarios
+            .filter(|s| !s.is_main) // a main unit is always "used"
+            .filter(|s| !s.file.borrow().is_library_interface)
+            .filter(|s| s.file.borrow().lang == "ada") // only Ada
+            .filter(|s| {
+                !s.file
+                    .borrow()
+                    .path
+                    .starts_with("/home/briot/dbc/deepblue/External")
+            })
+            .filter_map(|s| s.file.borrow().unit_node) // require unit
+            .filter(|u|       // unused units have no incoming edge
+                !self.graph.0
+                .edges_directed(*u, Direction::Incoming)
+                .any(|e| matches!(e.weight(), Edge::SourceImports)))
+            .flat_map(|u| self.graph.0.edges_directed(u, Direction::Outgoing))
+            .filter(|e| {
+                matches!(
+                    e.weight(),
+                    Edge::UnitSpec(_)
+                        | Edge::UnitImpl(_)
+                        | Edge::UnitSeparate(_),
+                )
+            })
+            .filter_map(|e| match &self.graph.0[e.target()] {
+                Node::Source(path) => Some(
+                    path.strip_prefix("/home/briot/dbc/deepblue")
+                        .unwrap_or(path),
+                ),
+                _ => None,
+            })
+            .collect(); // unique
 
-            for unit_node in units {
-                let mut count = 0;
-                for e in
-                    self.graph.0.edges_directed(unit_node, Direction::Incoming)
-                {
-                    if let Edge::SourceImports = e.weight() {
-                        count += 1;
-                        // println!(
-                        //     "MANU {:?}: {:?} imports {:?}",
-                        //     gpr,
-                        //     self.graph.0[e.source()],
-                        //     self.graph.0[unit_node],
-                        // );
-                        break;
-                    }
-                }
+        let mut sorted: Vec<_> = paths.into_iter().collect();
+        sorted.sort();
 
-                if count == 0 {
-                    println!(
-                        "MANU {:?} unused unit {:?}",
-                        gpr, self.graph.0[unit_node]
-                    );
-                }
-            }
+        for path in sorted {
+            println!("{}", path.display());
         }
         Ok(())
     }
