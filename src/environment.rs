@@ -16,6 +16,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
+use tracing::debug;
 use ustr::Ustr;
 
 type RawGPRs = HashMap<NodeIndex, RawGPR>;
@@ -327,6 +328,7 @@ impl Environment {
             gpr.resolve_source_dirs(&mut all_source_dirs, settings)?;
             gpr.resolve_naming(&mut self.scenarios);
             gpr.resolve_source_files(self, &all_source_dirs);
+            debug!("gpr {:?}", gpr);
         }
 
         // One we have processed everything, another pass
@@ -435,7 +437,7 @@ impl Environment {
             .values()
             .flat_map(|gpr| gpr.sources.iter()) // get project soures
             .flat_map(|(_, sources)| sources.iter()) // for all scenarios
-            .filter(|s| !s.is_main) // a main unit is always "used"
+            .filter(|s| !s.file.borrow().is_ever_main)
             .filter(|s| !s.file.borrow().is_library_interface)
             .filter(|s| s.file.borrow().lang == "ada") // only Ada
             .filter(|s| {

@@ -33,9 +33,10 @@ pub struct Naming {
 /// amongst all projects, but whether the file is a main depends on the
 /// project and the scenario.
 /// This struct is for a single scenario.
+#[derive(Debug)]
 pub struct FileInGPR {
     pub file: Rc<RefCell<SourceFile>>,
-    pub is_main: bool,
+    pub _is_main: bool,
 }
 
 impl Naming {
@@ -71,9 +72,12 @@ impl Naming {
                 Some(m) => m.contains(basename),
             };
             let s = environ.register_source(path, lang)?;
+            if is_main {
+               s.borrow_mut().is_ever_main = is_main;
+            }
             Ok(Some(FileInGPR {
                 file: s.clone(),
-                is_main,
+                _is_main: is_main,
             }))
         } else {
             Ok(None)

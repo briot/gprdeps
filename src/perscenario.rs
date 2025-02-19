@@ -99,6 +99,8 @@ impl<T> PerScenario<T> {
         merge: F,
     ) where
         T: Clone,
+        T: ::core::fmt::Debug,
+        U: ::core::fmt::Debug,
         F: Fn(&mut T, &U),
     {
         let mut to_replace = Vec::new();

@@ -40,6 +40,9 @@ pub struct SourceFile {
     // Is this file ever marked as a Library_Interface for one project in
     // one scenario ?
     pub is_library_interface: bool,
+
+    // Is this file ever a main unit for one project in one scenario ?
+    pub is_ever_main: bool,
 }
 
 impl SourceFile {
@@ -77,6 +80,7 @@ impl SourceFile {
             kind: info.kind,
             deps: info.deps,
             is_library_interface: false,
+            is_ever_main: false,
         })
     }
 }

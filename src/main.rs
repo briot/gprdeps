@@ -33,6 +33,11 @@ use crate::environment::Environment;
 use crate::errors::Error;
 
 fn main() -> Result<(), Error> {
+    // Set RUST_LOG=debug to get the logs
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .init();
+
     let (settings, action) = parse_cli()?;
     let mut env = Environment::default();
     env.parse_all(&settings)?;
