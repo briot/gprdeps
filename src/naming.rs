@@ -1,8 +1,7 @@
-use crate::directory::Directory;
-use crate::environment::Environment;
-use crate::errors::Error;
-use crate::qnames::QName;
-use crate::sourcefile::SourceFile;
+use crate::{
+    directory::Directory, environment::Environment, errors::Error,
+    qnames::QName, sourcefile::SourceFile,
+};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};

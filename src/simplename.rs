@@ -1,5 +1,5 @@
+//! An unqualified name, which could be either an attribute or variable
 use crate::errors::Error;
-/// An unqualified name, which could be either an attribute or variable
 use ustr::Ustr;
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]

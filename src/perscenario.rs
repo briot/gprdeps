@@ -1,5 +1,4 @@
-use crate::allscenarios::AllScenarios;
-use crate::scenarios::Scenario;
+use crate::{allscenarios::AllScenarios, scenarios::Scenario};
 use std::collections::HashMap;
 use ustr::Ustr;
 

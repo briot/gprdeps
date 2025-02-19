@@ -1,5 +1,4 @@
-use crate::errors::Error;
-use crate::settings::Settings;
+use crate::{errors::Error, settings::Settings};
 use clap::{arg, ArgAction, ArgMatches, Command};
 use std::path::PathBuf;
 

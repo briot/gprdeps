@@ -1,7 +1,9 @@
-use crate::base_lexer::{BaseLexer, Context, Lexer};
-use crate::errors::Error;
-use crate::files::File;
-use crate::tokens::TokenKind;
+use crate::{
+    base_lexer::{BaseLexer, Context, Lexer},
+    errors::Error,
+    files::File,
+    tokens::TokenKind,
+};
 use ustr::Ustr;
 
 pub struct CppLexer<'a> {

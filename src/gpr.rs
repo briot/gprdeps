@@ -1,18 +1,20 @@
-use crate::allscenarios::AllScenarios;
-use crate::directory::Directory;
-use crate::environment::{Environment, GprMap};
-use crate::errors::Error;
-use crate::naming::{FileInGPR, Naming};
-use crate::packagename::{PackageName, PACKAGE_NAME_VARIANTS};
-use crate::perscenario::PerScenario;
-use crate::qnames::QName;
-use crate::qualifiedname::QualifiedName;
-use crate::rawexpr::{Statement, StatementList};
-use crate::rawgpr::RawGPR;
-use crate::scenarios::Scenario;
-use crate::settings::Settings;
-use crate::simplename::SimpleName;
-use crate::values::ExprValue;
+use crate::{
+    allscenarios::AllScenarios,
+    directory::Directory,
+    environment::{Environment, GprMap},
+    errors::Error,
+    naming::{FileInGPR, Naming},
+    packagename::{PackageName, PACKAGE_NAME_VARIANTS},
+    perscenario::PerScenario,
+    qnames::QName,
+    qualifiedname::QualifiedName,
+    rawexpr::{Statement, StatementList},
+    rawgpr::RawGPR,
+    scenarios::Scenario,
+    settings::Settings,
+    simplename::SimpleName,
+    values::ExprValue,
+};
 use path_clean::PathClean;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};

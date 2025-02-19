@@ -1,15 +1,16 @@
-use crate::ada_lexer::{AdaLexer, AdaLexerOptions};
-use crate::allscenarios::AllScenarios;
-use crate::errors::Error;
-use crate::gpr::GprFile;
-use crate::gpr_scanner::{GprPathToIndex, GprScanner};
-use crate::graph::{DepGraph, Edge, Node, NodeIndex};
-use crate::qnames::QName;
-use crate::rawgpr::RawGPR;
-use crate::settings::Settings;
-use crate::sourcefile::{SourceFile, SourceKind};
-use petgraph::visit::EdgeRef;
-use petgraph::Direction;
+use crate::{
+    ada_lexer::{AdaLexer, AdaLexerOptions},
+    allscenarios::AllScenarios,
+    errors::Error,
+    gpr::GprFile,
+    gpr_scanner::{GprPathToIndex, GprScanner},
+    graph::{DepGraph, Edge, Node, NodeIndex},
+    qnames::QName,
+    rawgpr::RawGPR,
+    settings::Settings,
+    sourcefile::{SourceFile, SourceKind},
+};
+use petgraph::{visit::EdgeRef, Direction};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
@@ -54,10 +55,7 @@ impl Environment {
     /// or one of its child directories.  If root is a project, we load it and
     /// all its dependencies.
     /// Insert dummy nodes in the graph, so that we have an index
-    fn find_all_gpr(
-        &mut self,
-        settings: &Settings,
-    ) -> GprPathToIndex {
+    fn find_all_gpr(&mut self, settings: &Settings) -> GprPathToIndex {
         let mut gprs = GprPathToIndex::new();
         for imp in &settings.runtime_gpr {
             let nodeidx = self.register_gpr(imp.clone(), &mut gprs);
@@ -315,10 +313,7 @@ impl Environment {
 
     /// Recursively look for all project files, parse them and prepare the
     /// dependency graph.
-    pub fn parse_all(
-        &mut self,
-        settings: &Settings,
-    ) -> Result<(), Error> {
+    pub fn parse_all(&mut self, settings: &Settings) -> Result<(), Error> {
         let mut gprindexes: GprPathToIndex = self.find_all_gpr(settings);
         let rawfiles: RawGPRs =
             self.parse_raw_gprs(&mut gprindexes, settings)?;

@@ -1,7 +1,7 @@
-/// A GPR file that hasn't been processed yet.  All we store here is the info we
-/// extracted from the file itself, but we did not resolve paths, for instance.
-/// Such an object is only valid as long as the scanner that generates it, since
-/// it references memory from that scanner directly.
+//! A GPR file that hasn't been processed yet.  All we store here is the info we
+//! extracted from the file itself, but we did not resolve paths, for instance.
+//! Such an object is only valid as long as the scanner that generates it, since
+//! it references memory from that scanner directly.
 use crate::rawexpr::StatementList;
 use std::path::PathBuf;
 use ustr::Ustr;

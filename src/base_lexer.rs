@@ -1,7 +1,9 @@
-use crate::errors::Error;
-use crate::files::File;
-use crate::qnames::QName;
-use crate::tokens::{Token, TokenKind};
+use crate::{
+    errors::Error,
+    files::File,
+    qnames::QName,
+    tokens::{Token, TokenKind},
+};
 use std::path::PathBuf;
 use ustr::Ustr;
 

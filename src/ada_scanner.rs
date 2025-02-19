@@ -1,9 +1,11 @@
-use crate::ada_lexer::AdaLexer;
-use crate::base_lexer::BaseScanner;
-use crate::errors::Error;
-use crate::qnames::QName;
-use crate::sourcefile::{ParseResult, SourceKind};
-use crate::tokens::TokenKind;
+use crate::{
+    ada_lexer::AdaLexer,
+    base_lexer::BaseScanner,
+    errors::Error,
+    qnames::QName,
+    sourcefile::{ParseResult, SourceKind},
+    tokens::TokenKind,
+};
 use ustr::Ustr;
 
 pub struct AdaScanner<'a> {

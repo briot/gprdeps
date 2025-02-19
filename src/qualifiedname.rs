@@ -1,25 +1,24 @@
-/// A fully qualified name in the scanner.
-/// The scanner itself cannot distinguish between attributes, variables and
-/// function names, this requires access to the symbol table.  For instance:
-///     for Source_Files use Source_Files & (..);  --  an attribute
-///     for Source_Files use My_List & (..);       --  a variable
-///
-///     Switches ("Ada")   --  an attribute
-///     external ("Ada")   --  a function call
-///
-/// We know the depth of the names hierarchy, but again the parser is not able
-/// to distinguish between packages and projects (though it does have a list
-/// of hard-coded package names).
-///     name
-///     name (index)
-///     package.name
-///     package'name
-///     package'name (index)
-///     project.package'name
-///     package'name
-///     project'name
-use crate::packagename::PackageName;
-use crate::simplename::SimpleName;
+//! A fully qualified name in the scanner.
+//! The scanner itself cannot distinguish between attributes, variables and
+//! function names, this requires access to the symbol table.  For instance:
+//!     for Source_Files use Source_Files & (..);  --  an attribute
+//!     for Source_Files use My_List & (..);       --  a variable
+//!
+//!     Switches ("Ada")   --  an attribute
+//!     external ("Ada")   --  a function call
+//!
+//! We know the depth of the names hierarchy, but again the parser is not able
+//! to distinguish between packages and projects (though it does have a list
+//! of hard-coded package names).
+//!     name
+//!     name (index)
+//!     package.name
+//!     package'name
+//!     package'name (index)
+//!     project.package'name
+//!     package'name
+//!     project'name
+use crate::{packagename::PackageName, simplename::SimpleName};
 use std::fmt::Debug;
 use ustr::Ustr;
 

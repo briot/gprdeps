@@ -1,6 +1,4 @@
-use crate::perscenario::PerScenario;
-use crate::scenarios::Scenario;
-use crate::values::ExprValue;
+use crate::{perscenario::PerScenario, scenarios::Scenario, values::ExprValue};
 use itertools::join;
 use ustr::Ustr;
 

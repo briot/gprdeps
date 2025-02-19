@@ -1,8 +1,10 @@
-/// The un-interpreted tree, as parsed from a GPR file
-use crate::errors::Error;
-use crate::packagename::PackageName;
-use crate::qualifiedname::QualifiedName;
-use crate::simplename::{SimpleName, StringOrOthers};
+//! The un-interpreted tree, as parsed from a GPR file
+use crate::{
+    errors::Error,
+    packagename::PackageName,
+    qualifiedname::QualifiedName,
+    simplename::{SimpleName, StringOrOthers},
+};
 use std::fmt::Debug;
 use ustr::Ustr;
 

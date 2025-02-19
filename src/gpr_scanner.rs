@@ -1,14 +1,16 @@
-use crate::ada_lexer::AdaLexer;
-use crate::base_lexer::BaseScanner;
-use crate::errors::Error;
-use crate::graph::NodeIndex;
-use crate::packagename::PackageName;
-use crate::qualifiedname::QualifiedName;
-use crate::rawexpr::{RawExpr, Statement, WhenClause};
-use crate::rawgpr::RawGPR;
-use crate::settings::Settings;
-use crate::simplename::{SimpleName, StringOrOthers};
-use crate::tokens::{Token, TokenKind};
+use crate::{
+    ada_lexer::AdaLexer,
+    base_lexer::BaseScanner,
+    errors::Error,
+    graph::NodeIndex,
+    packagename::PackageName,
+    qualifiedname::QualifiedName,
+    rawexpr::{RawExpr, Statement, WhenClause},
+    rawgpr::RawGPR,
+    settings::Settings,
+    simplename::{SimpleName, StringOrOthers},
+    tokens::{Token, TokenKind},
+};
 use path_clean::PathClean;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};

@@ -1,11 +1,8 @@
-use crate::allscenarios::AllScenarios;
-use crate::errors::Error;
-use crate::qnames::QName;
-use crate::scenarios::Scenario;
-use petgraph::algo::toposort;
-use petgraph::graph::Graph;
-use petgraph::visit::Bfs;
-use petgraph::Directed;
+use crate::{
+    allscenarios::AllScenarios, errors::Error, qnames::QName,
+    scenarios::Scenario,
+};
+use petgraph::{algo::toposort, graph::Graph, visit::Bfs, Directed};
 use std::collections::HashMap;
 use std::path::PathBuf;
 

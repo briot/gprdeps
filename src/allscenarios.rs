@@ -1,13 +1,15 @@
-use crate::errors::Error;
-/// Project data can vary based on the values of one or more variables.
-/// These variables (named "scenario variables") are typed (so can only take
-/// a specific set of values), and can be tested in case statements.
-/// When we parse project files, we evaluate all scenarios simultaneously.
-use crate::perscenario::PerScenario;
-use crate::rawexpr::WhenClause;
-use crate::scenario_variables::ScenarioVariable;
-use crate::scenarios::{Scenario, ScenarioFactory};
-use crate::simplename::StringOrOthers;
+//! Project data can vary based on the values of one or more variables.
+//! These variables (named "scenario variables") are typed (so can only take
+//! a specific set of values), and can be tested in case statements.
+//! When we parse project files, we evaluate all scenarios simultaneously.
+use crate::{
+    errors::Error,
+    perscenario::PerScenario,
+    rawexpr::WhenClause,
+    scenario_variables::ScenarioVariable,
+    scenarios::{Scenario, ScenarioFactory},
+    simplename::StringOrOthers,
+};
 use itertools::join;
 use ustr::{Ustr, UstrMap};
 

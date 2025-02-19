@@ -1,11 +1,13 @@
-use crate::ada_lexer::{AdaLexer, AdaLexerOptions};
-use crate::ada_scanner::AdaScanner;
-use crate::cpp_lexer::CppLexer;
-use crate::cpp_scanner::CppScanner;
-use crate::errors::Error;
-use crate::files::File;
-use crate::graph::NodeIndex;
-use crate::qnames::QName;
+use crate::{
+    ada_lexer::{AdaLexer, AdaLexerOptions},
+    ada_scanner::AdaScanner,
+    cpp_lexer::CppLexer,
+    cpp_scanner::CppScanner,
+    errors::Error,
+    files::File,
+    graph::NodeIndex,
+    qnames::QName,
+};
 use std::path::{Path, PathBuf};
 use ustr::Ustr;
 

@@ -1,12 +1,9 @@
-use crate::allscenarios::AllScenarios;
-use crate::errors::Error;
-use crate::gpr::GprFile;
-use crate::packagename::PackageName;
-use crate::perscenario::PerScenario;
-use crate::qualifiedname::QualifiedName;
-use crate::rawexpr::RawExpr;
-use crate::scenarios::Scenario;
-use crate::simplename::SimpleName;
+use crate::{
+    allscenarios::AllScenarios, errors::Error, gpr::GprFile,
+    packagename::PackageName, perscenario::PerScenario,
+    qualifiedname::QualifiedName, rawexpr::RawExpr, scenarios::Scenario,
+    simplename::SimpleName,
+};
 use itertools::join;
 use ustr::Ustr;
 

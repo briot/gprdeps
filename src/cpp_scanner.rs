@@ -1,9 +1,11 @@
-use crate::base_lexer::BaseScanner;
-use crate::cpp_lexer::CppLexer;
-use crate::errors::Error;
-use crate::qnames::QName;
-use crate::sourcefile::{ParseResult, SourceKind};
-use crate::tokens::TokenKind;
+use crate::{
+    base_lexer::BaseScanner,
+    cpp_lexer::CppLexer,
+    errors::Error,
+    qnames::QName,
+    sourcefile::{ParseResult, SourceKind},
+    tokens::TokenKind,
+};
 use std::path::Path;
 use ustr::Ustr;
 
