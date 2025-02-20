@@ -11,10 +11,10 @@ pub struct CppLexer<'a> {
 }
 
 impl<'a> CppLexer<'a> {
-    pub fn new(file: &'a mut File) -> Self {
-        Self {
-            base: BaseLexer::new(file),
-        }
+    pub fn new(file: &'a mut File) -> Result<Self, Error> {
+        Ok(Self {
+            base: BaseLexer::new(file)?,
+        })
     }
 
     fn skip_non_tokens(&mut self, current: char) -> char {

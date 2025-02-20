@@ -63,8 +63,8 @@ impl SourceFile {
                     kw_aggregate: false,
                     kw_body: true,
                 },
-            ))?,
-            "c" | "c++" => CppScanner::parse(CppLexer::new(&mut file), path)?,
+            )?)?,
+            "c" | "c++" => CppScanner::parse(CppLexer::new(&mut file)?, path)?,
             lang => Err(Error::CannotParse {
                 path: path.into(),
                 lang: lang.into(),

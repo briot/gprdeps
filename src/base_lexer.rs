@@ -38,18 +38,23 @@ pub(crate) struct BaseLexer<'a> {
 
 impl<'a> BaseLexer<'a> {
     /// Builds a new lexer
-    pub fn new(file: &'a mut File) -> Self {
+    pub fn new(file: &'a mut File) -> Result<Self, Error> {
         let path = file.path().to_owned();
         let f = file.as_mut_str();
-        Self {
+        let current = f.chars().next().ok_or_else(|| Error::WithLocation {
+            path: path.clone(),
+            line: 1,
+            error: Box::new(Error::UnexpectedEOF),
+        })?;
+        Ok(Self {
             path,
             context: Context {
-                current: f.chars().next().unwrap(),
+                current,
                 line: 1,
                 offset: 0,
             },
             input: f,
-        }
+        })
     }
 
     /// Save and restore the position in the stream.  Useful when we need to

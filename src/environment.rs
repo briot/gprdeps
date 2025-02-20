@@ -99,7 +99,7 @@ impl Environment {
                 kw_body: false,
             };
             let raw = GprScanner::parse(
-                AdaLexer::new(&mut file, options),
+                AdaLexer::new(&mut file, options)?,
                 &path,
                 settings,
             )?;

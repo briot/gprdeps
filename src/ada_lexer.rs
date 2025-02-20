@@ -17,11 +17,14 @@ pub struct AdaLexer<'a> {
 }
 
 impl<'a> AdaLexer<'a> {
-    pub fn new(file: &'a mut File, options: AdaLexerOptions) -> Self {
-        Self {
-            base: BaseLexer::new(file),
+    pub fn new(
+        file: &'a mut File,
+        options: AdaLexerOptions,
+    ) -> Result<Self, Error> {
+        Ok(Self {
+            base: BaseLexer::new(file)?,
             options,
-        }
+        })
     }
 
     fn skip_non_tokens(&mut self, current: char) -> char {
