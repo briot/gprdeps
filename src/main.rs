@@ -53,8 +53,8 @@ fn main() -> Result<(), Error> {
                 env.show_indirect_dependencies(&path)?;
             }
         }
-        Action::SourceUnused => {
-            env.show_unused_sources(&settings)?;
+        Action::SourceUnused { unused, ignore } => {
+            env.show_unused_sources(&settings, &unused, &ignore)?;
         }
         Action::GprShow {
             gprpath,

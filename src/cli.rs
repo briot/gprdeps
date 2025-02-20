@@ -4,9 +4,18 @@ use std::path::PathBuf;
 
 pub enum Action {
     Stats,
-    SourceUnused,
-    Dependencies { direct_only: bool, path: PathBuf },
-    GprShow { gprpath: PathBuf, print_vars: bool },
+    SourceUnused {
+        unused: Vec<PathBuf>,
+        ignore: Vec<PathBuf>,
+    },
+    Dependencies {
+        direct_only: bool,
+        path: PathBuf,
+    },
+    GprShow {
+        gprpath: PathBuf,
+        print_vars: bool,
+    },
 }
 
 fn to_abs(relpath: &PathBuf) -> Result<PathBuf, Error> {
@@ -16,6 +25,15 @@ fn to_abs(relpath: &PathBuf) -> Result<PathBuf, Error> {
 
 fn get_path(matches: &ArgMatches, id: &str) -> Result<PathBuf, Error> {
     to_abs(matches.get_one::<PathBuf>(id).unwrap())
+}
+
+fn get_path_list(matches: &ArgMatches, id: &str) -> Vec<PathBuf> {
+    matches
+        .get_many::<PathBuf>(id) // Option<ValuesRef<PathBuf>>
+        .into_iter() // Item=ValuesRef<PathBuf>
+        .flatten() // Item is &PathBuf
+        .filter_map(|p| to_abs(p).ok()) // Item is PathBuf
+        .collect()
 }
 
 pub fn parse_cli() -> Result<(Settings, Action), Error> {
@@ -69,7 +87,16 @@ pub fn parse_cli() -> Result<(Settings, Action), Error> {
                         ]),
                 )
                 .subcommand(
-                    Command::new("unused").about("Show unused source files"),
+                    Command::new("unused").about("Show unused source files")
+                        .about("Show unused source files")
+                        .args([
+                            arg!(--unused <FILE> ...
+                                "A file that contains a list of known unused files")
+                                .value_parser(clap::value_parser!(PathBuf)),
+                            arg!(--ignore <DIR> ...
+                                "Ignore files in those directories")
+                                .value_parser(clap::value_parser!(PathBuf)),
+                        ]),
                 ),
         )
         .subcommand(
@@ -94,22 +121,10 @@ pub fn parse_cli() -> Result<(Settings, Action), Error> {
     let settings = Settings {
         report_missing_source_dirs: matches.get_flag("missing_sources"),
         resolve_symbolic_links: matches.get_flag("symlinks"),
-        runtime_gpr: matches
-            .get_many::<PathBuf>("runtime") // Option<ValuesRef<PathBuf>>
-            .into_iter() // Item=ValuesRef<PathBuf>
-            .flatten() // Item is &PathBuf
-            .filter_map(|p| to_abs(p).ok()) // Item is PathBuf
-            .collect(),
-        root: matches
-            .get_many::<PathBuf>("root")
-            .into_iter()
-            .flatten()
-            .filter_map(|p| to_abs(p).ok()) // Item is PathBuf
-            .collect(),
+        runtime_gpr: get_path_list(&matches, "runtime"),
+        root: get_path_list(&matches, "root"),
         trim: matches.get_flag("trim"),
-        relto: matches.get_one::<PathBuf>("relto")
-            .map(|p| to_abs(p).unwrap_or(p.clone()))
-            .unwrap(),
+        relto: get_path(&matches, "relto")?,
     };
 
     match matches.subcommand() {
@@ -122,7 +137,13 @@ pub fn parse_cli() -> Result<(Settings, Action), Error> {
                     path: get_path(importsub, "PATH")?,
                 },
             )),
-            Some(("unused", _)) => Ok((settings, Action::SourceUnused)),
+            Some(("unused", importsub)) => Ok((
+                settings,
+                Action::SourceUnused {
+                    unused: get_path_list(importsub, "unused"),
+                    ignore: get_path_list(importsub, "ignore"),
+                },
+            )),
             _ => unreachable!(),
         },
         Some(("gpr", sub)) => match sub.subcommand() {

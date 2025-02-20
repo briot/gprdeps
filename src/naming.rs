@@ -73,7 +73,7 @@ impl Naming {
             };
             let s = environ.register_source(path, lang)?;
             if is_main {
-               s.borrow_mut().is_ever_main = is_main;
+                s.borrow_mut().is_ever_main = is_main;
             }
             Ok(Some(FileInGPR {
                 file: s.clone(),

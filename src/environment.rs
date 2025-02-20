@@ -187,12 +187,12 @@ impl Environment {
 
                 // An implementation or separate depends on everything
                 // from the same unit, but the spec doesn't.
-                //                match s.kind {
-                //                    SourceKind::Spec => {}
-                //                    SourceKind::Implementation | SourceKind::Separate => {
-                //                        self.graph.add_edge(s.file_node, u, Edge::SourceImports)
-                //                    }
-                //                }
+                //    match s.kind {
+                //        SourceKind::Spec => {}
+                //        SourceKind::Implementation | SourceKind::Separate => {
+                //            self.graph.add_edge(s.file_node, u, Edge::SourceImports)
+                //        }
+                //    }
             }
             for dep in &s.deps {
                 Environment::add_source_import(
@@ -440,8 +440,7 @@ impl Environment {
     where
         P: AsRef<Path>,
     {
-        let file = File::open(filename)?;
-        Ok(io::BufReader::new(file)
+        Ok(io::BufReader::new(File::open(filename)?)
             .lines()
             .map_while(Result::ok)
             .filter(|line| matches!(line.chars().next(), Some(c) if c != '#'))
@@ -465,11 +464,18 @@ impl Environment {
     pub fn show_unused_sources(
         &self,
         settings: &Settings,
+        unused: &[PathBuf],
+        ignore: &[PathBuf],
     ) -> Result<(), Error> {
-        let expected_unused = self.parse_unused_file(
-            Path::new("/home/briot/dbc/deepblue"),
-            "/home/briot/dbc/deepblue/Scripts/python_lib/dbc/tool/unused.txt",
-        )?;
+        let mut expected_unused = HashSet::new();
+        for u in unused {
+            expected_unused.extend(
+                self.parse_unused_file(
+                    Path::new("/home/briot/dbc/deepblue"),
+                    u,
+                )?,
+            )
+        }
 
         let paths: HashSet<_> = self
             .gprs
@@ -480,10 +486,9 @@ impl Environment {
             .filter(|s| !s.file.borrow().is_library_interface)
             .filter(|s| s.file.borrow().lang == "ada") // only Ada
             .filter(|s| {
-                !s.file
-                    .borrow()
-                    .path
-                    .starts_with("/home/briot/dbc/deepblue/External")
+                !ignore
+                    .iter()
+                    .any(|ign| s.file.borrow().path.starts_with(ign))
             })
             .filter_map(|s| s.file.borrow().unit_node) // require unit
             .filter(|u|       // unused units have no incoming edge

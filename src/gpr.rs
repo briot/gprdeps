@@ -800,7 +800,7 @@ pub mod tests {
             kw_aggregate: true,
             kw_body: false,
         };
-        let lex = AdaLexer::new(&mut file, options);
+        let lex = AdaLexer::new(&mut file, options)?;
         GprScanner::parse(lex, Path::new("memory"), &settings)
     }
 
