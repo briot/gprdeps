@@ -430,19 +430,46 @@ impl Environment {
         Ok(())
     }
 
-    /// Report all source files that are never imported.
-    /// Ignore those units that are "main" units for a project.
-    /// Ignore files in specific directories (typically, third-party libraries)
-    pub fn show_unused_sources(&self) -> Result<(), Error> {
-        // Read unused.txt file
-        let file = File::open(
-            "/home/briot/dbc/deepblue/Scripts/python_lib/dbc/tool/unused.txt",
-        )?;
-        let expected_unused: HashSet<_> = io::BufReader::new(file)
+    /// Parse a "unused.txt" file that lists files that we know are unused.
+    /// All paths in this file are assumed to be relative to `root`.
+    fn parse_unused_file<P>(
+        &self,
+        root: &Path,
+        filename: P,
+    ) -> Result<HashSet<PathBuf>, Error>
+    where
+        P: AsRef<Path>,
+    {
+        let file = File::open(filename)?;
+        Ok(io::BufReader::new(file)
             .lines()
             .map_while(Result::ok)
             .filter(|line| matches!(line.chars().next(), Some(c) if c != '#'))
-            .collect();
+            .map(|line| root.join(line))
+            .collect())
+    }
+
+    /// Format a path for display.  We prefer to display relative file names,
+    /// since those are shorter and will stay the same on different machines.
+    fn display_path<'a>(
+        &self,
+        path: &'a Path,
+        settings: &Settings,
+    ) -> std::path::Display<'a> {
+        path.strip_prefix(&settings.relto).unwrap_or(path).display()
+    }
+
+    /// Report all source files that are never imported.
+    /// Ignore those units that are "main" units for a project.
+    /// Ignore files in specific directories (typically, third-party libraries)
+    pub fn show_unused_sources(
+        &self,
+        settings: &Settings,
+    ) -> Result<(), Error> {
+        let expected_unused = self.parse_unused_file(
+            Path::new("/home/briot/dbc/deepblue"),
+            "/home/briot/dbc/deepblue/Scripts/python_lib/dbc/tool/unused.txt",
+        )?;
 
         let paths: HashSet<_> = self
             .gprs
@@ -473,33 +500,29 @@ impl Environment {
                 )
             })
             .filter_map(|e| match &self.graph.0[e.target()] {
-                Node::Source(path) => Some(
-                    path.strip_prefix("/home/briot/dbc/deepblue")
-                        .unwrap_or(path),
-                ),
+                Node::Source(path) => Some(path.clone()),
                 _ => None,
             })
-            .map(|path| path.display().to_string())
             .collect(); // unique
 
-        let root = Path::new("/home/briot/dbc/deepblue");
-        let mut not_on_disk: Vec<_> = expected_unused.iter()
-            .filter(|p| !root.join(p).is_file())
-            .collect();
+        // ??? Should recursively look for files that are only used by other
+        // unused files.
+
+        let mut not_on_disk: Vec<_> =
+            expected_unused.iter().filter(|p| !p.is_file()).collect();
         if !not_on_disk.is_empty() {
             println!("\nFiles in unused.txt but not on disk");
             not_on_disk.sort();
             for path in not_on_disk {
-                println!("   {}", path);
+                println!("   {}", self.display_path(path, settings));
             }
         }
-
         let mut unused: Vec<_> = paths.difference(&expected_unused).collect();
         if !unused.is_empty() {
             println!("\nUnused Ada files (not in unused.txt)");
             unused.sort();
             for path in unused {
-                println!("   {}", path);
+                println!("   {}", self.display_path(path, settings));
             }
         }
 
@@ -508,7 +531,7 @@ impl Environment {
             println!("\nUsed Ada files but in unused.txt");
             used.sort();
             for path in used {
-                println!("   {}", path);
+                println!("   {}", self.display_path(path, settings));
             }
         }
 

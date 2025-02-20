@@ -23,4 +23,9 @@ pub struct Settings {
     // Whether to remove some attributes from projects (all the ones not used
     // by this tool)
     pub trim: bool,
+
+    // All output paths are displayed relative to this directory.  We prefer
+    // to display relative file names, in general, as those are shorter and
+    // more portable across mchines.
+    pub relto: PathBuf,
 }

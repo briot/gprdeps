@@ -54,7 +54,7 @@ fn main() -> Result<(), Error> {
             }
         }
         Action::SourceUnused => {
-            env.show_unused_sources()?;
+            env.show_unused_sources(&settings)?;
         }
         Action::GprShow {
             gprpath,

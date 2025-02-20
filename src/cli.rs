@@ -41,8 +41,12 @@ pub fn parse_cli() -> Result<(Settings, Action), Error> {
                 .default_value(".")
                 .value_parser(clap::value_parser!(PathBuf)),
             arg!(--trim  "Only show subset of attributes")
-                .global(false)
+                .global(true)
                 .action(ArgAction::SetTrue),
+            arg!(--relto <DIR> "Output paths relative to this directory")
+                .global(true)
+                .default_value(".")
+                .value_parser(clap::value_parser!(PathBuf)),
         ])
         .subcommand(
             Command::new("stats")
@@ -103,6 +107,9 @@ pub fn parse_cli() -> Result<(Settings, Action), Error> {
             .filter_map(|p| to_abs(p).ok()) // Item is PathBuf
             .collect(),
         trim: matches.get_flag("trim"),
+        relto: matches.get_one::<PathBuf>("relto")
+            .map(|p| to_abs(p).unwrap_or(p.clone()))
+            .unwrap(),
     };
 
     match matches.subcommand() {
