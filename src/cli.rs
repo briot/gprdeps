@@ -1,11 +1,11 @@
 use crate::{errors::Error, settings::Settings};
 use clap::{arg, ArgAction, ArgMatches, Command};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 pub enum Action {
     Stats,
     SourceUnused {
-        unused: Vec<PathBuf>,
+        unused: Vec<(PathBuf, PathBuf)>,
         ignore: Vec<PathBuf>,
     },
     Dependencies {
@@ -18,7 +18,10 @@ pub enum Action {
     },
 }
 
-fn to_abs(relpath: &PathBuf) -> Result<PathBuf, Error> {
+fn to_abs<P>(relpath: P) -> Result<PathBuf, Error>
+where
+    P: AsRef<Path>,
+{
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"));
     Ok(cwd.join(relpath).canonicalize()?)
 }
@@ -33,6 +36,21 @@ fn get_path_list(matches: &ArgMatches, id: &str) -> Vec<PathBuf> {
         .into_iter() // Item=ValuesRef<PathBuf>
         .flatten() // Item is &PathBuf
         .filter_map(|p| to_abs(p).ok()) // Item is PathBuf
+        .collect()
+}
+
+fn get_path_and_root(
+    matches: &ArgMatches,
+    id: &str,
+) -> Vec<(PathBuf, PathBuf)> {
+    matches
+        .get_many::<String>(id)
+        .into_iter()
+        .flatten()
+        .filter_map(|p| match p.split_once(":") {
+            None => Some((to_abs(p).ok()?, to_abs(".").ok()?)),
+            Some((p, root)) => Some((to_abs(p).ok()?, to_abs(root).ok()?)),
+        })
         .collect()
 }
 
@@ -51,17 +69,17 @@ pub fn parse_cli() -> Result<(Settings, Action), Error> {
             arg!(-l --symlinks "Resolve symbolic links")
                 .global(true)
                 .action(ArgAction::SetFalse),
-            arg!(--runtime <RUNTIME> ... "Projects implicitly imported by all")
+            arg!(--runtime [RUNTIME]... "Projects implicitly imported by all")
                 .global(true)
                 .value_parser(clap::value_parser!(PathBuf)),
-            arg!(--root <DIR_OR_GPR> ... "Root directory or project")
+            arg!(--root <DIR_OR_GPR>... "Root directory or project")
                 .global(true)
                 .default_value(".")
                 .value_parser(clap::value_parser!(PathBuf)),
             arg!(--trim  "Only show subset of attributes")
                 .global(true)
                 .action(ArgAction::SetTrue),
-            arg!(--relto <DIR> "Output paths relative to this directory")
+            arg!(--relto [DIR] "Output paths relative to this directory")
                 .global(true)
                 .default_value(".")
                 .value_parser(clap::value_parser!(PathBuf)),
@@ -87,15 +105,17 @@ pub fn parse_cli() -> Result<(Settings, Action), Error> {
                         ]),
                 )
                 .subcommand(
-                    Command::new("unused").about("Show unused source files")
+                    Command::new("unused")
+                        .about("Show unused source files")
                         .about("Show unused source files")
                         .args([
-                            arg!(--unused <FILE> ...
-                                "A file that contains a list of known unused files")
-                                .value_parser(clap::value_parser!(PathBuf)),
-                            arg!(--ignore <DIR> ...
+                            arg!(--unused [FILE_ROOT]...
+                                "A filename:root that contains a list of \
+                                 known unused files, relative to ROOT \
+                                (defaults to .)"),
+                            arg!(--ignore [DIR] ...
                                 "Ignore files in those directories")
-                                .value_parser(clap::value_parser!(PathBuf)),
+                            .value_parser(clap::value_parser!(PathBuf)),
                         ]),
                 ),
         )
@@ -140,7 +160,7 @@ pub fn parse_cli() -> Result<(Settings, Action), Error> {
             Some(("unused", importsub)) => Ok((
                 settings,
                 Action::SourceUnused {
-                    unused: get_path_list(importsub, "unused"),
+                    unused: get_path_and_root(importsub, "unused"),
                     ignore: get_path_list(importsub, "ignore"),
                 },
             )),

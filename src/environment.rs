@@ -464,17 +464,12 @@ impl Environment {
     pub fn show_unused_sources(
         &self,
         settings: &Settings,
-        unused: &[PathBuf],
+        unused: &[(PathBuf, PathBuf)],
         ignore: &[PathBuf],
     ) -> Result<(), Error> {
         let mut expected_unused = HashSet::new();
-        for u in unused {
-            expected_unused.extend(
-                self.parse_unused_file(
-                    Path::new("/home/briot/dbc/deepblue"),
-                    u,
-                )?,
-            )
+        for (filename, root) in unused {
+            expected_unused.extend(self.parse_unused_file(root, filename)?)
         }
 
         let paths: HashSet<_> = self
