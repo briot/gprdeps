@@ -14,6 +14,8 @@ use petgraph::{visit::EdgeRef, Direction};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
+use std::fs::File;
+use std::io::{self, BufRead};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use tracing::debug;
@@ -432,6 +434,16 @@ impl Environment {
     /// Ignore those units that are "main" units for a project.
     /// Ignore files in specific directories (typically, third-party libraries)
     pub fn show_unused_sources(&self) -> Result<(), Error> {
+        // Read unused.txt file
+        let file = File::open(
+            "/home/briot/dbc/deepblue/Scripts/python_lib/dbc/tool/unused.txt",
+        )?;
+        let expected_unused: HashSet<_> = io::BufReader::new(file)
+            .lines()
+            .map_while(Result::ok)
+            .filter(|line| matches!(line.chars().next(), Some(c) if c != '#'))
+            .collect();
+
         let paths: HashSet<_> = self
             .gprs
             .values()
@@ -467,14 +479,39 @@ impl Environment {
                 ),
                 _ => None,
             })
+            .map(|path| path.display().to_string())
             .collect(); // unique
 
-        let mut sorted: Vec<_> = paths.into_iter().collect();
-        sorted.sort();
-
-        for path in sorted {
-            println!("{}", path.display());
+        let root = Path::new("/home/briot/dbc/deepblue");
+        let mut not_on_disk: Vec<_> = expected_unused.iter()
+            .filter(|p| !root.join(p).is_file())
+            .collect();
+        if !not_on_disk.is_empty() {
+            println!("\nFiles in unused.txt but not on disk");
+            not_on_disk.sort();
+            for path in not_on_disk {
+                println!("   {}", path);
+            }
         }
+
+        let mut unused: Vec<_> = paths.difference(&expected_unused).collect();
+        if !unused.is_empty() {
+            println!("\nUnused Ada files (not in unused.txt)");
+            unused.sort();
+            for path in unused {
+                println!("   {}", path);
+            }
+        }
+
+        let mut used: Vec<_> = expected_unused.difference(&paths).collect();
+        if !used.is_empty() {
+            println!("\nUsed Ada files but in unused.txt");
+            used.sort();
+            for path in used {
+                println!("   {}", path);
+            }
+        }
+
         Ok(())
     }
 
