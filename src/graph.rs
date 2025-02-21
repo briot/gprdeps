@@ -13,7 +13,7 @@ pub type NodeIndex = petgraph::graph::NodeIndex<u32>;
 pub enum Node {
     Project(PathBuf),
     Unit(QName),
-    Source(PathBuf), //  ??? Should be UStr
+    Source(PathBuf),
 }
 
 /// The edges of a graph

@@ -7,10 +7,13 @@ use crate::{
     graph::{DepGraph, Edge, Node, NodeIndex},
     qnames::QName,
     rawgpr::RawGPR,
+    scenarios::Scenario,
     settings::Settings,
     sourcefile::{SourceFile, SourceKind},
 };
-use petgraph::{visit::EdgeRef, Direction};
+use petgraph::{
+    algo::condensation, graph::Graph, visit::EdgeRef, Directed, Direction,
+};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
@@ -472,25 +475,131 @@ impl Environment {
             expected_unused.extend(self.parse_unused_file(root, filename)?)
         }
 
-        let paths: HashSet<_> = self
+        // Select the units of interest: start from relevant source files,
+        // and get the units
+
+        let all_unit_nodes: HashSet<(NodeIndex, bool)> = self
             .gprs
             .values()
             .flat_map(|gpr| gpr.sources.iter()) // get project soures
             .flat_map(|(_, sources)| sources.iter()) // for all scenarios
-            .filter(|s| !s.file.borrow().is_ever_main)
-            .filter(|s| !s.file.borrow().is_library_interface)
-            .filter(|s| s.file.borrow().lang == "ada") // only Ada
-            .filter(|s| {
-                !ignore
-                    .iter()
-                    .any(|ign| s.file.borrow().path.starts_with(ign))
+            .filter_map(|s| {
+                let sm = s.file.borrow();
+                if sm.lang != "ada" || sm.unit_node.is_none() {
+                    None
+                } else {
+                    Some((
+                        sm.unit_node.unwrap(),
+                        sm.is_ever_main
+                            || sm.is_library_interface
+                            || ignore
+                                .iter()
+                                .any(|ign| sm.path.starts_with(ign)),
+                    ))
+                }
             })
-            .filter_map(|s| s.file.borrow().unit_node) // require unit
-            .filter(|u|       // unused units have no incoming edge
-                !self.graph.0
-                .edges_directed(*u, Direction::Incoming)
-                .any(|e| matches!(e.weight(), Edge::SourceImports)))
-            .flat_map(|u| self.graph.0.edges_directed(u, Direction::Outgoing))
+            .collect();
+
+        // Prepare a simpler graph that only contains units and their
+        // dependencies.
+
+        let mut unit_graph = Graph::<NodeIndex, Edge, Directed, u32>::new();
+        let mut map = HashMap::new(); // unit_graph -> self.graph
+        let mut keepers = HashSet::new(); // indices from self.graph
+        for (u, keep) in &all_unit_nodes {
+            let n = unit_graph.add_node(*u);
+            map.insert(*u, n);
+            if *keep {
+                keepers.insert(*u);
+            }
+        }
+        let unit_edges = all_unit_nodes
+            .iter()
+            .flat_map(|unit| {
+                self.graph
+                    .0
+                    .edges_directed(unit.0, Direction::Incoming)
+                    .filter_map(|e| match e.weight() {
+                        Edge::SourceImports => Some((e.source(), unit.0)),
+                        _ => None,
+                    })
+            })
+            .flat_map(|(sourcefile, unit)| {
+                self.graph
+                    .0
+                    .edges_directed(sourcefile, Direction::Incoming)
+                    .filter_map(move |e| match e.weight() {
+                        Edge::UnitSpec(_)
+                        | Edge::UnitImpl(_)
+                        | Edge::UnitSeparate(_) => Some((e.source(), unit)),
+                        _ => None,
+                    })
+            });
+
+        for (parent, child) in unit_edges {
+            if let Some(parent_u) = map.get(&parent) {
+                unit_graph.add_edge(
+                    *parent_u,
+                    map[&child],
+                    Edge::UnitImports(Scenario::default()),
+                );
+            }
+        }
+
+        // We will be working on a condensation of the graph: this is a new
+        // graph in which the nodes are the strongly components of the
+        // original graph.
+        // For instance, this will automatically group spec and body into
+        // a single node.
+        // This also groups autoio-generated files, where we have the
+        // following dependencies:
+        //    pkg.io_any      depends on pkg which is the parent package
+        //    pkg.io_any.v1   depends on pkg.io_any for the same reason
+        //    pkg.io_any      depends on pkg.io_any.v1 for dispatching
+        // If we do not look at strongly connected components, the above is
+        // a cycle that means none of these packages will ever be reported
+        // as unused.
+        // The weight() of the condensed graph are a vec of the original
+        // node indices.
+
+        let mut condensed = condensation(unit_graph, true);
+        let mut unused_nodes: Vec<NodeIndex> = Vec::new();
+
+        loop {
+            let roots: Vec<_> = condensed
+                .node_indices()
+                .filter(|n| {
+                    condensed
+                            .edges_directed(*n, Direction::Incoming)
+                            .next()
+                            .is_none()
+
+                    // We must look at the weight(), since the indices in
+                    // condensed change when we remove nodes.
+                    && !condensed.node_weight(*n).unwrap().iter().any(
+                        |from_unit_graph| keepers.contains(from_unit_graph),
+                    )
+                })
+                .collect();
+            if roots.is_empty() {
+                break;
+            }
+
+            for n in &roots {
+                unused_nodes.extend(condensed.node_weight(*n).unwrap());
+            }
+
+            // This changes indices
+            for n in &roots {
+                condensed.remove_node(*n);
+            }
+        }
+
+        let paths: HashSet<_> = unused_nodes
+            .iter()
+            .flat_map(|unit| {
+                self.graph.0.edges_directed(*unit, Direction::Outgoing)
+            })
             .filter(|e| {
                 matches!(
                     e.weight(),
@@ -504,9 +613,6 @@ impl Environment {
                 _ => None,
             })
             .collect(); // unique
-
-        // ??? Should recursively look for files that are only used by other
-        // unused files.
 
         let mut not_on_disk: Vec<_> =
             expected_unused.iter().filter(|p| !p.is_file()).collect();
