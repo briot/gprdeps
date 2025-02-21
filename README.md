@@ -104,3 +104,32 @@ Finally, files that are only imported by otherwise unused files (for instance
 a.adb imports b.ads, but a.adb has been found to be unused) will be reported
 by default.  By using `--no_recurse` you can chose to not display `b.ads` in
 this example.
+
+### View expanded projects
+
+The command
+```
+    gprdeps --root everything.gpr gpr show /path/to/prj.gpr
+```
+
+will display the contents of the project file, with attribute values
+expanded for all scenarios.  So for instance you might see something
+like
+
+```
+project data_server is
+   for <top>'source_dirs
+      tasking=off ., private, tasking-off
+      tasking=on  ., private, tasking-on
+end data_server
+```
+
+to indicate that when the scenario variable "tasking" is set to off, we
+have the following source directories "(., private, tasking-off)", but
+we have a different list when tasking is on.
+
+By default, you will see all attributes.  Depending on the complexity of
+your project, this might result in a very large display.  You can use the
+`--trim` switch to omit some of the attributes (like compilation switches
+for instance).  The exact list of switches that are hidden might change
+in the future.
