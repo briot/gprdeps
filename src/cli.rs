@@ -96,24 +96,23 @@ pub fn parse_cli() -> Result<(Settings, Action), Error> {
                             arg!(<PATH> "Path to the source file")
                                 .value_parser(clap::value_parser!(PathBuf)),
                         ]),
-                )
-                .subcommand(
-                    Command::new("unused")
-                        .about("Show unused source files")
-                        .about("Show unused source files")
-                        .args([
-                            arg!(--unused [FILE_ROOT]...
-                                "A filename:root that contains a list of \
-                                 known unused files, relative to ROOT \
-                                (defaults to .)"),
-                            arg!(--ignore [DIR] ...
-                                "Ignore files in those directories")
-                            .value_parser(clap::value_parser!(PathBuf)),
-                            arg!(--no_recurse
-                                "Do not show files only used by unused files")
-                            .action(ArgAction::SetTrue),
-                        ]),
                 ),
+        )
+        .subcommand(
+            Command::new("unused")
+                .about("Show unused source files")
+                .args([
+                    arg!(--unused [FILE_ROOT]...
+                        "A filename:root that contains a list of \
+                         known unused files, relative to ROOT \
+                        (defaults to .)"),
+                    arg!(--ignore [DIR] ...
+                        "Ignore files in those directories")
+                    .value_parser(clap::value_parser!(PathBuf)),
+                    arg!(--no_recurse
+                        "Do not show files only used by unused files")
+                    .action(ArgAction::SetTrue),
+                ]),
         )
         .subcommand(
             Command::new("gpr")
@@ -153,16 +152,16 @@ pub fn parse_cli() -> Result<(Settings, Action), Error> {
                     path: get_path(importsub, "PATH")?,
                 },
             )),
-            Some(("unused", importsub)) => Ok((
-                settings,
-                Action::SourceUnused(ActionSourceUnused {
-                    unused: get_path_and_root(importsub, "unused"),
-                    ignore: get_path_list(importsub, "ignore"),
-                    recurse: !importsub.get_flag("no_recurse"),
-                }),
-            )),
             _ => unreachable!(),
         },
+        Some(("unused", importsub)) => Ok((
+            settings,
+            Action::SourceUnused(ActionSourceUnused {
+                unused: get_path_and_root(importsub, "unused"),
+                ignore: get_path_list(importsub, "ignore"),
+                recurse: !importsub.get_flag("no_recurse"),
+            }),
+        )),
         Some(("gpr", sub)) => match sub.subcommand() {
             Some(("show", showsub)) => Ok((
                 settings,
