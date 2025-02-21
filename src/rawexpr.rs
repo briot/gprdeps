@@ -61,9 +61,11 @@ lazy_static::lazy_static! {
 
 impl RawExpr {
     /// Whether the expression contains a call to external().
-    /// Returns the name of the scenario variable
-    pub fn has_external(&self) -> Option<Ustr> {
+    /// Returns the name of the scenario variable, and the default value.
+    pub fn has_external(&self) -> Option<(Ustr, Option<Ustr>)> {
         match self {
+            // ??? Fails if we have two calls to external
+            //     external("e1") & external("e2")
             RawExpr::Ampersand((left, right)) => {
                 left.has_external().or_else(|| right.has_external())
             }
@@ -78,7 +80,18 @@ impl RawExpr {
             )) => {
                 if *n == *EXTERNAL {
                     match &args[0] {
-                        RawExpr::Str(s) => Some(*s),
+                        RawExpr::Str(s) => match args.get(1) {
+                            None => Some((*s, None)),
+                            Some(RawExpr::Str(default)) => {
+                                Some((*s, Some(*default)))
+                            }
+                            Some(RawExpr::Name(q)) => {
+                                Some((*s, Some(Ustr::from(&format!("{}", q)))))
+                            }
+                            _ => panic!(
+                                "Second arg to external must be static string"
+                            ),
+                        },
                         _ => panic!(
                             "First argument to external must \
                                  be static string"

@@ -17,6 +17,11 @@ pub struct ScenarioVariable {
     // then the value for E1 is
     //     {"E1=on": "on", "E1=off": "off"}
     value: ExprValue,
+
+    /// The default value. (i.e. the second argument for `external()`).  Note
+    /// that if there is any external that doesn't declare a default, we
+    /// assume there is no default.
+    default: Option<Ustr>,
 }
 
 impl PartialEq for ScenarioVariable {
@@ -34,6 +39,7 @@ impl ScenarioVariable {
         name: Ustr,
         valid: Vec<(Ustr, Scenario)>,
         full_mask: Scenario,
+        default: Option<Ustr>,
     ) -> Self {
         let value =
             ExprValue::Str(PerScenario::new_with_variable(full_mask, &valid));
@@ -42,7 +48,13 @@ impl ScenarioVariable {
             valid,
             full_mask,
             value,
+            default,
         }
+    }
+
+    /// Unset the default for the variable.
+    pub fn unset_default(&mut self) {
+        self.default = None;
     }
 
     pub fn value(&self) -> &ExprValue {
@@ -67,7 +79,6 @@ impl ScenarioVariable {
     pub fn describe(&self, scenario: Scenario) -> String {
         if (scenario & self.full_mask) == self.full_mask {
             String::new()
-            // format!("{}=*", self.name)
         } else {
             format!(
                 "{}={}",
@@ -102,6 +113,21 @@ impl ScenarioVariable {
 
     pub fn full_mask(&self) -> Scenario {
         self.full_mask
+    }
+
+    /// Display the variable, its list of values, and the default
+    pub fn describe_var(&self) -> String {
+        format!(
+            "{}: ({})",
+            self.name,
+            join(
+                self.valid.iter().map(|v| match self.default {
+                    Some(d) if d == v.0 => format!("*{}*", v.0),
+                    _ => v.0.to_string(),
+                }),
+                ", "
+            ),
+        )
     }
 }
 

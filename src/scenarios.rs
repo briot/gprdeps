@@ -9,6 +9,7 @@
 use crate::errors::Error;
 
 type Mask = u64;
+pub const MAX_VALUES: u32 = Mask::BITS;
 
 #[derive(Clone, Copy, Eq, PartialEq, PartialOrd, Ord, Hash)]
 pub struct Scenario(Mask);

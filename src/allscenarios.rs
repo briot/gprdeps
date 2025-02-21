@@ -7,7 +7,7 @@ use crate::{
     perscenario::PerScenario,
     rawexpr::WhenClause,
     scenario_variables::ScenarioVariable,
-    scenarios::{Scenario, ScenarioFactory},
+    scenarios::{Scenario, ScenarioFactory, MAX_VALUES},
     simplename::StringOrOthers,
 };
 use itertools::join;
@@ -187,6 +187,7 @@ impl AllScenarios {
         &'a mut self,
         name: Ustr,
         valid: &[Ustr],
+        default: Option<Ustr>,
     ) -> Result<&'a ScenarioVariable, Error> {
         let mut error: Option<Error> = None;
         let res = self
@@ -202,6 +203,9 @@ impl AllScenarios {
                         v.describe(Scenario::default()),
                     );
                 }
+                if default.is_none() {
+                    v.unset_default();
+                }
             })
             .or_insert_with(|| {
                 let mut full_mask = Scenario::empty();
@@ -215,10 +219,15 @@ impl AllScenarios {
                     .collect();
 
                 match values {
-                    Ok(v) => ScenarioVariable::new(name, v, full_mask),
+                    Ok(v) => ScenarioVariable::new(name, v, full_mask, default),
                     Err(e) => {
                         error = Some(e);
-                        ScenarioVariable::new(name, Vec::new(), full_mask)
+                        ScenarioVariable::new(
+                            name,
+                            Vec::new(),
+                            full_mask,
+                            default,
+                        )
                     }
                 }
             });
@@ -231,12 +240,24 @@ impl AllScenarios {
 
     /// Print statistics about scenario variables
     pub fn print_stats(&self) {
-        println!("Scenario vars:{:-7}", self.variables.len());
         let total_valid: usize =
             self.variables.values().map(|v| v.count_valid()).sum();
-        println!("    values:   {:-7}", total_valid);
+        println!(
+            "Scenario variables:{:-7}, total values: {}, max values: {}",
+            self.variables.len(),
+            total_valid,
+            MAX_VALUES
+        );
+
+        let mut vars: Vec<_> =
+            self.variables.values().map(|v| v.describe_var()).collect();
+        vars.sort();
+        for v in vars {
+            println!("   {}", v);
+        }
     }
 
+    /// Debug output for variables
     pub fn describe(&self, scenario: Scenario) -> String {
         // Sort display, for tests
         let mut vars = self.variables.iter().collect::<Vec<_>>();
@@ -285,6 +306,7 @@ pub mod tests {
         let _ = scenarios.try_add_variable(
             Ustr::from(name),
             &valid.iter().map(|s| Ustr::from(s)).collect::<Vec<_>>(),
+            None,
         );
     }
 
