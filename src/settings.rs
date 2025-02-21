@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Default)]
 pub struct Settings {
@@ -28,4 +28,23 @@ pub struct Settings {
     // to display relative file names, in general, as those are shorter and
     // more portable across mchines.
     pub relto: PathBuf,
+}
+
+impl Settings {
+    /// Format a path for display.  We prefer to display relative file names,
+    /// since those are shorter and will stay the same on different machines.
+    pub fn display_path<'a>(&self, path: &'a Path) -> std::path::Display<'a> {
+        path.strip_prefix(&self.relto).unwrap_or(path).display()
+    }
+
+    /// Print a list of files
+    pub fn print_files(&self, msg: &str, mut paths: Vec<&PathBuf>) {
+        if !paths.is_empty() {
+            println!("{}", msg);
+            paths.sort();
+            for path in paths {
+                println!("   {}", self.display_path(path));
+            }
+        }
+    }
 }

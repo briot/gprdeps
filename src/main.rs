@@ -1,3 +1,4 @@
+mod action_unused;
 mod ada_lexer;
 mod ada_scanner;
 mod allscenarios;
@@ -53,8 +54,8 @@ fn main() -> Result<(), Error> {
                 env.show_indirect_dependencies(&path)?;
             }
         }
-        Action::SourceUnused { unused, ignore } => {
-            env.show_unused_sources(&settings, &unused, &ignore)?;
+        Action::SourceUnused(act) => {
+            act.perform(&env, &settings)?;
         }
         Action::GprShow {
             gprpath,

@@ -1,21 +1,14 @@
-use crate::{errors::Error, settings::Settings};
+use crate::{
+    action_unused::ActionSourceUnused, errors::Error, settings::Settings,
+};
 use clap::{arg, ArgAction, ArgMatches, Command};
 use std::path::{Path, PathBuf};
 
 pub enum Action {
     Stats,
-    SourceUnused {
-        unused: Vec<(PathBuf, PathBuf)>,
-        ignore: Vec<PathBuf>,
-    },
-    Dependencies {
-        direct_only: bool,
-        path: PathBuf,
-    },
-    GprShow {
-        gprpath: PathBuf,
-        print_vars: bool,
-    },
+    SourceUnused(ActionSourceUnused),
+    Dependencies { direct_only: bool, path: PathBuf },
+    GprShow { gprpath: PathBuf, print_vars: bool },
 }
 
 fn to_abs<P>(relpath: P) -> Result<PathBuf, Error>
@@ -116,6 +109,9 @@ pub fn parse_cli() -> Result<(Settings, Action), Error> {
                             arg!(--ignore [DIR] ...
                                 "Ignore files in those directories")
                             .value_parser(clap::value_parser!(PathBuf)),
+                            arg!(--no_recurse
+                                "Do not show files only used by unused files")
+                            .action(ArgAction::SetTrue),
                         ]),
                 ),
         )
@@ -159,10 +155,11 @@ pub fn parse_cli() -> Result<(Settings, Action), Error> {
             )),
             Some(("unused", importsub)) => Ok((
                 settings,
-                Action::SourceUnused {
+                Action::SourceUnused(ActionSourceUnused {
                     unused: get_path_and_root(importsub, "unused"),
                     ignore: get_path_list(importsub, "ignore"),
-                },
+                    recurse: !importsub.get_flag("no_recurse"),
+                }),
             )),
             _ => unreachable!(),
         },

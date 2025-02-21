@@ -7,18 +7,13 @@ use crate::{
     graph::{DepGraph, Edge, Node, NodeIndex},
     qnames::QName,
     rawgpr::RawGPR,
-    scenarios::Scenario,
     settings::Settings,
     sourcefile::{SourceFile, SourceKind},
 };
-use petgraph::{
-    algo::condensation, graph::Graph, visit::EdgeRef, Directed, Direction,
-};
+use petgraph::{visit::EdgeRef, Direction};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
-use std::fs::File;
-use std::io::{self, BufRead};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use tracing::debug;
@@ -35,9 +30,9 @@ type SourceFilesMap = HashMap<PathBuf, Rc<RefCell<SourceFile>>>;
 #[derive(Default)]
 pub struct Environment {
     pub scenarios: AllScenarios,
-    graph: DepGraph,
+    pub graph: DepGraph,
     gprs: GprMap,
-    files: SourceFilesMap,
+    pub files: SourceFilesMap,
     units: UnitsMap,
 
     implicit_projects: Vec<NodeIndex>,
@@ -317,6 +312,75 @@ impl Environment {
         Ok(())
     }
 
+    /// From a list of unit nodes, return the paths of all source files.
+    /// We return a set, since the same file might be visible in multiple
+    /// scenarios.
+    pub fn file_paths_from_units<I>(&self, unit_nodes: I) -> HashSet<PathBuf>
+    where
+        I: Iterator<Item = NodeIndex>,
+    {
+        unit_nodes
+            .flat_map(|unit| {
+                self.graph.0.edges_directed(unit, Direction::Outgoing)
+            })
+            .filter(|e| {
+                matches!(
+                    e.weight(),
+                    Edge::UnitSpec(_)
+                        | Edge::UnitImpl(_)
+                        | Edge::UnitSeparate(_),
+                )
+            })
+            .filter_map(|e| match &self.graph.0[e.target()] {
+                Node::Source(path) => Some(path.clone()),
+                _ => None,
+            })
+            .collect() // unique
+    }
+
+    /// Iterates over unit dependencies.
+    /// In the graph, a unit contains source files, which themselves
+    /// import units.
+    /// For instance, in Ada:
+    ///     unit A
+    ///     owns source a.ads
+    ///     which imports unit B
+    /// This level of indirection allows the actual file to vary depending on
+    /// the scenario.
+    ///
+    /// This function bypasses the file nodes, and returns the dependencies
+    /// between units (so we get tuples like (A, B) in the example above).
+    /// Iteration starts from a set of target units (B in the example above)
+    pub fn iter_unit_deps<'a, I>(
+        &'a self,
+        targets: I,
+    ) -> impl Iterator<Item = (NodeIndex, NodeIndex)> + 'a
+    where
+        I: Iterator<Item = NodeIndex> + 'a,
+    {
+        targets
+            .flat_map(|unit| {
+                self.graph
+                    .0
+                    .edges_directed(unit, Direction::Incoming)
+                    .filter_map(move |e| match e.weight() {
+                        Edge::SourceImports => Some((e.source(), unit)),
+                        _ => None,
+                    })
+            })
+            .flat_map(|(sourcefile, unit)| {
+                self.graph
+                    .0
+                    .edges_directed(sourcefile, Direction::Incoming)
+                    .filter_map(move |e| match e.weight() {
+                        Edge::UnitSpec(_)
+                        | Edge::UnitImpl(_)
+                        | Edge::UnitSeparate(_) => Some((e.source(), unit)),
+                        _ => None,
+                    })
+            })
+    }
+
     /// Recursively look for all project files, parse them and prepare the
     /// dependency graph.
     pub fn parse_all(&mut self, settings: &Settings) -> Result<(), Error> {
@@ -430,217 +494,6 @@ impl Environment {
         }
         deps.sort();
         println!("{}", deps.join("\n"));
-        Ok(())
-    }
-
-    /// Parse a "unused.txt" file that lists files that we know are unused.
-    /// All paths in this file are assumed to be relative to `root`.
-    fn parse_unused_file<P>(
-        &self,
-        root: &Path,
-        filename: P,
-    ) -> Result<HashSet<PathBuf>, Error>
-    where
-        P: AsRef<Path>,
-    {
-        Ok(io::BufReader::new(File::open(filename)?)
-            .lines()
-            .map_while(Result::ok)
-            .filter(|line| matches!(line.chars().next(), Some(c) if c != '#'))
-            .map(|line| root.join(line))
-            .collect())
-    }
-
-    /// Format a path for display.  We prefer to display relative file names,
-    /// since those are shorter and will stay the same on different machines.
-    fn display_path<'a>(
-        &self,
-        path: &'a Path,
-        settings: &Settings,
-    ) -> std::path::Display<'a> {
-        path.strip_prefix(&settings.relto).unwrap_or(path).display()
-    }
-
-    /// Report all source files that are never imported.
-    /// Ignore those units that are "main" units for a project.
-    /// Ignore files in specific directories (typically, third-party libraries)
-    pub fn show_unused_sources(
-        &self,
-        settings: &Settings,
-        unused: &[(PathBuf, PathBuf)],
-        ignore: &[PathBuf],
-    ) -> Result<(), Error> {
-        let mut expected_unused = HashSet::new();
-        for (filename, root) in unused {
-            expected_unused.extend(self.parse_unused_file(root, filename)?)
-        }
-
-        // Select the units of interest: start from relevant source files,
-        // and get the units
-
-        let all_unit_nodes: HashSet<(NodeIndex, bool)> = self
-            .gprs
-            .values()
-            .flat_map(|gpr| gpr.sources.iter()) // get project soures
-            .flat_map(|(_, sources)| sources.iter()) // for all scenarios
-            .filter_map(|s| {
-                let sm = s.file.borrow();
-                if sm.lang != "ada" || sm.unit_node.is_none() {
-                    None
-                } else {
-                    Some((
-                        sm.unit_node.unwrap(),
-                        sm.is_ever_main
-                            || sm.is_library_interface
-                            || ignore
-                                .iter()
-                                .any(|ign| sm.path.starts_with(ign)),
-                    ))
-                }
-            })
-            .collect();
-
-        // Prepare a simpler graph that only contains units and their
-        // dependencies.
-
-        let mut unit_graph = Graph::<NodeIndex, Edge, Directed, u32>::new();
-        let mut map = HashMap::new(); // unit_graph -> self.graph
-        let mut keepers = HashSet::new(); // indices from self.graph
-        for (u, keep) in &all_unit_nodes {
-            let n = unit_graph.add_node(*u);
-            map.insert(*u, n);
-            if *keep {
-                keepers.insert(*u);
-            }
-        }
-        let unit_edges = all_unit_nodes
-            .iter()
-            .flat_map(|unit| {
-                self.graph
-                    .0
-                    .edges_directed(unit.0, Direction::Incoming)
-                    .filter_map(|e| match e.weight() {
-                        Edge::SourceImports => Some((e.source(), unit.0)),
-                        _ => None,
-                    })
-            })
-            .flat_map(|(sourcefile, unit)| {
-                self.graph
-                    .0
-                    .edges_directed(sourcefile, Direction::Incoming)
-                    .filter_map(move |e| match e.weight() {
-                        Edge::UnitSpec(_)
-                        | Edge::UnitImpl(_)
-                        | Edge::UnitSeparate(_) => Some((e.source(), unit)),
-                        _ => None,
-                    })
-            });
-
-        for (parent, child) in unit_edges {
-            if let Some(parent_u) = map.get(&parent) {
-                unit_graph.add_edge(
-                    *parent_u,
-                    map[&child],
-                    Edge::UnitImports(Scenario::default()),
-                );
-            }
-        }
-
-        // We will be working on a condensation of the graph: this is a new
-        // graph in which the nodes are the strongly components of the
-        // original graph.
-        // For instance, this will automatically group spec and body into
-        // a single node.
-        // This also groups autoio-generated files, where we have the
-        // following dependencies:
-        //    pkg.io_any      depends on pkg which is the parent package
-        //    pkg.io_any.v1   depends on pkg.io_any for the same reason
-        //    pkg.io_any      depends on pkg.io_any.v1 for dispatching
-        // If we do not look at strongly connected components, the above is
-        // a cycle that means none of these packages will ever be reported
-        // as unused.
-        // The weight() of the condensed graph are a vec of the original
-        // node indices.
-
-        let mut condensed = condensation(unit_graph, true);
-        let mut unused_nodes: Vec<NodeIndex> = Vec::new();
-
-        loop {
-            let roots: Vec<_> = condensed
-                .node_indices()
-                .filter(|n| {
-                    condensed
-                            .edges_directed(*n, Direction::Incoming)
-                            .next()
-                            .is_none()
-
-                    // We must look at the weight(), since the indices in
-                    // condensed change when we remove nodes.
-                    && !condensed.node_weight(*n).unwrap().iter().any(
-                        |from_unit_graph| keepers.contains(from_unit_graph),
-                    )
-                })
-                .collect();
-            if roots.is_empty() {
-                break;
-            }
-
-            for n in &roots {
-                unused_nodes.extend(condensed.node_weight(*n).unwrap());
-            }
-
-            // This changes indices
-            for n in &roots {
-                condensed.remove_node(*n);
-            }
-        }
-
-        let paths: HashSet<_> = unused_nodes
-            .iter()
-            .flat_map(|unit| {
-                self.graph.0.edges_directed(*unit, Direction::Outgoing)
-            })
-            .filter(|e| {
-                matches!(
-                    e.weight(),
-                    Edge::UnitSpec(_)
-                        | Edge::UnitImpl(_)
-                        | Edge::UnitSeparate(_),
-                )
-            })
-            .filter_map(|e| match &self.graph.0[e.target()] {
-                Node::Source(path) => Some(path.clone()),
-                _ => None,
-            })
-            .collect(); // unique
-
-        let mut not_on_disk: Vec<_> =
-            expected_unused.iter().filter(|p| !p.is_file()).collect();
-        if !not_on_disk.is_empty() {
-            println!("\nFiles in unused.txt but not on disk");
-            not_on_disk.sort();
-            for path in not_on_disk {
-                println!("   {}", self.display_path(path, settings));
-            }
-        }
-        let mut unused: Vec<_> = paths.difference(&expected_unused).collect();
-        if !unused.is_empty() {
-            println!("\nUnused Ada files (not in unused.txt)");
-            unused.sort();
-            for path in unused {
-                println!("   {}", self.display_path(path, settings));
-            }
-        }
-
-        let mut used: Vec<_> = expected_unused.difference(&paths).collect();
-        if !used.is_empty() {
-            println!("\nUsed Ada files but in unused.txt");
-            used.sort();
-            for path in used {
-                println!("   {}", self.display_path(path, settings));
-            }
-        }
-
         Ok(())
     }
 
