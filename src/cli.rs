@@ -1,5 +1,6 @@
 use crate::{
-    action_unused::ActionSourceUnused, errors::Error, settings::Settings,
+    action_duplicates::ActionDuplicates, action_unused::ActionSourceUnused,
+    errors::Error, settings::Settings,
 };
 use clap::{arg, ArgAction, ArgMatches, Command};
 use std::path::{Path, PathBuf};
@@ -8,6 +9,7 @@ pub enum Action {
     Stats,
     SourceUnused(ActionSourceUnused),
     Dependencies { direct_only: bool, path: PathBuf },
+    DuplicateBase(ActionDuplicates),
     GprShow { gprpath: PathBuf, print_vars: bool },
 }
 
@@ -96,6 +98,10 @@ pub fn parse_cli() -> Result<(Settings, Action), Error> {
                             arg!(<PATH> "Path to the source file")
                                 .value_parser(clap::value_parser!(PathBuf)),
                         ]),
+                )
+                .subcommand(
+                    Command::new("duplicates")
+                        .about("Report duplicate basenames for files"),
                 ),
         )
         .subcommand(
@@ -152,6 +158,9 @@ pub fn parse_cli() -> Result<(Settings, Action), Error> {
                     path: get_path(importsub, "PATH")?,
                 },
             )),
+            Some(("duplicates", _)) => {
+                Ok((settings, Action::DuplicateBase(ActionDuplicates {})))
+            }
             _ => unreachable!(),
         },
         Some(("unused", importsub)) => Ok((

@@ -578,8 +578,10 @@ impl GprFile {
 
                         // Check that this variable wasn't already declared
                         // with a different set of values.
-                        scenarios.try_add_variable(
-                            ext.0, valid, ext.1)?.value().clone()
+                        scenarios
+                            .try_add_variable(ext.0, valid, ext.1)?
+                            .value()
+                            .clone()
                     }
                     _ => {
                         // Else we have a standard variable (either untyped

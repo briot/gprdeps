@@ -2,7 +2,12 @@ use crate::{
     allscenarios::AllScenarios, errors::Error, qnames::QName,
     scenarios::Scenario,
 };
-use petgraph::{algo::toposort, graph::Graph, visit::Bfs, Directed};
+use petgraph::{
+    algo::toposort,
+    graph::Graph,
+    visit::{Bfs, EdgeRef},
+    Directed, Direction,
+};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -173,6 +178,49 @@ impl DepGraph {
             }
         }
         result
+    }
+
+    // Iterate over source nodes
+    //    pub fn iter_source_nodes(
+    //        &self,
+    //    ) -> impl Iterator<Item = (NodeIndex, &PathBuf)> + '_ {
+    //        self.0
+    //            .node_indices()
+    //            .filter_map(|n| match self.0.node_weight(n) {
+    //                Some(Node::Source(path)) => Some((n, path)),
+    //                _ => None,
+    //            })
+    //    }
+
+    /// Iterate over source nodes of a project
+    pub fn iter_source_nodes_of_project(
+        &self,
+        project: NodeIndex,
+    ) -> impl Iterator<Item = &PathBuf> + '_ {
+        self.0
+            .edges_directed(project, Direction::Outgoing)
+            .filter_map(|e| match e.weight() {
+                Edge::ProjectSource(_) => {
+                    if let Node::Source(path) = &self.0[e.target()] {
+                        Some(path)
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            })
+    }
+
+    /// Iterate over project nodes
+    pub fn iter_project_nodes(
+        &self,
+    ) -> impl Iterator<Item = (NodeIndex, &PathBuf)> + '_ {
+        self.0
+            .node_indices()
+            .filter_map(|n| match self.0.node_weight(n) {
+                Some(Node::Project(path)) => Some((n, path)),
+                _ => None,
+            })
     }
 }
 
