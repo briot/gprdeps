@@ -13,7 +13,6 @@ use crate::{
 use petgraph::{visit::EdgeRef, Direction};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
-use std::fmt::Write;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use tracing::debug;
@@ -283,28 +282,6 @@ impl Environment {
                                 }
                             },
                         );
-
-                        // Duplicate the source-level dependencies as
-                        // unit-level dependencies. This makes traversing
-                        // the graph much easier.
-                        // ??? Though likely incorrect: if we have unit A
-                        // in two different projects, and file F depends
-                        // on A, we can resolve the dependency, but then
-                        // the graph shows a UnitImports to A without
-                        // telling us which of the two A.
-                        for depunit in &sm.deps {
-                            let dep_node = Environment::add_unit(
-                                &mut self.units,
-                                &mut self.graph,
-                                depunit,
-                            );
-
-                            self.graph.add_edge(
-                                u,
-                                dep_node,
-                                Edge::UnitImports(*scenario),
-                            );
-                        }
                     }
                 }
             }
@@ -423,78 +400,6 @@ impl Environment {
         println!("   Units:        + {:-6}", self.units.len());
         println!("   Source files: + {:-6}", self.files.len());
         println!("Graph edges:  {:-7}", self.graph.edge_count());
-    }
-
-    /// Report the list of units directly imported by the given file
-    pub fn show_direct_dependencies(&self, path: &Path) -> Result<(), Error> {
-        let info = self
-            .files
-            .get(&std::path::PathBuf::from(path))
-            .ok_or(Error::NotFound("File not found in graph".into()))?
-            .clone();
-        let file = info.borrow();
-        let mut direct_deps = self
-            .graph
-            .0
-            .edges(file.file_node)
-            .filter(|e| matches!(e.weight(), Edge::SourceImports))
-            .filter_map(|e| self.graph.get_unit(e.target()).ok())
-            .map(|e| format!("   {}", e))
-            .collect::<Vec<_>>();
-        direct_deps.sort();
-        println!("{}", direct_deps.join("\n"));
-        Ok(())
-    }
-
-    /// Report all dependencies of the given source file
-    pub fn show_indirect_dependencies(
-        &mut self,
-        path: &Path,
-    ) -> Result<(), Error> {
-        let info = self
-            .files
-            .get(&std::path::PathBuf::from(path))
-            .ok_or(Error::NotFound("File not found in graph".into()))?
-            .clone();
-        let file = info.borrow();
-        let unit_node = match file.unit_node {
-            None => {
-                return Err(Error::NotFound("No unit for this file".into()))
-            }
-            Some(u) => u,
-        };
-        let filtered =
-            petgraph::visit::EdgeFiltered::from_fn(&self.graph.0, |e| {
-                matches!(e.weight(), Edge::UnitImports(_))
-            });
-        let mut dfs = petgraph::visit::Dfs::new(&filtered, unit_node);
-        let mut deps = Vec::new();
-        while let Some(node) = dfs.next(&filtered) {
-            if node != file.file_node {
-                let mut d: String =
-                    format!("   {}", self.graph.get_unit(node)?);
-
-                for (nodeidx, scenars) in
-                    self.graph.get_specs(&mut self.scenarios, node)
-                {
-                    d.push('\n');
-                    write!(
-                        d,
-                        "      {} ",
-                        self.graph.get_source(nodeidx)?.display()
-                    )?;
-                    for s in scenars {
-                        d.push(' ');
-                        d.push_str(&self.scenarios.describe(s));
-                    }
-                }
-
-                deps.push(d);
-            }
-        }
-        deps.sort();
-        println!("{}", deps.join("\n"));
-        Ok(())
     }
 
     /// Retrieve the node for a project node

@@ -1,4 +1,5 @@
 mod action_duplicates;
+mod action_imported;
 mod action_unused;
 mod ada_lexer;
 mod ada_scanner;
@@ -48,12 +49,8 @@ fn main() -> Result<(), Error> {
         Action::Stats => {
             env.print_stats();
         }
-        Action::Dependencies { direct_only, path } => {
-            if direct_only {
-                env.show_direct_dependencies(&path)?;
-            } else {
-                env.show_indirect_dependencies(&path)?;
-            }
+        Action::Dependencies(act) => {
+           act.perform(&env, &settings)?;
         }
         Action::DuplicateBase(act) => {
             act.perform(&env, &settings)?;

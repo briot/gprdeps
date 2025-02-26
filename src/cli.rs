@@ -1,6 +1,6 @@
 use crate::{
-    action_duplicates::ActionDuplicates, action_unused::ActionSourceUnused,
-    errors::Error, settings::Settings,
+    action_duplicates::ActionDuplicates, action_imported::ActionImported,
+    action_unused::ActionSourceUnused, errors::Error, settings::Settings,
 };
 use clap::{arg, ArgAction, ArgMatches, Command};
 use std::path::{Path, PathBuf};
@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 pub enum Action {
     Stats,
     SourceUnused(ActionSourceUnused),
-    Dependencies { direct_only: bool, path: PathBuf },
+    Dependencies(ActionImported),
     DuplicateBase(ActionDuplicates),
     GprShow { gprpath: PathBuf, print_vars: bool },
 }
@@ -90,7 +90,7 @@ pub fn parse_cli() -> Result<(Settings, Action), Error> {
                 .disable_help_subcommand(true)
                 .subcommand_required(true)
                 .subcommand(
-                    Command::new("imports")
+                    Command::new("imported_by")
                         .about("Show dependencies for a source file")
                         .args([
                             arg!(-d --direct "Show direct dependencies only")
@@ -151,12 +151,12 @@ pub fn parse_cli() -> Result<(Settings, Action), Error> {
     match matches.subcommand() {
         Some(("stats", _)) => Ok((settings, Action::Stats)),
         Some(("source", sub)) => match sub.subcommand() {
-            Some(("imports", importsub)) => Ok((
+            Some(("imported_by", importsub)) => Ok((
                 settings,
-                Action::Dependencies {
-                    direct_only: importsub.get_flag("direct"),
+                Action::Dependencies(ActionImported {
                     path: get_path(importsub, "PATH")?,
-                },
+                    recurse: !importsub.get_flag("direct"),
+                }),
             )),
             Some(("duplicates", _)) => {
                 Ok((settings, Action::DuplicateBase(ActionDuplicates {})))

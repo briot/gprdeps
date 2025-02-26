@@ -1,5 +1,5 @@
 use crate::{
-    allscenarios::AllScenarios, errors::Error, qnames::QName,
+    errors::Error, qnames::QName,
     scenarios::Scenario,
 };
 use petgraph::{
@@ -8,7 +8,6 @@ use petgraph::{
     visit::{Bfs, EdgeRef},
     Directed, Direction,
 };
-use std::collections::HashMap;
 use std::path::PathBuf;
 
 pub type NodeIndex = petgraph::graph::NodeIndex<u32>;
@@ -17,6 +16,8 @@ pub type NodeIndex = petgraph::graph::NodeIndex<u32>;
 #[derive(Debug)]
 pub enum Node {
     Project(PathBuf),
+
+    #[allow(dead_code)]
     Unit(QName),
     Source(PathBuf),
 }
@@ -36,6 +37,7 @@ pub enum Node {
 ///    same unit.  A Spec however doesn't (so that modifying the body doesn't
 ///    require recompiling the spec for instance).
 #[derive(Debug)]
+#[allow(dead_code)]
 pub enum Edge {
     GPRExtends,              // for project files
     GPRImports,              // between project files
@@ -43,8 +45,7 @@ pub enum Edge {
     UnitSpec(Scenario),      // from unit to source files
     UnitImpl(Scenario),      // from unit to source files
     UnitSeparate(Scenario),  // from unit to source files
-    SourceImports, // from source file to unit (??? should depend on scenario)
-    UnitImports(Scenario), // from unit to unit
+    SourceImports,           // from source file to unit
 }
 
 /// A unified dependency graph, for both projects and source files
@@ -55,92 +56,6 @@ impl DepGraph {
             Node::Project(g) => Ok(g),
             u => Err(Error::InvalidGraphNode(format!("{:?}", u))),
         }
-    }
-
-    pub fn get_unit(&self, idx: NodeIndex) -> Result<QName, Error> {
-        match &self.0[idx] {
-            Node::Unit(qname) => Ok(qname.clone()),
-            u => Err(Error::InvalidGraphNode(format!("{:?}", u))),
-        }
-    }
-
-    pub fn get_source(&self, idx: NodeIndex) -> Result<&PathBuf, Error> {
-        match &self.0[idx] {
-            Node::Source(path) => Ok(path),
-            u => Err(Error::InvalidGraphNode(format!("{:?}", u))),
-        }
-    }
-
-    /// Given a unit, returns the list of specification files for it
-    pub fn get_specs(
-        &self,
-        _all_scenarios: &mut AllScenarios,
-        idx: NodeIndex,
-    ) -> HashMap<NodeIndex, Vec<Scenario>> {
-        let specs = HashMap::new();
-
-        if let Node::Unit(_) = &self.0[idx] {
-            for e in self.0.edges(idx) {
-                match e.weight() {
-                    Edge::ProjectSource(_scenar) => {}
-                    Edge::UnitImports(_scenar) => {}
-                    Edge::UnitSpec(_scenar)
-                    | Edge::UnitImpl(_scenar)
-                    | Edge::UnitSeparate(_scenar) => {
-                        // // If we already have the same node in the vector, we
-                        // // merge the scenarios
-                        // let target = e.target();
-                        // match specs.get_mut(&target) {
-                        //     None => {
-                        //         specs.insert(target, vec![*scenar]);
-                        //     }
-                        //     Some(scenarios) => {
-                        //         let mut merged = false;
-                        //         for s in scenarios.iter_mut() {
-                        //             if let Some(s2) =
-                        //                 all_scenarios.union(*s, *scenar)
-                        //             {
-                        //                 *s = s2;
-                        //                 merged = true
-                        //             }
-                        //         }
-                        //         if !merged {
-                        //             scenarios.push(*scenar);
-                        //         } else {
-                        //             // If we have only two scenarios left, and we
-                        //             // did not just add the second one, we should
-                        //             // try and merge them.  Otherwise, we might
-                        //             // have the following case:
-                        //             //   insert checks=off,tasking=off
-                        //             //   insert checks=on,tasking=on
-                        //             //   insert checks=on,tasking=off
-                        //             //      => tasking=off + checks=on,tasking=on
-                        //             //   insert checks=off,tasking=on
-                        //             //      =>  tasking=off + tasking=on
-                        //             // and the last two scenarios could actually
-                        //             // be merged now.
-                        //
-                        //             // ??? This will not be sufficient, and union()
-                        //             // should have a better algorithm instead.
-                        //
-                        //             if scenarios.len() == 2 {
-                        //                 if let Some(s2) = all_scenarios
-                        //                     .union(scenarios[0], scenarios[1])
-                        //                 {
-                        //                     scenarios.clear();
-                        //                     scenarios.push(s2);
-                        //                 }
-                        //             }
-                        //         }
-                        //     }
-                        // }
-                    }
-
-                    _ => {}
-                }
-            }
-        }
-        specs
     }
 
     pub fn node_count(&self) -> usize {
