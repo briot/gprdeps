@@ -100,6 +100,16 @@ pub fn parse_cli() -> Result<(Settings, Action), Error> {
                         ]),
                 )
                 .subcommand(
+                    Command::new("import")
+                        .about("Show all files importedby PATH")
+                        .args([
+                            arg!(-d --direct "Show direct dependencies only")
+                                .action(ArgAction::SetTrue),
+                            arg!(<PATH> "Path to the source file")
+                                .value_parser(clap::value_parser!(PathBuf)),
+                        ]),
+                )
+                .subcommand(
                     Command::new("duplicates")
                         .about("Report duplicate basenames for files"),
                 ),
@@ -156,6 +166,15 @@ pub fn parse_cli() -> Result<(Settings, Action), Error> {
                 Action::Dependencies(ActionImported {
                     path: get_path(importsub, "PATH")?,
                     recurse: !importsub.get_flag("direct"),
+                    kind: crate::action_imported::Kind::ImportedBy,
+                }),
+            )),
+            Some(("import", importsub)) => Ok((
+                settings,
+                Action::Dependencies(ActionImported {
+                    path: get_path(importsub, "PATH")?,
+                    recurse: !importsub.get_flag("direct"),
+                    kind: crate::action_imported::Kind::Import,
                 }),
             )),
             Some(("duplicates", _)) => {
