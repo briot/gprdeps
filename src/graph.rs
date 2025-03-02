@@ -1,7 +1,4 @@
-use crate::{
-    errors::Error, qnames::QName,
-    scenarios::Scenario,
-};
+use crate::{errors::Error, qnames::QName, scenarios::Scenario};
 use petgraph::{
     algo::toposort,
     graph::Graph,
@@ -48,8 +45,10 @@ pub enum Edge {
     SourceImports,           // from source file to unit
 }
 
+type G = Graph<Node, Edge, Directed, u32>;
+
 /// A unified dependency graph, for both projects and source files
-pub struct DepGraph(pub Graph<Node, Edge, Directed, u32>);
+pub struct DepGraph(pub G);
 impl DepGraph {
     pub fn get_project(&self, idx: NodeIndex) -> Result<&PathBuf, Error> {
         match &self.0[idx] {
@@ -137,6 +136,22 @@ impl DepGraph {
                 _ => None,
             })
     }
+
+    // Returns a subgraph, which only includes edges for unit and file
+    // dependencies.
+    // pub fn file_dep_subgraph<F>(
+    //     &self,
+    // ) -> petgraph::visit::EdgeFiltered<&G, F> {
+    //     petgraph::visit::EdgeFiltered::from_fn(&self.0, |e| {
+    //         matches!(
+    //             e.weight(),
+    //             Edge::SourceImports
+    //                 | Edge::UnitSpec(_)
+    //                 | Edge::UnitImpl(_)
+    //                 | Edge::UnitSeparate(_)
+    //         )
+    //     })
+    // }
 }
 
 impl Default for DepGraph {

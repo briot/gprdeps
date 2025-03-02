@@ -178,16 +178,19 @@ impl ExprValue {
 
 #[cfg(test)]
 mod tests {
-    use crate::allscenarios::AllScenarios;
-    use crate::errors::Error;
-    use crate::gpr::GprFile;
-    use crate::packagename::PackageName;
-    use crate::qualifiedname::QualifiedName;
-    use crate::rawexpr::tests::{build_expr_list, build_expr_str};
-    use crate::rawexpr::RawExpr;
-    use crate::scenarios::Scenario;
-    use crate::simplename::SimpleName;
-    use crate::values::ExprValue;
+    use crate::{
+        allscenarios::AllScenarios,
+        errors::Error,
+        gpr::GprFile,
+        graph::NodeIndex,
+        packagename::PackageName,
+        qualifiedname::QualifiedName,
+        rawexpr::tests::{build_expr_list, build_expr_str},
+        rawexpr::RawExpr,
+        scenarios::Scenario,
+        simplename::SimpleName,
+        values::ExprValue,
+    };
     use ustr::Ustr;
 
     macro_rules! assert_err {
@@ -201,8 +204,13 @@ mod tests {
 
     #[test]
     fn test_eval() -> Result<(), Error> {
-        let mut gpr =
-            GprFile::new(std::path::Path::new("/"), false, false, false);
+        let mut gpr = GprFile::new(
+            std::path::Path::new("/"),
+            false,
+            false,
+            false,
+            NodeIndex::new(0),
+        );
         let mut scenars = AllScenarios::default();
         let pkg = PackageName::None;
 

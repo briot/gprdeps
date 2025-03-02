@@ -1,16 +1,18 @@
 use crate::{
     action_duplicates::ActionDuplicates, action_imported::ActionImported,
-    action_unused::ActionSourceUnused, errors::Error, settings::Settings,
+    action_path::ActionPath, action_unused::ActionSourceUnused, errors::Error,
+    settings::Settings,
 };
 use clap::{arg, ArgAction, ArgMatches, Command};
 use std::path::{Path, PathBuf};
 
 pub enum Action {
-    Stats,
-    SourceUnused(ActionSourceUnused),
     Dependencies(ActionImported),
     DuplicateBase(ActionDuplicates),
     GprShow { gprpath: PathBuf, print_vars: bool },
+    ImportPath(ActionPath),
+    SourceUnused(ActionSourceUnused),
+    Stats,
 }
 
 fn to_abs<P>(relpath: P) -> Result<PathBuf, Error>
@@ -115,6 +117,18 @@ pub fn parse_cli() -> Result<(Settings, Action), Error> {
                 ),
         )
         .subcommand(
+            Command::new("path")
+                .about("Show how FILE1 imports FILE2, source or gpr")
+                .args([
+                    arg!(file1: "Importing file")
+                        .required(true)
+                        .value_parser(clap::value_parser!(PathBuf)),
+                    arg!(file2: "Imported file")
+                        .required(true)
+                        .value_parser(clap::value_parser!(PathBuf)),
+                ]),
+        )
+        .subcommand(
             Command::new("unused")
                 .about("Show unused source files")
                 .args([
@@ -157,49 +171,48 @@ pub fn parse_cli() -> Result<(Settings, Action), Error> {
         trim: matches.get_flag("trim"),
         relto: get_path(&matches, "relto")?,
     };
-
-    match matches.subcommand() {
-        Some(("stats", _)) => Ok((settings, Action::Stats)),
+    let act = match matches.subcommand() {
+        Some(("stats", _)) => Action::Stats,
         Some(("source", sub)) => match sub.subcommand() {
-            Some(("imported_by", importsub)) => Ok((
-                settings,
+            Some(("imported_by", importsub)) => {
                 Action::Dependencies(ActionImported {
                     path: get_path(importsub, "PATH")?,
                     recurse: !importsub.get_flag("direct"),
                     kind: crate::action_imported::Kind::ImportedBy,
-                }),
-            )),
-            Some(("import", importsub)) => Ok((
-                settings,
+                })
+            }
+            Some(("import", importsub)) => {
                 Action::Dependencies(ActionImported {
                     path: get_path(importsub, "PATH")?,
                     recurse: !importsub.get_flag("direct"),
                     kind: crate::action_imported::Kind::Import,
-                }),
-            )),
+                })
+            }
             Some(("duplicates", _)) => {
-                Ok((settings, Action::DuplicateBase(ActionDuplicates {})))
+                Action::DuplicateBase(ActionDuplicates {})
             }
             _ => unreachable!(),
         },
-        Some(("unused", importsub)) => Ok((
-            settings,
+        Some(("path", importsub)) => Action::ImportPath(ActionPath {
+            source: get_path(importsub, "file1")?,
+            target: get_path(importsub, "file2")?,
+            show_units: false,
+        }),
+        Some(("unused", importsub)) => {
             Action::SourceUnused(ActionSourceUnused {
                 unused: get_path_and_root(importsub, "unused"),
                 ignore: get_path_list(importsub, "ignore"),
                 recurse: !importsub.get_flag("no_recurse"),
-            }),
-        )),
+            })
+        }
         Some(("gpr", sub)) => match sub.subcommand() {
-            Some(("show", showsub)) => Ok((
-                settings,
-                Action::GprShow {
-                    gprpath: get_path(showsub, "PROJECT")?,
-                    print_vars: showsub.get_flag("print_vars"),
-                },
-            )),
+            Some(("show", showsub)) => Action::GprShow {
+                gprpath: get_path(showsub, "PROJECT")?,
+                print_vars: showsub.get_flag("print_vars"),
+            },
             _ => unreachable!(),
         },
         _ => unreachable!(),
-    }
+    };
+    Ok((settings, act))
 }

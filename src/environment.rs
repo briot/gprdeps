@@ -30,7 +30,7 @@ type SourceFilesMap = HashMap<PathBuf, Rc<RefCell<SourceFile>>>;
 pub struct Environment {
     pub scenarios: AllScenarios,
     pub graph: DepGraph,
-    gprs: GprMap,
+    pub gprs: GprMap,
     pub files: SourceFilesMap,
     units: UnitsMap,
 
@@ -149,6 +149,7 @@ impl Environment {
                 raw.is_abstract,
                 raw.is_aggregate,
                 raw.is_library,
+                *nodeidx,
             );
             gpr.process(
                 raw,

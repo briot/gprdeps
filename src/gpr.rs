@@ -3,6 +3,7 @@ use crate::{
     directory::Directory,
     environment::{Environment, GprMap},
     errors::Error,
+    graph::NodeIndex,
     naming::{FileInGPR, Naming},
     packagename::{PackageName, PACKAGE_NAME_VARIANTS},
     perscenario::PerScenario,
@@ -59,6 +60,7 @@ fn keep_attribute(name: &SimpleName) -> bool {
 /// needs an Environment object to resolve paths.
 #[derive(Default)]
 pub struct GprFile {
+    pub node: NodeIndex,
     pub name: Ustr,
     is_library: bool,
     is_aggregate: bool,
@@ -86,12 +88,14 @@ impl GprFile {
         is_abstract: bool,
         is_aggregate: bool,
         is_library: bool,
+        node: NodeIndex,
     ) -> Self {
         let mut s = Self {
             path: path.to_path_buf(),
             is_abstract,
             is_aggregate,
             is_library,
+            node,
             ..Default::default()
         };
 
@@ -783,15 +787,18 @@ impl std::fmt::Display for GprFile {
 
 #[cfg(test)]
 pub mod tests {
-    use crate::ada_lexer::{AdaLexer, AdaLexerOptions};
-    use crate::allscenarios::AllScenarios;
-    use crate::errors::Error;
-    use crate::gpr::GprFile;
-    use crate::gpr_scanner::GprScanner;
-    use crate::packagename::PackageName;
-    use crate::rawgpr::RawGPR;
-    use crate::settings::Settings;
-    use crate::simplename::SimpleName;
+    use crate::{
+        ada_lexer::{AdaLexer, AdaLexerOptions},
+        allscenarios::AllScenarios,
+        errors::Error,
+        gpr::GprFile,
+        gpr_scanner::GprScanner,
+        graph::NodeIndex,
+        packagename::PackageName,
+        rawgpr::RawGPR,
+        settings::Settings,
+        simplename::SimpleName,
+    };
     use std::path::Path;
     use ustr::Ustr;
 
@@ -817,6 +824,7 @@ pub mod tests {
             raw.is_abstract,
             raw.is_aggregate,
             raw.is_library,
+            NodeIndex::new(0),
         );
         gpr.process(raw, None, &[], scenarios)?;
         Ok(gpr)

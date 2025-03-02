@@ -105,6 +105,32 @@ a.adb imports b.ads, but a.adb has been found to be unused) will be reported
 by default.  By using `--no_recurse` you can chose to not display `b.ads` in
 this example.
 
+### Source dependencies
+
+gprdeps provides a number of commands to analyze source dependencies.
+
+First, you can find which files are imported, possibly indirectly, by a given
+source file.
+```
+   gprdeps --root everything.gpr source imported_by /path/to/source.adb
+```
+
+Alternatively, you can find which other files depend on a given one, using
+```
+   gprdeps --root everything.gpr source import /path/to/source.adb
+```
+
+And finally, can see how a file depends on another one
+```
+   > gprdeps --root everything.gpr path /path/to/source.adb /path/to/target.adb
+   /path/to/source.adb
+   /path/to/file1.ads
+   /path/to/file2.ads
+   /path/to/target.adb
+```
+which indicates that "source.adb" has a "with File1", which itself has a "with
+File2", which in turn has a "with Target".
+
 ### View expanded projects
 
 The command

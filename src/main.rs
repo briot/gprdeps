@@ -1,5 +1,6 @@
 mod action_duplicates;
 mod action_imported;
+mod action_path;
 mod action_unused;
 mod ada_lexer;
 mod ada_scanner;
@@ -50,12 +51,15 @@ fn main() -> Result<(), Error> {
             env.print_stats();
         }
         Action::Dependencies(act) => {
-           act.perform(&env, &settings)?;
+            act.perform(&env, &settings)?;
         }
         Action::DuplicateBase(act) => {
             act.perform(&env, &settings)?;
         }
         Action::SourceUnused(act) => {
+            act.perform(&env, &settings)?;
+        }
+        Action::ImportPath(act) => {
             act.perform(&env, &settings)?;
         }
         Action::GprShow {
