@@ -39,13 +39,7 @@ impl ActionImported {
         // A subgraph only taking some of the edges into account
         let filtered =
             petgraph::visit::EdgeFiltered::from_fn(&env.graph.0, |e| {
-                matches!(
-                    e.weight(),
-                    Edge::SourceImports
-                        | Edge::UnitSpec(_)
-                        | Edge::UnitImpl(_)
-                        | Edge::UnitSeparate(_)
-                )
+                matches!(e.weight(), Edge::SourceImports | Edge::UnitSource(_))
             });
 
         let deps: HashSet<PathBuf> = match self.kind {
@@ -69,9 +63,7 @@ impl ActionImported {
                                 .0
                                 .edges_directed(unit, Direction::Outgoing)
                                 .filter_map(move |e| match e.weight() {
-                                    Edge::UnitSpec(_)
-                                    | Edge::UnitImpl(_)
-                                    | Edge::UnitSeparate(_) => {
+                                    Edge::UnitSource(_) => {
                                         match &env.graph.0[e.target()] {
                                             Node::Source(path) => {
                                                 Some(path.clone())
@@ -99,14 +91,7 @@ impl ActionImported {
                     env.graph
                         .0
                         .edges_directed(file.file_node, Direction::Incoming)
-                        .filter(|e| {
-                            matches!(
-                                e.weight(),
-                                Edge::UnitSpec(_)
-                                    | Edge::UnitImpl(_)
-                                    | Edge::UnitSeparate(_)
-                            )
-                        })
+                        .filter(|e| matches!(e.weight(), Edge::UnitSource(_)))
                         .map(|e| e.source())
                         .flat_map(|unit| {
                             env.graph

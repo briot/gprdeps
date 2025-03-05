@@ -274,13 +274,17 @@ impl Environment {
                             u,
                             sm.file_node,
                             match sm.kind {
-                                SourceKind::Spec => Edge::UnitSpec(*scenario),
-                                SourceKind::Implementation => {
-                                    Edge::UnitImpl(*scenario)
-                                }
-                                SourceKind::Separate => {
-                                    Edge::UnitSeparate(*scenario)
-                                }
+                                SourceKind::Spec => Edge::UnitSource((
+                                    SourceKind::Spec,
+                                    *scenario,
+                                )),
+                                SourceKind::Implementation => Edge::UnitSource(
+                                    (SourceKind::Implementation, *scenario),
+                                ),
+                                SourceKind::Separate => Edge::UnitSource((
+                                    SourceKind::Separate,
+                                    *scenario,
+                                )),
                             },
                         );
                     }
@@ -301,14 +305,7 @@ impl Environment {
             .flat_map(|unit| {
                 self.graph.0.edges_directed(unit, Direction::Outgoing)
             })
-            .filter(|e| {
-                matches!(
-                    e.weight(),
-                    Edge::UnitSpec(_)
-                        | Edge::UnitImpl(_)
-                        | Edge::UnitSeparate(_),
-                )
-            })
+            .filter(|e| matches!(e.weight(), Edge::UnitSource(_)))
             .filter_map(|e| match &self.graph.0[e.target()] {
                 Node::Source(path) => Some(path.clone()),
                 _ => None,
@@ -351,9 +348,7 @@ impl Environment {
                     .0
                     .edges_directed(sourcefile, Direction::Incoming)
                     .filter_map(move |e| match e.weight() {
-                        Edge::UnitSpec(_)
-                        | Edge::UnitImpl(_)
-                        | Edge::UnitSeparate(_) => Some((e.source(), unit)),
+                        Edge::UnitSource(_) => Some((e.source(), unit)),
                         _ => None,
                     })
             })

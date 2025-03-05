@@ -1,4 +1,6 @@
-use crate::{errors::Error, qnames::QName, scenarios::Scenario};
+use crate::{
+    errors::Error, qnames::QName, scenarios::Scenario, sourcefile::SourceKind,
+};
 use petgraph::{
     algo::toposort,
     graph::Graph,
@@ -36,13 +38,11 @@ pub enum Node {
 #[derive(Debug)]
 #[allow(dead_code)]
 pub enum Edge {
-    GPRExtends,              // for project files
-    GPRImports,              // between project files
-    ProjectSource(Scenario), // from project to source file
-    UnitSpec(Scenario),      // from unit to source files
-    UnitImpl(Scenario),      // from unit to source files
-    UnitSeparate(Scenario),  // from unit to source files
-    SourceImports,           // from source file to unit
+    GPRExtends,                         // between for project files
+    GPRImports,                         // between project files
+    ProjectSource(Scenario),            // from project to owned source file
+    UnitSource((SourceKind, Scenario)), // from unit to owned source files
+    SourceImports,                      // from source file to imported unit
 }
 
 type G = Graph<Node, Edge, Directed, u32>;
