@@ -10,10 +10,11 @@ use std::io::{self, BufRead};
 use std::path::PathBuf;
 use std::rc::Rc;
 
-pub struct ActionSourceUnused {
-    pub unused: Vec<(PathBuf, PathBuf)>,
-    pub ignore: Vec<PathBuf>,
-    pub recurse: bool,
+pub struct ActionCheck {
+    unused: Vec<(PathBuf, PathBuf)>,
+    ignore: Vec<PathBuf>,
+    recurse: bool,
+    quiet: bool,
 }
 
 // A unit graph is a subset of the full dependency graph, which only includes
@@ -35,11 +36,25 @@ type UnitGraph = Graph<NodeIndex, u8, Directed, u32>;
 struct CondensedNodeIndex(NodeIndex); // node in condensed graph
 type CondensedGraph = Graph<Vec<NodeIndex>, u8, Directed, u32>;
 
-impl ActionSourceUnused {
+impl ActionCheck {
+    pub fn new(
+        unused: Vec<(PathBuf, PathBuf)>,
+        ignore: Vec<PathBuf>,
+        recurse: bool,
+        quiet: bool,
+    ) -> Self {
+        ActionCheck {
+            unused,
+            ignore,
+            recurse,
+            quiet,
+        }
+    }
+
     /// Report all source files that are never imported.
     /// Ignore those units that are "main" units for a project.
     /// Ignore files in specific directories (typically, third-party libraries)
-    pub fn perform(
+    pub fn unused(
         &self,
         env: &Environment,
         settings: &Settings,
@@ -80,16 +95,19 @@ impl ActionSourceUnused {
         let paths = env.file_paths_from_units(unused_nodes.iter().cloned());
 
         settings.print_files(
-            "\nFiles in unused.txt but not on disk",
+            "Files in unused.txt but not on disk",
             expected.iter().filter(|p| !p.is_file()).collect(),
+            self.quiet,
         );
         settings.print_files(
-            "\nUnused Ada files (not in unused.txt)",
+            "Unused Ada files (not in unused.txt)",
             paths.difference(&expected).collect(),
+            self.quiet,
         );
         settings.print_files(
-            "\nUsed Ada files but in unused.txt",
+            "Used Ada files but in unused.txt",
             expected.difference(&paths).collect(),
+            self.quiet,
         );
 
         Ok(())
@@ -204,5 +222,57 @@ impl ActionSourceUnused {
                 graph.remove_node(n.0);
             }
         }
+    }
+
+    /// Look for duplicate filenames.
+    /// In general, those create ambiguities, so are better avoided.
+    /// However, it is sometimes necessary, for instance when the body of an
+    /// Ada unit is implemented in different files depending on the scenario.
+    /// This function tries to take that into account to avoid false positives,
+    /// by only repeating files that appear together in the same scenario.
+    pub fn duplicates(
+        &self,
+        env: &Environment,
+        settings: &Settings,
+    ) -> Result<(), Error> {
+        let mut seen = HashMap::new();
+        let duplicates: Vec<_> = env
+            .graph
+            .iter_project_nodes()
+            .flat_map(|(gprnode, gprpath)| {
+                env.graph
+                    .iter_source_nodes_of_project(gprnode)
+                    .map(move |path| (gprpath, path))
+            })
+            .filter(|(_, filepath)| env.files[*filepath].borrow().lang == "ada")
+            .filter_map(|(gprpath, filepath)| {
+                if let Some(simple) = filepath.file_name() {
+                    if let Some(base) = simple.to_str() {
+                        // Do not report when in same project (we could detect
+                        // whether scenarios overlap, but for now this is
+                        // detected by the builder)
+                        match seen.get(base) {
+                            None => {
+                                seen.insert(base.to_string(), gprpath);
+                            }
+                            Some(gpr) => {
+                                if *gpr != gprpath {
+                                    return Some(format!(
+                                        "duplicate {} in {} and {}",
+                                        base,
+                                        settings.display_path(gpr),
+                                        settings.display_path(gprpath),
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                }
+                None
+            })
+            .collect();
+
+        settings.print_lines("Duplicate Ada basenames", duplicates, self.quiet);
+        Ok(())
     }
 }

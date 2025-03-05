@@ -1,17 +1,15 @@
 use crate::{
-    action_duplicates::ActionDuplicates, action_imported::ActionImported,
-    action_path::ActionPath, action_unused::ActionSourceUnused, errors::Error,
-    settings::Settings,
+    action_check::ActionCheck, action_imported::ActionImported,
+    action_path::ActionPath, errors::Error, settings::Settings,
 };
 use clap::{arg, ArgAction, ArgMatches, Command};
 use std::path::{Path, PathBuf};
 
 pub enum Action {
+    Check(ActionCheck),
     Dependencies(ActionImported),
-    DuplicateBase(ActionDuplicates),
     GprShow { gprpath: PathBuf, print_vars: bool },
     ImportPath(ActionPath),
-    SourceUnused(ActionSourceUnused),
     Stats,
 }
 
@@ -110,10 +108,6 @@ pub fn parse_cli() -> Result<(Settings, Action), Error> {
                             arg!(<PATH> "Path to the source file")
                                 .value_parser(clap::value_parser!(PathBuf)),
                         ]),
-                )
-                .subcommand(
-                    Command::new("duplicates")
-                        .about("Report duplicate basenames for files"),
                 ),
         )
         .subcommand(
@@ -129,8 +123,8 @@ pub fn parse_cli() -> Result<(Settings, Action), Error> {
                 ]),
         )
         .subcommand(
-            Command::new("unused")
-                .about("Show unused source files")
+            Command::new("check")
+                .about("Show unused source files, duplicate basenames,...")
                 .args([
                     arg!(--unused [FILE_ROOT]...
                         "A filename:root that contains a list of \
@@ -142,6 +136,8 @@ pub fn parse_cli() -> Result<(Settings, Action), Error> {
                     arg!(--no_recurse
                         "Do not show files only used by unused files")
                     .action(ArgAction::SetTrue),
+                    arg!(--quiet "Hide empty sections")
+                        .action(ArgAction::SetTrue),
                 ]),
         )
         .subcommand(
@@ -188,9 +184,6 @@ pub fn parse_cli() -> Result<(Settings, Action), Error> {
                     kind: crate::action_imported::Kind::Import,
                 })
             }
-            Some(("duplicates", _)) => {
-                Action::DuplicateBase(ActionDuplicates {})
-            }
             _ => unreachable!(),
         },
         Some(("path", importsub)) => Action::ImportPath(ActionPath {
@@ -198,13 +191,12 @@ pub fn parse_cli() -> Result<(Settings, Action), Error> {
             target: get_path(importsub, "file2")?,
             show_units: false,
         }),
-        Some(("unused", importsub)) => {
-            Action::SourceUnused(ActionSourceUnused {
-                unused: get_path_and_root(importsub, "unused"),
-                ignore: get_path_list(importsub, "ignore"),
-                recurse: !importsub.get_flag("no_recurse"),
-            })
-        }
+        Some(("check", importsub)) => Action::Check(ActionCheck::new(
+            get_path_and_root(importsub, "unused"),
+            get_path_list(importsub, "ignore"),
+            !importsub.get_flag("no_recurse"),
+            importsub.get_flag("quiet"),
+        )),
         Some(("gpr", sub)) => match sub.subcommand() {
             Some(("show", showsub)) => Action::GprShow {
                 gprpath: get_path(showsub, "PROJECT")?,

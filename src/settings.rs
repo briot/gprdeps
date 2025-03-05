@@ -38,13 +38,28 @@ impl Settings {
     }
 
     /// Print a list of files
-    pub fn print_files(&self, msg: &str, mut paths: Vec<&PathBuf>) {
-        if !paths.is_empty() {
+    pub fn print_files(
+        &self,
+        msg: &str,
+        mut paths: Vec<&PathBuf>,
+        quiet: bool,
+    ) {
+        if !quiet || !paths.is_empty() {
             println!("{}", msg);
-            paths.sort();
-            for path in paths {
-                println!("   {}", self.display_path(path));
-            }
+        }
+        paths.sort();
+        for path in paths {
+            println!("   {}", self.display_path(path));
+        }
+    }
+
+    pub fn print_lines(&self, msg: &str, mut lines: Vec<String>, quiet: bool) {
+        if !quiet || !lines.is_empty() {
+            println!("{}", msg);
+        }
+        lines.sort();
+        for line in lines {
+            println!("   {}", line);
         }
     }
 }

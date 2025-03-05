@@ -1,7 +1,6 @@
-mod action_duplicates;
+mod action_check;
 mod action_imported;
 mod action_path;
-mod action_unused;
 mod ada_lexer;
 mod ada_scanner;
 mod allscenarios;
@@ -53,11 +52,9 @@ fn main() -> Result<(), Error> {
         Action::Dependencies(act) => {
             act.perform(&env, &settings)?;
         }
-        Action::DuplicateBase(act) => {
-            act.perform(&env, &settings)?;
-        }
-        Action::SourceUnused(act) => {
-            act.perform(&env, &settings)?;
+        Action::Check(act) => {
+            act.duplicates(&env, &settings)?;
+            act.unused(&env, &settings)?;
         }
         Action::ImportPath(act) => {
             act.perform(&env, &settings)?;
