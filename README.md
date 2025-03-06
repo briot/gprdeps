@@ -51,10 +51,10 @@ graph TD;
    GPR1 -->|sources| file1.adb;
    GPR1 -->|sources| file2.ads;
    GPR2 -->|sources| file3.ads;
-   unit1 -->|unitspec| file1.ads;
-   unit1 -->|unitimpl| file1.adb;
+   unit1 -->|unitsource(spec)| file1.ads;
+   unit1 -->|unitsource(impl)| file1.adb;
    unit2 -->|unitspec| file2.ads;
-   unit3 -->|unitspec| file3.ads;
+   unit3 -->|unitsource(spec)| file3.ads;
    file1.adb -->|imports| unit2;
    file1.adb -->|imports| unit3
 ```
@@ -73,7 +73,7 @@ GPR files, units or source files), the number of edges,...
 
 By using
 ```
-   gprdeps --root everything.gpr unused
+   gprdeps --root everything.gpr check
 ```
 
 you will get a list of source files that are not imported by any other
@@ -84,7 +84,7 @@ You might however wish to keep them, but avoid seeing them in future runs of
 the tool.  For this, you can pass additional switches:
 
 ```
-   gprdeps --root everything.gpr unused --unused path/to/unused.txt:/root
+   gprdeps --root everything.gpr check --unused path/to/unused.txt:/root
 ```
 
 The `--unused` switch can be used multiple times as needed.  It will parse
@@ -97,7 +97,7 @@ You can also chose to ignore whole subdirectories, typically those corresponding
 to third party libraries that you depend on.  For this, use
 
 ```
-   gprdeps --root everything.gpr unused  --ignore /directory
+   gprdeps --root everything.gpr check  --ignore /directory
 ```
 
 Finally, files that are only imported by otherwise unused files (for instance
