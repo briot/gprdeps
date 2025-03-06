@@ -1,6 +1,7 @@
 mod action_check;
 mod action_imported;
 mod action_path;
+mod action_stats;
 mod ada_lexer;
 mod ada_scanner;
 mod allscenarios;
@@ -46,8 +47,8 @@ fn main() -> Result<(), Error> {
     env.parse_all(&settings)?;
 
     match action {
-        Action::Stats => {
-            env.print_stats();
+        Action::Stats(act) => {
+            act.perform(&env, &settings)?;
         }
         Action::Dependencies(act) => {
             act.perform(&env, &settings)?;

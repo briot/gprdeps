@@ -1,5 +1,5 @@
 use crate::{allscenarios::AllScenarios, scenarios::Scenario};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use ustr::Ustr;
 
 #[cfg(test)]
@@ -36,6 +36,13 @@ impl<T> PerScenario<T> {
     /// Iterate over all possible values
     pub fn iter(&self) -> impl Iterator<Item = (&Scenario, &T)> {
         self.values.iter()
+    }
+
+    /// Find all scenarios that result in different values in the project
+    pub fn find_used_scenarios(&self, scenars: &mut HashSet<Scenario>) {
+        for s in self.values.keys() {
+            scenars.insert(*s);
+        }
     }
 
     /// Transform the value into another value with the same scenarios

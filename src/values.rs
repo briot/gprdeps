@@ -4,6 +4,7 @@ use crate::{
     qualifiedname::QualifiedName, rawexpr::RawExpr, scenarios::Scenario,
     simplename::SimpleName,
 };
+use std::collections::HashSet;
 use itertools::join;
 use ustr::Ustr;
 
@@ -152,6 +153,14 @@ impl ExprValue {
                 }
                 Ok(l_eval)
             }
+        }
+    }
+
+    /// Find all scenarios that result in different values in the project
+    pub fn find_used_scenarios(&self, scenars: &mut HashSet<Scenario>) {
+        match self {
+            ExprValue::Str(a) => a.find_used_scenarios(scenars),
+            ExprValue::StrList(a) => a.find_used_scenarios(scenars),
         }
     }
 

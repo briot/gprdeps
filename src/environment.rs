@@ -8,6 +8,7 @@ use crate::{
     qnames::QName,
     rawgpr::RawGPR,
     settings::Settings,
+    scenarios::Scenario,
     sourcefile::{SourceFile, SourceKind},
 };
 use petgraph::{visit::EdgeRef, Direction};
@@ -32,7 +33,7 @@ pub struct Environment {
     pub graph: DepGraph,
     pub gprs: GprMap,
     pub files: SourceFilesMap,
-    units: UnitsMap,
+    pub units: UnitsMap,
 
     implicit_projects: Vec<NodeIndex>,
 }
@@ -388,14 +389,11 @@ impl Environment {
         Ok(())
     }
 
-    /// Displays some stats about the graph
-    pub fn print_stats(&self) {
-        self.scenarios.print_stats();
-        println!("\nGraph nodes:  {:-7}", self.graph.node_count());
-        println!("   Projects:     = {:-6}", self.gprs.len());
-        println!("   Units:        + {:-6}", self.units.len());
-        println!("   Source files: + {:-6}", self.files.len());
-        println!("Graph edges:  {:-7}", self.graph.edge_count());
+    /// Find all scenarios that result in different values in the project
+    pub fn find_used_scenarios(&self, scenars: &mut HashSet<Scenario>) {
+        for g in self.gprs.values() {
+            g.find_used_scenarios(scenars);
+        }
     }
 
     /// Retrieve the node for a project node

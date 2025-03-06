@@ -1,5 +1,6 @@
 use crate::{
     action_check::ActionCheck, action_imported::ActionImported,
+    action_stats::ActionStats,
     action_path::ActionPath, errors::Error, settings::Settings,
 };
 use clap::{arg, ArgAction, ArgMatches, Command};
@@ -10,7 +11,7 @@ pub enum Action {
     Dependencies(ActionImported),
     GprShow { gprpath: PathBuf, print_vars: bool },
     ImportPath(ActionPath),
-    Stats,
+    Stats(ActionStats),
 }
 
 fn to_abs<P>(relpath: P) -> Result<PathBuf, Error>
@@ -168,7 +169,7 @@ pub fn parse_cli() -> Result<(Settings, Action), Error> {
         relto: get_path(&matches, "relto")?,
     };
     let act = match matches.subcommand() {
-        Some(("stats", _)) => Action::Stats,
+        Some(("stats", _)) => Action::Stats(ActionStats::new()),
         Some(("source", sub)) => match sub.subcommand() {
             Some(("imported_by", importsub)) => {
                 Action::Dependencies(ActionImported {

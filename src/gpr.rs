@@ -747,6 +747,15 @@ impl GprFile {
         })
     }
 
+    /// Find all scenarios that result in different values in the project
+    pub fn find_used_scenarios(&self, scenars: &mut HashSet<Scenario>) {
+        for pkg in 0..PACKAGE_NAME_VARIANTS {
+            for v in self.values[pkg].values() {
+                v.find_used_scenarios(scenars);
+            }
+        }
+    }
+
     /// Print details about the project
     pub fn print_details(&self, scenarios: &AllScenarios, print_vars: bool) {
         println!("file: {}", self.path.display());
