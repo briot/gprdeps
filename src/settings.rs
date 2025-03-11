@@ -37,6 +37,13 @@ impl Settings {
         path.strip_prefix(&self.relto).unwrap_or(path).display()
     }
 
+    /// Return the list of root directories (computed from --root)
+    pub fn iter_root_dirs(&self) -> impl Iterator<Item = &Path> {
+        self.root
+            .iter()
+            .map(|r| if r.is_dir() { r } else { r.parent().unwrap() })
+    }
+
     /// Print a list of files
     pub fn print_files(
         &self,
