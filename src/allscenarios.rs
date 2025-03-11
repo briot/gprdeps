@@ -179,6 +179,32 @@ impl AllScenarios {
         }
     }
 
+    /// Build a Scenario from a variable and a set of values
+    pub fn lookup_variable(
+        &self,
+        name: &str,
+        values: &[String],
+    ) -> Result<Scenario, Error> {
+        let n = Ustr::from(name);
+        match self.variables.get(&n) {
+            None => Err(Error::NotFound(format!("Unknown variable {}", name)))?,
+            Some(var) => {
+                let mut result = Scenario::default() & !var.full_mask();
+                for v in values {
+                    let m = var.mask(&Ustr::from(v));
+                    if m == Scenario::empty() {
+                        Err(Error::NotFound(format!(
+                            "Invalid value {} for variable {}",
+                            v, name
+                        )))?;
+                    }
+                    result = result | m;
+                }
+                Ok(result)
+            }
+        }
+    }
+
     /// Declares a new scenario variables and the list of all values it can
     /// accept.  If the variable is already declared, check that we are
     /// declaring the same set of values.

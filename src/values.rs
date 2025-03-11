@@ -4,8 +4,8 @@ use crate::{
     qualifiedname::QualifiedName, rawexpr::RawExpr, scenarios::Scenario,
     simplename::SimpleName,
 };
-use std::collections::HashSet;
 use itertools::join;
+use std::collections::HashSet;
 use ustr::Ustr;
 
 #[derive(Clone, Debug, PartialEq)]

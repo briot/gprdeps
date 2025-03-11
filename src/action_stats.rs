@@ -1,17 +1,11 @@
-use crate::{
-    environment::Environment,
-    errors::Error,
-    settings::Settings,
-};
+use crate::{environment::Environment, errors::Error, settings::Settings};
 use std::collections::HashSet;
 
-pub struct ActionStats {
-}
+pub struct ActionStats {}
 
 impl ActionStats {
-
     pub fn new() -> Self {
-         ActionStats {}
+        ActionStats {}
     }
 
     pub fn perform(

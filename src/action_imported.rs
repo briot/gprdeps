@@ -2,6 +2,7 @@ use crate::{
     environment::Environment,
     errors::Error,
     graph::{Edge, Node},
+    scenarios::Scenario,
     settings::Settings,
 };
 use petgraph::{
@@ -36,10 +37,24 @@ impl ActionImported {
             .clone();
         let file = info.borrow();
 
+        let for_scenario = settings.cli_scenario(&env.scenarios)?;
+        if for_scenario != Scenario::default() {
+            println!(
+                "Limit result to {}",
+                env.scenarios.describe(for_scenario)
+            );
+        }
+
         // A subgraph only taking some of the edges into account
         let filtered =
             petgraph::visit::EdgeFiltered::from_fn(&env.graph.0, |e| {
-                matches!(e.weight(), Edge::SourceImports | Edge::UnitSource(_))
+                match e.weight() {
+                    Edge::SourceImports => true,
+                    Edge::UnitSource((_, s)) => {
+                        !env.scenarios.never_matches(s & for_scenario)
+                    }
+                    _ => false,
+                }
             });
 
         let deps: HashSet<PathBuf> = match self.kind {
@@ -63,12 +78,19 @@ impl ActionImported {
                                 .0
                                 .edges_directed(unit, Direction::Outgoing)
                                 .filter_map(move |e| match e.weight() {
-                                    Edge::UnitSource(_) => {
-                                        match &env.graph.0[e.target()] {
-                                            Node::Source(path) => {
-                                                Some(path.clone())
+                                    Edge::UnitSource((_, s)) => {
+                                        if env
+                                            .scenarios
+                                            .never_matches(s & for_scenario)
+                                        {
+                                            None
+                                        } else {
+                                            match &env.graph.0[e.target()] {
+                                                Node::Source(path) => {
+                                                    Some(path.clone())
+                                                }
+                                                _ => None,
                                             }
-                                            _ => None,
                                         }
                                     }
                                     _ => None,
@@ -91,7 +113,12 @@ impl ActionImported {
                     env.graph
                         .0
                         .edges_directed(file.file_node, Direction::Incoming)
-                        .filter(|e| matches!(e.weight(), Edge::UnitSource(_)))
+                        .filter(|e| match e.weight() {
+                            Edge::UnitSource((_, s)) => {
+                                !env.scenarios.never_matches(s & for_scenario)
+                            }
+                            _ => false,
+                        })
                         .map(|e| e.source())
                         .flat_map(|unit| {
                             env.graph

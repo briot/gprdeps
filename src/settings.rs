@@ -1,3 +1,5 @@
+use crate::{allscenarios::AllScenarios, errors::Error, scenarios::Scenario};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Default)]
@@ -28,9 +30,26 @@ pub struct Settings {
     // to display relative file names, in general, as those are shorter and
     // more portable across mchines.
     pub relto: PathBuf,
+
+    // A subset of scenarios used in queries.  By default we query for all
+    // scenarios.
+    pub variables: HashMap<String, Vec<String>>,
 }
 
 impl Settings {
+    /// Compute the scenario from the variables specified via -X on the
+    /// command line
+    pub fn cli_scenario(
+        &self,
+        scenarios: &AllScenarios,
+    ) -> Result<Scenario, Error> {
+        let mut scenario = Scenario::default();
+        for (name, values) in &self.variables {
+            scenario = scenario & scenarios.lookup_variable(name, values)?;
+        }
+        Ok(scenario)
+    }
+
     /// Format a path for display.  We prefer to display relative file names,
     /// since those are shorter and will stay the same on different machines.
     pub fn display_path<'a>(&self, path: &'a Path) -> std::path::Display<'a> {

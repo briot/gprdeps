@@ -120,6 +120,8 @@ pub fn parse_cli() -> Result<(Settings, Action), Error> {
                 .global(true)
                 .default_value(".")
                 .value_parser(clap::value_parser!(PathBuf)),
+            arg!(-X [VAR_VALUE]... "Set specific scenario in queries varname=value")
+                .global(true),
         ])
         .subcommand(
             Command::new("stats")
@@ -208,6 +210,18 @@ pub fn parse_cli() -> Result<(Settings, Action), Error> {
         root: get_path_list(&matches, "root", None),
         trim: matches.get_flag("trim"),
         relto: get_path(&matches, "relto", None)?,
+        variables: matches
+            .get_many::<String>("VAR_VALUE")
+            .into_iter()
+            .flatten()
+            .map(|s| match s.split_once("=") {
+                None => panic!("Expect -Xname=value"),
+                Some((name, value)) => (
+                    name.to_string(),
+                    value.split(",").map(str::to_string).collect(),
+                ),
+            })
+            .collect(),
     };
     settings.runtime_gpr = get_path_list(&matches, "runtime", Some(&settings));
 

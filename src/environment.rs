@@ -7,8 +7,8 @@ use crate::{
     graph::{DepGraph, Edge, Node, NodeIndex},
     qnames::QName,
     rawgpr::RawGPR,
-    settings::Settings,
     scenarios::Scenario,
+    settings::Settings,
     sourcefile::{SourceFile, SourceKind},
 };
 use petgraph::{visit::EdgeRef, Direction};
