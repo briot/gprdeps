@@ -51,10 +51,10 @@ graph TD;
    GPR1 -->|sources| file1.adb;
    GPR1 -->|sources| file2.ads;
    GPR2 -->|sources| file3.ads;
-   unit1 -->|unitsource(spec)| file1.ads;
-   unit1 -->|unitsource(impl)| file1.adb;
+   unit1 -->|unitsource spec| file1.ads;
+   unit1 -->|unitsource impl| file1.adb;
    unit2 -->|unitspec| file2.ads;
-   unit3 -->|unitsource(spec)| file3.ads;
+   unit3 -->|unitsource spec| file3.ads;
    file1.adb -->|imports| unit2;
    file1.adb -->|imports| unit3
 ```
